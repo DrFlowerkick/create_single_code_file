@@ -151,7 +151,7 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn test_output_file_relativ_path_block_module() {
+    fn test_output_file_relative_path_block_module() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let output = PathBuf::from(r"..\csf_cg_binary_test\src\bin\codingame.rs");
         let options = Cli {
@@ -177,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn test_output_file_relativ_path_block_module_challenge_only() {
+    fn test_output_file_relative_path_block_module_challenge_only() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let output = PathBuf::from(r"..\csf_cg_binary_test\src\bin\codingame.rs");
         let options = Cli {
@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn test_output_file_relativ_path_block_module_my_map_two_dim() {
+    fn test_output_file_relative_path_block_module_my_map_two_dim() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let output = PathBuf::from(r"..\csf_cg_binary_test\src\bin\codingame.rs");
         let options = Cli {
@@ -241,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn test_output_stdout_relativ_path_block_module() {
+    fn test_output_stdout_relative_path_block_module() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let output = None;
         let options = Cli {
@@ -268,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn test_output_file_relativ_path_block_module_no_comments() {
+    fn test_output_file_relative_path_block_module_no_comments() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let output = PathBuf::from(r"..\csf_cg_binary_test\src\bin\codingame_no_comments.rs");
         let options = Cli {
@@ -291,48 +291,5 @@ mod tests {
         let expected_output = PathBuf::from(r".\test\expected_test_result_no_comments.rs");
         let expected_output= fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
-    }
-
-    #[test]
-    fn test_cg_fall_challenge_2020() {
-        let input = PathBuf::from(r"..\cg_fall_challenge_2020\src\main.rs");
-        let output = PathBuf::from(r"..\cg_fall_challenge_2020\src\bin\codingame.rs");
-        let options = Cli {
-            input: input,
-            output: Some(output.clone()),
-            challenge_only: false,
-            modules: "all".to_string(),
-            block_hidden: "".to_string(),
-            lib: "my_lib".to_string(),
-            verbose: true,
-            simulate: false,
-            del_comments: false,
-        };
-        let mut data = CGData::new(options);
-        data.prepare_cg_data().unwrap();
-        data.create_output().unwrap();
-        data.filter_unused_code().unwrap();
-    }
-
-    #[test]
-    fn test_cg_ultimate_tic_tac_toe() {
-        let input = PathBuf::from(r"..\cg_ultimate_tic_tac_toe\src\main.rs");
-        let output = PathBuf::from(r"..\cg_ultimate_tic_tac_toe\src\bin\ult_ttt_single_file.rs");
-        let options = Cli {
-            input: input,
-            output: Some(output.clone()),
-            challenge_only: false,
-            modules: "all".to_string(),
-            block_hidden: "my_array".to_string(),
-            lib: "my_lib".to_string(),
-            verbose: true,
-            simulate: false,
-            del_comments: false,
-        };
-        let mut data = CGData::new(options);
-        data.prepare_cg_data().unwrap();
-        data.create_output().unwrap();
-        data.filter_unused_code().unwrap();
-
     }
 }

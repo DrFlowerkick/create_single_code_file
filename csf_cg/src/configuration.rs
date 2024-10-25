@@ -23,7 +23,7 @@ pub struct Cli {
     #[structopt(short, long)]
     pub challenge_only: bool,
 
-    /// Select specific modules seperated by ";" from lib or all (default all). module name is same name you use with "use" command in Rust 
+    /// Select specific modules separated by ";" from lib or all (default all). module name is same name you use with "use" command in Rust 
     #[structopt(short, long, default_value = "all")]
     pub modules: String,
 
@@ -73,7 +73,7 @@ pub enum CGError {
 impl fmt::Display for CGError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MustProvideOutPutFile => write!(f, "No output file specified with activ insert options!"),
+            Self::MustProvideOutPutFile => write!(f, "No output file specified with active insert options!"),
             Self::PackageStructureError(path) => write!(f, "input path \"{:?}\" does not fit to crate package structure", path),
             Self::NoStartLine(message_line) => write!(f, "Could not find start line of name space for message line {}", message_line),
             Self::NoEndLine => write!(f, "Could not find end line of name space"),

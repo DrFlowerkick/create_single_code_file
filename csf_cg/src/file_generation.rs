@@ -28,12 +28,12 @@ impl ModuleType {
 }
 
 impl CGData {
-    fn get_modules_from_use_line<'a>(&mut self, mtype: ModuleType, module_path_iter: impl Iterator<Item=&'a str>) {
-        let mut start_path = match mtype {
+    fn get_modules_from_use_line<'a>(&mut self, mod_type: ModuleType, module_path_iter: impl Iterator<Item=&'a str>) {
+        let mut start_path = match mod_type {
             ModuleType::Local => self.crate_dir.join("src"),
             _ => self.my_lib.clone(),
         };
-        let module_list = match mtype {
+        let module_list = match mod_type {
             ModuleType::Local => &mut self.local_modules,
             _ => &mut self.lib_modules,
         };
@@ -41,9 +41,9 @@ impl CGData {
             if self.options.modules.as_str() == "all" || self.options.modules.find(module).is_some() {
                 let mut path = start_path.join(module);
                 path.set_extension("rs");
-                if mtype.is_hidden() && self.options.block_hidden.find(module).is_some() {
+                if mod_type.is_hidden() && self.options.block_hidden.find(module).is_some() {
                     if self.options.verbose {
-                        eprintln!("blocked hidden module {} (found in {:?})...", module, mtype.hidden_source());
+                        eprintln!("blocked hidden module {} (found in {:?})...", module, mod_type.hidden_source());
                     }
                     break
                 } else if path.is_file() {
@@ -51,7 +51,7 @@ impl CGData {
                     if module_list.iter().find(|p| **p == path).is_none() {
                         // add locale module to list
                         if self.options.verbose {
-                            match mtype {
+                            match mod_type {
                                 ModuleType::Local => eprintln!("found locale module \"{}\", adding {:?} to module list...", module, path),
                                 ModuleType::Lib => eprintln!("found lib module \"{}\", adding {:?} to module list...", module, path),
                                 ModuleType::Hidden(ref source) => eprintln!("found hidden module {} in {}, adding {:?} to module list...", module, source, path),
@@ -70,12 +70,12 @@ impl CGData {
     fn get_local_modules(&mut self) -> BoxResult<()> {
         if !(self.options.modules.as_str() == "all" || self.options.modules.find("lib").is_some()) {
             if self.options.verbose {
-                eprintln!("\"lib\" not in given list of modules -> skipping collecting pathes of local modules of crate...");
+                eprintln!("\"lib\" not in given list of modules -> skipping collecting path of local modules of crate...");
             }
             return Ok(());
         }
         if self.options.verbose {
-            eprintln!("collecting pathes of all local modules of crate...");
+            eprintln!("collecting path of all local modules of crate...");
         }
         let mut input = String::new();
         self.load(self.options.input.as_path(), &mut input)?;
@@ -108,18 +108,18 @@ impl CGData {
     fn get_lib_modules(&mut self) -> BoxResult<()> {
         if self.options.challenge_only {
             if self.options.verbose {
-                eprintln!("challenge_only -> skipping collecting pathes of all specified modules of lib...");
+                eprintln!("challenge_only -> skipping collecting path of all specified modules of lib...");
             }
             return Ok(());
         }
         if !self.my_lib.is_dir() {
             if self.options.verbose {
-                eprintln!("lib \"{}\" not specified in toml -> skipping collecting pathes of all specified modules of lib...", self.options.lib);
+                eprintln!("lib \"{}\" not specified in toml -> skipping collecting path of all specified modules of lib...", self.options.lib);
             }
             return Ok(());
         }
         if self.options.verbose {
-            eprintln!("collecting pathes of all specified modules of lib...");
+            eprintln!("collecting path of all specified modules of lib...");
         }
         let mut source_files = self.local_modules.clone();
         source_files.push(self.options.input.clone());       
@@ -135,7 +135,7 @@ impl CGData {
         // if all modules are required, search for hidden internal modules in local lib and add them to modules
         if self.options.modules.as_str() == "all" {
             if self.options.verbose {
-                eprintln!("collecting pathes of all hidden modules of lib...");
+                eprintln!("collecting path of all hidden modules of lib...");
             }
             let mut index = 0;
             while index < self.lib_modules.len() {
@@ -214,9 +214,9 @@ impl CGData {
     fn insert_challenge(&self, output: &mut String) -> BoxResult<()> {
         let mut files = self.local_modules.clone();
         files.push(self.options.input.clone());
-        for finput in files.iter() {
+        for file_input in files.iter() {
             let mut input = String::new();
-            self.load_challenge(finput, &mut input)?;
+            self.load_challenge(file_input, &mut input)?;
             if self.options.verbose {
                 eprintln!("inserting {:?} into output...", self.options.input.file_name().unwrap());
             }
@@ -269,7 +269,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_simlation_absolute_path() {
+    fn test_simulation_absolute_path() {
         let input = PathBuf::from(r"C:\Users\Marc\Documents\Repos\basic_rust\projects\csf_cg_binary_test\src\main.rs");
         let options = Cli {
             input: input,
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simlation_relativ_path() {
+    fn test_simulation_relative_path() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let options = Cli {
             input: input,
@@ -307,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simlation_relativ_path_block_module() {
+    fn test_simulation_relative_path_block_module() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let options = Cli {
             input: input,

@@ -7,7 +7,7 @@ use create_codingame_single_file::*;
 fn main() {
     let options = Cli::from_args();
     if let Err(err) = run(options) {
-        println!("Error occured: {}", err);
+        println!("Error occurred: {}", err);
         
         // look for source
         match err.source() {

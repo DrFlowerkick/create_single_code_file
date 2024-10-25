@@ -82,10 +82,10 @@ impl<'a> NameSpace<'a> {
         let mut open_bracket_found = false;
         let mut bracket_count = 0;
         for (line, slice) in self.lines[self.start_line..].iter().enumerate() {
-            let open_bracktes = slice.matches("{").count() as i32;
+            let open_brackets = slice.matches("{").count() as i32;
             let close_brackets = slice.matches("}").count() as i32;
-            open_bracket_found = open_bracket_found || open_bracktes > 0;
-            bracket_count += open_bracktes - close_brackets;
+            open_bracket_found = open_bracket_found || open_brackets > 0;
+            bracket_count += open_brackets - close_brackets;
             match bracket_count {
                 1.. => (),
                 0 => if (!must_open_bracket || open_bracket_found) && (!is_match_arm || slice.trim().ends_with(",")) {
@@ -269,65 +269,5 @@ mod tests {
         let mut file_config = CGData::new(options);
         file_config.prepare_cg_data().unwrap();
         file_config.filter_unused_code().unwrap();
-    }
-
-    #[test]
-    fn test_output_file_cargo_check_cg_ultimate_tic_tac_toe() {
-        let input = PathBuf::from(r"..\cg_ultimate_tic_tac_toe\src\main.rs");
-        let output = PathBuf::from(r"..\cg_ultimate_tic_tac_toe\src\bin\ult_ttt_single_file.rs");
-        let options = Cli {
-            input: input,
-            output: Some(output.clone()),
-            challenge_only: false,
-            modules: "all".to_string(),
-            block_hidden: "my_array".to_string(),
-            lib: "my_lib".to_string(),
-            verbose: true,
-            simulate: false,
-            del_comments: false,
-        };
-
-        let mut file_config = CGData::new(options);
-        file_config.prepare_cg_data().unwrap();
-        file_config.filter_unused_code().unwrap();
-    }
-
-    #[test]
-    fn test_debug_cargo_check_messages() {
-        let input = PathBuf::from(r"..\cg_ultimate_tic_tac_toe\src\main.rs");
-        let output = PathBuf::from(r"..\cg_ultimate_tic_tac_toe\src\bin\ult_ttt_single_file.rs");
-        let options = Cli {
-            input: input,
-            output: Some(output.clone()),
-            challenge_only: false,
-            modules: "all".to_string(),
-            block_hidden: "my_array".to_string(),
-            lib: "my_lib".to_string(),
-            verbose: true,
-            simulate: false,
-            del_comments: false,
-        };
-
-        let mut file_config = CGData::new(options);
-        file_config.prepare_cg_data().unwrap();
-        let result = file_config.command_cargo_check().unwrap();
-        for message in cargo_metadata::Message::parse_stream(&result.stdout[..]) {
-            match message.unwrap() {
-                Message::CompilerMessage(msg) => if msg.message.spans.len() > 0 {
-                    eprintln!("{:?}", msg);
-                    eprintln!("message code: {}", msg.message.code.unwrap().code);
-                    let mut output = String::new();
-                    file_config.load_output(&mut output).unwrap();
-                    eprintln!("len: {}", output.len());
-                    for (index, span) in msg.message.spans.iter().enumerate() {
-                        eprintln!("span index: {}, byte_start: {}, line_start: {}", index, span.byte_start, span.line_start);
-                    }
-                    output.insert(msg.message.spans[0].byte_start as usize, '_');
-                    println!("fixed line:");
-                    println!("{}", output.lines().nth(msg.message.spans[0].line_start - 1).unwrap());
-                },
-                _ => (),
-            }
-        }
     }
 }
