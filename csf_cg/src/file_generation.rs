@@ -253,8 +253,8 @@ impl CGData {
         if self.options.simulate {
             eprintln!("End of simulation");
         } else {
-            if self.options.verbose && self.options.output.is_some() {
-                eprintln!("saving output into file...");
+            if self.options.verbose {
+                eprintln!("saving output into tmp file {:#?}", self.tmp_output_file.as_path());
             }
             self.save_output(&output)?;
         }
@@ -269,26 +269,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_simulation_absolute_path() {
-        let input = PathBuf::from(r"C:\Users\Marc\Documents\Repos\basic_rust\projects\csf_cg_binary_test\src\main.rs");
-        let options = Cli {
-            input: input,
-            output: None,
-            challenge_only: false,
-            modules: "all".to_string(),
-            block_hidden: "".to_string(),
-            lib: "csf_cg_lib_test".to_string(),
-            verbose: false,
-            simulate: true,
-            del_comments: false,
-        };
-        let mut data = CGData::new(options);
-        data.prepare_cg_data().unwrap();
-        data.create_output().unwrap();
-    }
-
-    #[test]
-    fn test_simulation_relative_path() {
+    fn test_simulation_output() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let options = Cli {
             input: input,
@@ -301,13 +282,22 @@ mod tests {
             simulate: true,
             del_comments: false,
         };
+        // simulate output
         let mut data = CGData::new(options);
         data.prepare_cg_data().unwrap();
         data.create_output().unwrap();
+
+        // assert no file is created
+        assert!(!data.tmp_output_file.is_file());
+
+        // clean up tmp dir
+        data.cleanup_cg_data().unwrap();
+        // assert tmp file is removed
+        assert!(!data.tmp_dir.is_dir());
     }
 
     #[test]
-    fn test_simulation_relative_path_block_module() {
+    fn test_simulation_output_with_block_hidden_modules() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let options = Cli {
             input: input,
@@ -320,8 +310,51 @@ mod tests {
             simulate: true,
             del_comments: false,
         };
+        // simulate output
         let mut data = CGData::new(options);
         data.prepare_cg_data().unwrap();
         data.create_output().unwrap();
+
+        // assert no file is created
+        assert!(!data.tmp_output_file.is_file());
+
+        // clean up tmp dir
+        data.cleanup_cg_data().unwrap();
+        // assert tmp file is removed
+        assert!(!data.tmp_dir.is_dir());
+    }
+
+    #[test]
+    fn test_creation_tmp_file_output() {
+        let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
+        let options = Cli {
+            input: input,
+            output: None,
+            challenge_only: false,
+            modules: "all".to_string(),
+            block_hidden: "".to_string(),
+            lib: "csf_cg_lib_test".to_string(),
+            verbose: false,
+            simulate: false,
+            del_comments: false,
+        };
+        // create output
+        let mut data = CGData::new(options);
+        data.prepare_cg_data().unwrap();
+        data.create_output().unwrap();
+
+        // assert tmp file is created
+        assert!(data.tmp_output_file.is_file());
+
+        // assert file content
+        let mut file_content = String::new();
+        data.load_output(&mut file_content).unwrap();
+        let expected_file_content = fs::read_to_string(PathBuf::from(r".\test\expected_test_results\test_creation_tmp_file_output.rs")).unwrap();
+        assert_eq!(file_content, expected_file_content);
+
+        // clean up tmp dir
+        data.cleanup_cg_data().unwrap();
+        // assert tmp file is removed
+        assert!(!data.tmp_dir.is_dir());
     }
 }

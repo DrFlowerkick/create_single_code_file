@@ -65,6 +65,7 @@ impl fmt::Display for Cli {
 pub enum CGError {
     MustProvideOutPutFile,
     PackageStructureError(PathBuf),
+    OutputFileError(PathBuf),
     NoStartLine(usize),
     NoEndLine,
     TooManyClosingBrackets,
@@ -75,6 +76,7 @@ impl fmt::Display for CGError {
         match self {
             Self::MustProvideOutPutFile => write!(f, "No output file specified with active insert options!"),
             Self::PackageStructureError(path) => write!(f, "input path \"{:?}\" does not fit to crate package structure", path),
+            Self::OutputFileError(path) => write!(f, "output path \"{:?}\" does not point to /src/bin dir in crate directory", path),
             Self::NoStartLine(message_line) => write!(f, "Could not find start line of name space for message line {}", message_line),
             Self::NoEndLine => write!(f, "Could not find end line of name space"),
             Self::TooManyClosingBrackets => write!(f, "More closing brackets than starting brackets for name space"),

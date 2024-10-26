@@ -1,7 +1,8 @@
 //⏬my_map_two_dim.rs
+// use MyMap2D if compilation time is suffice, because it is more efficient and has cleaner interface
 #[derive(Copy, Clone, PartialEq)]
-struct MyMap2D<T, const X: usize, const Y: usize, const N: usize> {
-    items: [[T; X] ; Y],
+struct MyMap2D<T, const X: usize, const Y: usize, const N: usize> { // X: number of columns, Y: number of rows, N: number of elements in map: X * Y
+    items: [[T; X] ; Y], //outer array rows, inner array columns -> first index chooses row (y), second index chooses column (x)
 }
 impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> MyMap2D<T, X, Y, N> {
     fn new() -> Self {
@@ -27,6 +28,9 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
 //⏬my_map_point.rs
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
 struct MapPoint<const X: usize, const Y: usize> {
+    // X: size of dimension x
+    // Y: size of dimension Y
+    // x and y are not public, because changing them without the provided functions can result in unwanted panics!
     x: usize,
     y: usize,
 }

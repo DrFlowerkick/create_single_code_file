@@ -29,6 +29,7 @@ struct NameSpace<'a> {
 
 impl<'a> NameSpace<'a> {
     const NAME_SPACE_PATTERNS: [&'a str; 4] = ["fn", "struct", "impl", "enum"];
+    // ToDo: mod could also be a NAME_SPACE_PATTERN!
     const SINGLE_LINE_PATTERNS: [&'a str; 3] = ["use", "mod", "#[derive"];
     fn new(output: &'a String, line_end_chars: String) -> NameSpace {
         NameSpace {
@@ -106,8 +107,8 @@ impl<'a> NameSpace<'a> {
 
 impl CGData {
     fn command_cargo_check(&self) -> BoxResult<Output> {
-        let current_dir = fs::canonicalize(self.crate_dir.as_path())?;
-        let bin_name = self.output_file.file_stem().unwrap().to_str().unwrap();
+        let current_dir = fs::canonicalize(self.tmp_dir.as_path())?;
+        let bin_name = self.tmp_output_file.file_stem().unwrap().to_str().unwrap();
         Ok(Command::new("cargo")
         .current_dir(current_dir)
         .arg("check").arg("--bin").arg(bin_name).arg("--message-format=json")
@@ -201,7 +202,8 @@ impl CGData {
                     break
                 }
                 check_counter += 1;
-                // Debug stuff. remove later
+                eprintln!("check_counter: {}", check_counter);
+                // ToDo: Debug stuff. remove later
                 if message.message.level == DiagnosticLevel::Warning {
                     //break
                 }
@@ -252,11 +254,9 @@ mod tests {
     #[test]
     fn test_output_file_cargo_check() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
-        let output = PathBuf::from(r"..\csf_cg_binary_test\src\bin\codingame.rs");
-        //let output = PathBuf::from(r"..\csf_cg_binary_test\src\bin\codingame_after_clean_up.rs");
         let options = Cli {
             input: input,
-            output: Some(output.clone()),
+            output: None,
             challenge_only: false,
             modules: "all".to_string(),
             block_hidden: "my_compass;my_array".to_string(),
@@ -265,9 +265,21 @@ mod tests {
             simulate: false,
             del_comments: false,
         };
+        // generate filtered file from input
+        let mut data = CGData::new(options);
+        data.prepare_cg_data().unwrap();
+        data.create_output().unwrap();
+        data.filter_unused_code().unwrap();
 
-        let mut file_config = CGData::new(options);
-        file_config.prepare_cg_data().unwrap();
-        file_config.filter_unused_code().unwrap();
+        // assert file content
+        let mut data_content = String::new();
+        data.load_output(&mut data_content).unwrap();
+        let expected_file_content = fs::read_to_string(PathBuf::from(r".\test\expected_test_results\test_output_file_cargo_check.rs")).unwrap();
+        assert_eq!(data_content, expected_file_content);
+
+        // clean up tmp_file
+        data.cleanup_cg_data().unwrap();
+        // assert tmp file is removed
+        assert!(!data.tmp_output_file.is_file());
     }
 }

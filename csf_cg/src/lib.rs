@@ -5,10 +5,38 @@ pub mod post_generation;
 use std::path::PathBuf;
 use std::path::Path;
 use std::fs;
-use std::io::Write;
+use std::{io, io::Write};
 use toml::Value;
+use uuid::Uuid;
 
 use crate::configuration::*;
+
+/// Recursively copies the contents of one directory to another destination.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
+    // Create the destination directory if it does not exist
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    // Iterate through the source directory
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let src_path = entry.path();
+        let mut dst_path = PathBuf::from(dst);
+        dst_path.push(entry.file_name());
+
+        // If it's a directory, call the function recursively
+        if file_type.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else if file_type.is_file() {
+            // Copy the file
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+
+    Ok(())
+}
 
 pub struct CGData {
     options: Cli,
@@ -17,9 +45,10 @@ pub struct CGData {
     local_modules: Vec<PathBuf>,
     my_lib: PathBuf,
     lib_modules: Vec<PathBuf>,
+    tmp_dir: PathBuf,
+    tmp_output_file: PathBuf,
     output_file: PathBuf,
     line_end_chars: String,
-    bin_clear: bool,
 }
 
 impl CGData {
@@ -31,9 +60,10 @@ impl CGData {
             local_modules: Vec::new(),
             my_lib: PathBuf::new(),
             lib_modules: Vec::new(),
+            tmp_dir: PathBuf::new(),
+            tmp_output_file: PathBuf::new(),
             output_file: PathBuf::new(),
             line_end_chars: "".to_string(),
-            bin_clear: false,
         };
         if result.options.simulate {
             eprintln!("Start of simulation");
@@ -89,6 +119,15 @@ impl CGData {
                 }
             },
         }
+        // prepare working directory
+        // tmp dir must be on same path as crate dir, otherwise relative paths im Cargo.toml will not work
+        self.tmp_dir = self.crate_dir.parent().unwrap().join(String::from(Uuid::new_v4()));
+        if self.options.verbose {
+            eprintln!("creating tmp working directory for cargo check: {:#?}", self.tmp_dir.as_path());
+        }
+        fs::create_dir_all(&self.tmp_dir)?;
+        fs::copy(self.crate_dir.join("Cargo.toml"), self.tmp_dir.join("Cargo.toml"))?;
+        copy_dir_recursive(&self.crate_dir.join("src"), &self.tmp_dir.join("src"))?;
         if self.options.output.is_none() {
             if self.options.challenge_only || self.options.modules.as_str() != "all" {
                 // these options require an already existing output file to insert changed code
@@ -97,14 +136,16 @@ impl CGData {
             if self.options.verbose {
                 eprintln!("creating tmp file path for cargo check...");
             }
-            let tmp_dir = self.crate_dir.join("src").join("bin");
-            if !tmp_dir.is_dir() {
-                self.bin_clear = true;
-                fs::create_dir(tmp_dir.as_path())?;
-            }
-            self.output_file = tmp_dir.join("output_file.rs");
+            let bin_dir = self.tmp_dir.join("src").join("bin");
+            fs::create_dir_all(&bin_dir)?;
+            let tmp_file = String::from(Uuid::new_v4()) + ".rs";
+            self.tmp_output_file = bin_dir.join(tmp_file);
         } else {
             self.output_file = self.options.output.as_ref().unwrap().clone();
+            if self.crate_dir.join("src").join("bin") != self.output_file.parent().unwrap() {
+                return Err(Box::new(CGError::OutputFileError(self.output_file.clone())));
+            }
+            self.tmp_output_file = self.tmp_dir.join("src").join("bin").join(self.output_file.file_name().unwrap());
         }
         // checking for line end chars (either \n or \r\n)
         let input = fs::read_to_string(self.options.input.as_path())?;
@@ -116,29 +157,38 @@ impl CGData {
         Ok(())
     }
     fn load_output(&self, output: &mut String) -> BoxResult<()> {
-        *output = fs::read_to_string(self.output_file.as_path())?;
+        *output = fs::read_to_string(self.tmp_output_file.as_path())?;
         Ok(())
     }
     fn save_output(&self, output: &String) -> BoxResult<()> {
-        let mut file = fs::File::create(self.output_file.as_path())?;
+        let mut file = fs::File::create(self.tmp_output_file.as_path())?;
         file.write_all(output.as_bytes())?;
         file.flush()?;
         Ok(())
     }
-    pub fn cleanup_cg_data(&self) -> BoxResult<()> {
-        if self.options.output.is_none() {
+    pub fn cleanup_cg_data(&self) -> BoxResult<String> {
+        let output = if self.options.simulate {
+            "".into()
+        } else if self.options.output.is_none() {
             if self.options.verbose {
-                eprintln!("removing tmp file...");
+                eprintln!("create output from tmp file before clean up...");
             }
             let mut output = String::new();
             self.load_output(&mut output)?;
-            fs::remove_file(self.output_file.as_path())?;
-            if self.bin_clear {
-                fs::remove_dir(self.output_file.parent().unwrap())?;
+            output
+        } else {
+            if self.options.verbose {
+                eprintln!("saving output to output file...");
             }
-            eprintln!("{}", output);
+            fs::copy(&self.tmp_output_file, &self.output_file)?;
+            "".into()
+        };
+        if self.options.verbose {
+            eprintln!("removing tmp dir...");
         }
-        Ok(())
+        // delete working tmp dir
+        fs::remove_dir_all(self.tmp_dir.as_path())?;
+        Ok(output)
     } 
 }
 
@@ -151,12 +201,11 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn test_output_file_relative_path_block_module() {
+    fn test_output_with_blocked_modules() {
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
-        let output = PathBuf::from(r"..\csf_cg_binary_test\src\bin\codingame.rs");
         let options = Cli {
             input: input,
-            output: Some(output.clone()),
+            output: None,
             challenge_only: false,
             modules: "all".to_string(),
             block_hidden: "my_compass;my_array".to_string(),
@@ -165,15 +214,22 @@ mod tests {
             simulate: false,
             del_comments: false,
         };
+        // prepare output
         let mut data = CGData::new(options);
         data.prepare_cg_data().unwrap();
         data.create_output().unwrap();
         data.filter_unused_code().unwrap();
         
-        let output= fs::read_to_string(output).unwrap();
-        let expected_output = PathBuf::from(r".\test\expected_test_result.rs");
+        // assert file content
+        let output= fs::read_to_string(&data.tmp_output_file).unwrap();
+        let expected_output = PathBuf::from(r".\test\expected_test_results\lib_tests_with_comments.rs");
         let expected_output= fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
+
+        // clean up tmp_file
+        data.cleanup_cg_data().unwrap();
+        // assert tmp file is removed
+        assert!(!data.tmp_output_file.is_file());
     }
 
     #[test]
@@ -203,7 +259,7 @@ mod tests {
         data.filter_unused_code().unwrap();
         
         let output= fs::read_to_string(output).unwrap();
-        let expected_output = PathBuf::from(r".\test\expected_test_result.rs");
+        let expected_output = PathBuf::from(r".\test\expected_test_results\lib_tests_with_comments.rs");
         let expected_output= fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
     }
@@ -235,7 +291,7 @@ mod tests {
         data.filter_unused_code().unwrap();
         
         let output= fs::read_to_string(output).unwrap();
-        let expected_output = PathBuf::from(r".\test\expected_test_result.rs");
+        let expected_output = PathBuf::from(r".\test\expected_test_results\lib_tests_with_comments.rs");
         let expected_output= fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
     }
@@ -260,8 +316,8 @@ mod tests {
         data.create_output().unwrap();
         data.filter_unused_code().unwrap();
         
-        let output= fs::read_to_string(data.output_file.as_path()).unwrap();
-        let expected_output = PathBuf::from(r".\test\expected_test_result.rs");
+        let output= fs::read_to_string(data.tmp_output_file.as_path()).unwrap();
+        let expected_output = PathBuf::from(r".\test\expected_test_results\lib_tests_with_comments.rs");
         let expected_output= fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
         data.cleanup_cg_data().unwrap();
@@ -288,7 +344,7 @@ mod tests {
         data.filter_unused_code().unwrap();
         
         let output= fs::read_to_string(output).unwrap();
-        let expected_output = PathBuf::from(r".\test\expected_test_result_no_comments.rs");
+        let expected_output = PathBuf::from(r".\test\expected_test_results\lib_tests_with_comments_no_comments.rs");
         let expected_output= fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
     }
