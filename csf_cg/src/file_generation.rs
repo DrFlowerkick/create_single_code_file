@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::fs;
-use std::fmt;
 use super::*;
+use std::fmt;
+use std::fs;
+use std::path::Path;
 
 use crate::configuration::*;
 
@@ -14,10 +14,7 @@ enum ModuleType {
 
 impl ModuleType {
     fn is_hidden(&self) -> bool {
-        match self {
-            ModuleType::Hidden(_) => true,
-            _ => false,
-        }
+        matches!(self, ModuleType::Hidden(_))
     }
     fn hidden_source(&self) -> &String {
         match self {
@@ -28,7 +25,11 @@ impl ModuleType {
 }
 
 impl CGData {
-    fn get_modules_from_use_line<'a>(&mut self, mod_type: ModuleType, module_path_iter: impl Iterator<Item=&'a str>) {
+    fn get_modules_from_use_line<'a>(
+        &mut self,
+        mod_type: ModuleType,
+        module_path_iter: impl Iterator<Item = &'a str>,
+    ) {
         let mut start_path = match mod_type {
             ModuleType::Local => self.crate_dir.join("src"),
             _ => self.my_lib.clone(),
@@ -38,37 +39,50 @@ impl CGData {
             _ => &mut self.lib_modules,
         };
         for module in module_path_iter {
-            if self.options.modules.as_str() == "all" || self.options.modules.find(module).is_some() {
+            if self.options.modules.as_str() == "all" || self.options.modules.contains(module) {
                 let mut path = start_path.join(module);
                 path.set_extension("rs");
-                if mod_type.is_hidden() && self.options.block_hidden.find(module).is_some() {
+                if mod_type.is_hidden() && self.options.block_hidden.contains(module) {
                     if self.options.verbose {
-                        eprintln!("blocked hidden module {} (found in {:?})...", module, mod_type.hidden_source());
+                        eprintln!(
+                            "blocked hidden module {} (found in {:?})...",
+                            module,
+                            mod_type.hidden_source()
+                        );
                     }
-                    break
+                    break;
                 } else if path.is_file() {
                     // found locale module
-                    if module_list.iter().find(|p| **p == path).is_none() {
+                    if !module_list.iter().any(|p| *p == path) {
                         // add locale module to list
                         if self.options.verbose {
                             match mod_type {
-                                ModuleType::Local => eprintln!("found locale module \"{}\", adding {:?} to module list...", module, path),
-                                ModuleType::Lib => eprintln!("found lib module \"{}\", adding {:?} to module list...", module, path),
-                                ModuleType::Hidden(ref source) => eprintln!("found hidden module {} in {}, adding {:?} to module list...", module, source, path),
+                                ModuleType::Local => eprintln!(
+                                    "found locale module \"{}\", adding {:?} to module list...",
+                                    module, path
+                                ),
+                                ModuleType::Lib => eprintln!(
+                                    "found lib module \"{}\", adding {:?} to module list...",
+                                    module, path
+                                ),
+                                ModuleType::Hidden(ref source) => eprintln!(
+                                    "found hidden module {} in {}, adding {:?} to module list...",
+                                    module, source, path
+                                ),
                             }
                         }
                         module_list.push(path);
                     }
-                    // module dir, if sub module(s) are in path 
+                    // module dir, if sub module(s) are in path
                     start_path = start_path.join(module);
                 }
             } else {
-                break
+                break;
             }
         }
     }
     fn get_local_modules(&mut self) -> BoxResult<()> {
-        if !(self.options.modules.as_str() == "all" || self.options.modules.find("lib").is_some()) {
+        if !(self.options.modules.as_str() == "all" || self.options.modules.contains("lib")) {
             if self.options.verbose {
                 eprintln!("\"lib\" not in given list of modules -> skipping collecting path of local modules of crate...");
             }
@@ -81,15 +95,25 @@ impl CGData {
         self.load(self.options.input.as_path(), &mut input)?;
         // search for usage of lib.rs, which is referenced by "use <crate name>::*;"
         let lib_pattern = "use ".to_string() + self.crate_name.as_str() + "::";
-        for line in input.lines().map(|l| l.trim()).filter(|l| l.starts_with(lib_pattern.as_str())) {
+        for line in input
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| l.starts_with(lib_pattern.as_str()))
+        {
             let path = self.crate_dir.join("src").join("lib.rs");
-            if self.local_modules.iter().find(|p| **p == path).is_none() {
+            if !self.local_modules.iter().any(|p| *p == path) {
                 if self.options.verbose {
-                    eprintln!("found library crate, adding {:?} to module list...", path);
+                    eprintln!(
+                        "found library crate, adding {} to module list...",
+                        path.display()
+                    );
                 }
                 self.local_modules.push(path);
             }
-            let module_path_iter = line.split(&[':', ';'][..]).filter(|m| *m != "").skip(1);
+            let module_path_iter = line
+                .split(&[':', ';'][..])
+                .filter(|m| !m.is_empty())
+                .skip(1);
             self.get_modules_from_use_line(ModuleType::Local, module_path_iter);
         }
         // search for further local modules in lib.rs (and possibly other already referenced local modules)
@@ -97,8 +121,15 @@ impl CGData {
         while index < self.local_modules.len() {
             let mut input = String::new();
             self.load(self.local_modules[index].as_path(), &mut input)?;
-            for line in input.lines().map(|l| l.trim()).filter(|l| l.starts_with("use crate::")) {
-                let module_path_iter = line.split(&[':', ';'][..]).filter(|m| *m != "").skip(1);
+            for line in input
+                .lines()
+                .map(|l| l.trim())
+                .filter(|l| l.starts_with("use crate::"))
+            {
+                let module_path_iter = line
+                    .split(&[':', ';'][..])
+                    .filter(|m| !m.is_empty())
+                    .skip(1);
                 self.get_modules_from_use_line(ModuleType::Local, module_path_iter);
             }
             index += 1;
@@ -108,7 +139,9 @@ impl CGData {
     fn get_lib_modules(&mut self) -> BoxResult<()> {
         if self.options.challenge_only {
             if self.options.verbose {
-                eprintln!("challenge_only -> skipping collecting path of all specified modules of lib...");
+                eprintln!(
+                    "challenge_only -> skipping collecting path of all specified modules of lib..."
+                );
             }
             return Ok(());
         }
@@ -122,13 +155,20 @@ impl CGData {
             eprintln!("collecting path of all specified modules of lib...");
         }
         let mut source_files = self.local_modules.clone();
-        source_files.push(self.options.input.clone());       
+        source_files.push(self.options.input.clone());
         for module in source_files.iter() {
             let mut input = String::new();
             self.load(module, &mut input)?;
             let lib_pattern = "use ".to_string() + self.options.lib.as_str() + "::";
-            for line in input.lines().map(|l| l.trim()).filter(|l| l.starts_with(lib_pattern.as_str())) {
-                let module_path_iter = line.split(&[':', ';'][..]).filter(|m| *m != "").skip(1);
+            for line in input
+                .lines()
+                .map(|l| l.trim())
+                .filter(|l| l.starts_with(lib_pattern.as_str()))
+            {
+                let module_path_iter = line
+                    .split(&[':', ';'][..])
+                    .filter(|m| !m.is_empty())
+                    .skip(1);
                 self.get_modules_from_use_line(ModuleType::Lib, module_path_iter);
             }
         }
@@ -143,9 +183,18 @@ impl CGData {
                 let mod_name = mod_path.file_stem().unwrap().to_str().unwrap().to_string();
                 let mut input = String::new();
                 self.load(mod_path, &mut input)?;
-                for line in input.lines().filter(|l| l.trim().starts_with("use crate::")) {
-                    let module_path_iter = line.split(&[':', ';'][..]).filter(|m| *m != "").skip(1);
-                    self.get_modules_from_use_line(ModuleType::Hidden(mod_name.clone()), module_path_iter);
+                for line in input
+                    .lines()
+                    .filter(|l| l.trim().starts_with("use crate::"))
+                {
+                    let module_path_iter = line
+                        .split(&[':', ';'][..])
+                        .filter(|m| !m.is_empty())
+                        .skip(1);
+                    self.get_modules_from_use_line(
+                        ModuleType::Hidden(mod_name.clone()),
+                        module_path_iter,
+                    );
                 }
                 index += 1;
             }
@@ -156,16 +205,25 @@ impl CGData {
         // read in the file defined by path
         let mut data = fs::read_to_string(path)?;
         // remove tests if existing
-        match data.find("#[cfg(test)]") {
-            Some(byte_index) => data.truncate(byte_index),
-            None => (),
+        if let Some(byte_index) = data.find("#[cfg(test)]") {
+            data.truncate(byte_index);
         }
         data = data.replace("pub ", "");
         if !output.is_empty() {
             output.push_str(self.line_end_chars.as_str());
         }
         // append to file data to output, including markers for current file
-        fmt::write(output, format_args!("//⏬{}{}{}{}//⏫{}", path.file_name().unwrap().to_str().unwrap(), self.line_end_chars, data.trim(), self.line_end_chars, path.file_name().unwrap().to_str().unwrap()))?;
+        fmt::write(
+            output,
+            format_args!(
+                "//⏬{}{}{}{}//⏫{}",
+                path.file_name().unwrap().to_str().unwrap(),
+                self.line_end_chars,
+                data.trim(),
+                self.line_end_chars,
+                path.file_name().unwrap().to_str().unwrap()
+            ),
+        )?;
         Ok(())
     }
     fn load_lib(&self, path: &Path, output: &mut String) -> BoxResult<()> {
@@ -174,7 +232,11 @@ impl CGData {
         }
         self.load(path, output)?;
         // filter usage of modules of crate, since all modules will be copied into one single file
-        *output = output.lines().filter(|l| !l.trim().starts_with("use crate::")).collect::<Vec<&str>>().join(self.line_end_chars.as_str());
+        *output = output
+            .lines()
+            .filter(|l| !l.trim().starts_with("use crate::"))
+            .collect::<Vec<&str>>()
+            .join(self.line_end_chars.as_str());
         Ok(())
     }
     fn load_challenge(&self, path: &Path, output: &mut String) -> BoxResult<()> {
@@ -185,25 +247,33 @@ impl CGData {
         // remove lines including use of lib, local crate or modules of local crate
         let lib_pattern = "use ".to_string() + self.options.lib.as_str() + "::";
         let local_crate_pattern = "use ".to_string() + self.crate_name.as_str() + "::";
-        *output = output.lines().filter(|l| !(
-            l.trim().starts_with(lib_pattern.as_str()) ||
-            l.trim().starts_with(local_crate_pattern.as_str()) ||
-            l.trim().starts_with("use crate::")
-        )).collect::<Vec<&str>>().join(self.line_end_chars.as_str());
+        *output = output
+            .lines()
+            .filter(|l| {
+                !(l.trim().starts_with(lib_pattern.as_str())
+                    || l.trim().starts_with(local_crate_pattern.as_str())
+                    || l.trim().starts_with("use crate::"))
+            })
+            .collect::<Vec<&str>>()
+            .join(self.line_end_chars.as_str());
         Ok(())
     }
-    fn insert(&self, input: &mut String, output: &mut String) -> BoxResult<()> {
+    fn insert(&self, input: &mut str, output: &mut String) -> BoxResult<()> {
         let start_marker = input.lines().next().unwrap().to_string() + self.line_end_chars.as_str();
         let end_marker = input.lines().last().unwrap().to_string();
-        let pre_start_marker = output.split(start_marker.as_str()).next().unwrap().to_string();
+        let pre_start_marker = output
+            .split(start_marker.as_str())
+            .next()
+            .unwrap()
+            .to_string();
         let post_end_marker = output.split(end_marker.as_str()).last().unwrap();
-        *output = pre_start_marker + input.as_str() + self.line_end_chars.as_str() + post_end_marker;
+        *output = pre_start_marker + input + self.line_end_chars.as_str() + post_end_marker;
         Ok(())
     }
     fn insert_lib(&self, output: &mut String) -> BoxResult<()> {
         for path in self.lib_modules.iter() {
             let mut input = String::new();
-            self.load_lib(path,&mut input)?;
+            self.load_lib(path, &mut input)?;
             if self.options.verbose {
                 eprintln!("inserting {:?} into output...", path.file_name().unwrap());
             }
@@ -218,7 +288,10 @@ impl CGData {
             let mut input = String::new();
             self.load_challenge(file_input, &mut input)?;
             if self.options.verbose {
-                eprintln!("inserting {:?} into output...", self.options.input.file_name().unwrap());
+                eprintln!(
+                    "inserting {:?} into output...",
+                    self.options.input.file_name().unwrap()
+                );
             }
             self.insert(&mut input, output)?;
         }
@@ -236,25 +309,31 @@ impl CGData {
             self.insert_challenge(&mut output)?;
         } else if self.options.modules.as_str() != "all" {
             if self.options.verbose {
-                eprintln!("insert option specific module(s) is active: {}", self.options.modules);
+                eprintln!(
+                    "insert option specific module(s) is active: {}",
+                    self.options.modules
+                );
             }
             self.load_output(&mut output)?;
             self.insert_challenge(&mut output)?;
             self.insert_lib(&mut output)?;
         } else {
             for path in self.lib_modules.iter() {
-                self.load_lib(path.as_path(),&mut output)?;
+                self.load_lib(path.as_path(), &mut output)?;
             }
             for path in self.local_modules.iter() {
-                self.load_challenge(path.as_path(),&mut output)?;
+                self.load_challenge(path.as_path(), &mut output)?;
             }
-            self.load_challenge(&self.options.input.as_path(), &mut output)?;
+            self.load_challenge(self.options.input.as_path(), &mut output)?;
         }
         if self.options.simulate {
             eprintln!("End of simulation");
         } else {
             if self.options.verbose {
-                eprintln!("saving output into tmp file {:#?}", self.tmp_output_file.as_path());
+                eprintln!(
+                    "saving output into tmp file {:#?}",
+                    self.tmp_output_file.as_path()
+                );
             }
             self.save_output(&output)?;
         }
@@ -264,7 +343,7 @@ impl CGData {
 
 #[cfg(test)]
 mod tests {
-    
+
     use super::*;
     use std::path::PathBuf;
 
@@ -349,7 +428,10 @@ mod tests {
         // assert file content
         let mut file_content = String::new();
         data.load_output(&mut file_content).unwrap();
-        let expected_file_content = fs::read_to_string(PathBuf::from(r".\test\expected_test_results\test_creation_tmp_file_output.rs")).unwrap();
+        let expected_file_content = fs::read_to_string(PathBuf::from(
+            r".\test\expected_test_results\test_creation_tmp_file_output.rs",
+        ))
+        .unwrap();
         assert_eq!(file_content, expected_file_content);
 
         // clean up tmp dir

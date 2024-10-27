@@ -8,11 +8,10 @@ fn main() {
     let options = Cli::from_args();
     if let Err(err) = run(options) {
         println!("Error occurred: {}", err);
-        
+
         // look for source
-        match err.source() {
-            Some(source) => println!("Source of error: {:?}", source),
-            None => (),
+        if let Some(source) = err.source() {
+            println!("Source of error: {:?}", source);
         }
     }
 }
@@ -25,5 +24,3 @@ fn run(options: Cli) -> BoxResult<()> {
     data.cleanup_cg_data()?;
     Ok(())
 }
-
-
