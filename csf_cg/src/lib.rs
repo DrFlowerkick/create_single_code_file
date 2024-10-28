@@ -46,6 +46,7 @@ pub struct CGData {
     my_lib: PathBuf,
     lib_modules: Vec<PathBuf>,
     tmp_dir: PathBuf,
+    tmp_input_file: PathBuf,
     tmp_output_file: PathBuf,
     output_file: PathBuf,
     line_end_chars: String,
@@ -61,22 +62,27 @@ impl CGData {
             my_lib: PathBuf::new(),
             lib_modules: Vec::new(),
             tmp_dir: PathBuf::new(),
+            tmp_input_file: PathBuf::new(),
             tmp_output_file: PathBuf::new(),
             output_file: PathBuf::new(),
             line_end_chars: "".to_string(),
         };
         if result.options.simulate {
-            eprintln!("Start of simulation");
+            println!("Start of simulation");
             result.options.verbose = true;
         }
         if result.options.verbose {
-            eprintln!("{}", result.options);
+            println!("{}", result.options);
         }
         result
     }
     pub fn prepare_cg_data(&mut self) -> BoxResult<()> {
         if self.options.verbose {
-            eprintln!("reading path of lib from toml file...");
+            println!("reading path of lib from toml file...");
+        }
+        // only accept existing main.rs as input
+        if !self.options.input.is_file() || self.options.input.file_name().unwrap() != "main.rs" {
+            return Err(Box::new(CGError::MustProvideInPutFile));
         }
         let crate_dir = self.options.input.as_path().parent().unwrap();
         self.crate_dir = match crate_dir.file_name().unwrap().to_str().unwrap() {
@@ -91,8 +97,8 @@ impl CGData {
         // get toml content
         let toml_path = self.crate_dir.join("Cargo.toml");
         if self.options.verbose {
-            eprintln!("crate_dir: {}", self.crate_dir.display());
-            eprintln!("toml_path: {}", toml_path.display());
+            println!("crate_dir: {}", self.crate_dir.display());
+            println!("toml_path: {}", toml_path.display());
         }
         let toml = fs::read_to_string(toml_path.clone())?;
         let value = toml.parse::<Value>()?;
@@ -108,7 +114,7 @@ impl CGData {
             Some(crate_name) => {
                 self.crate_name = crate_name.to_string().trim().replace('\"', "");
                 if self.options.verbose {
-                    eprintln!("crate name: {}", self.crate_name);
+                    println!("crate name: {}", self.crate_name);
                 }
             }
             None => panic!("could not find package name in {}", toml_path.display()),
@@ -139,7 +145,7 @@ impl CGData {
                     self.my_lib.push(lib_path_element);
                 }
                 if self.options.verbose {
-                    eprintln!(
+                    println!(
                         "path if lib {}: {}",
                         self.options.lib,
                         self.my_lib.display()
@@ -148,7 +154,7 @@ impl CGData {
             }
             None => {
                 if self.options.verbose {
-                    eprintln!("lib \"{}\" not specified in toml", self.options.lib);
+                    println!("lib \"{}\" not specified in toml", self.options.lib);
                 }
             }
         }
@@ -160,7 +166,7 @@ impl CGData {
             .unwrap()
             .join(String::from(Uuid::new_v4()));
         if self.options.verbose {
-            eprintln!(
+            println!(
                 "creating tmp working directory for cargo check: {}",
                 self.tmp_dir.display()
             );
@@ -177,7 +183,7 @@ impl CGData {
                 return Err(Box::new(CGError::MustProvideOutPutFile));
             }
             if self.options.verbose {
-                eprintln!("creating tmp bin file path for cargo check...");
+                println!("creating tmp bin file path for cargo check...");
             }
             let bin_dir = self.tmp_dir.join("src").join("bin");
             fs::create_dir_all(&bin_dir)?;
@@ -194,8 +200,14 @@ impl CGData {
                 .join("bin")
                 .join(self.output_file.file_name().unwrap());
         }
+        // set new variable tmp_input
+        self.tmp_input_file = if self.options.input.as_path().parent().unwrap().file_name().unwrap().to_str().unwrap() == "src" {
+            self.tmp_dir.join("src").join("main.rs")
+        } else {
+            self.tmp_dir.join("src").join("bin").join("main.rs")
+        };
         // checking for line end chars (either \n or \r\n)
-        let input = fs::read_to_string(self.options.input.as_path())?;
+        let input = fs::read_to_string(&self.tmp_input_file)?;
         self.line_end_chars = if input.contains("\r\n") {
             "\r\n".to_string()
         } else {
@@ -218,20 +230,20 @@ impl CGData {
             "".into()
         } else if self.options.output.is_none() {
             if self.options.verbose {
-                eprintln!("create output from tmp file before clean up...");
+                println!("create output from tmp file before clean up...");
             }
             let mut output = String::new();
             self.load_output(&mut output)?;
             output
         } else {
             if self.options.verbose {
-                eprintln!("saving output to output file...");
+                println!("saving output to output file...");
             }
             fs::copy(&self.tmp_output_file, &self.output_file)?;
             "".into()
         };
         if self.options.verbose {
-            eprintln!("removing tmp dir...");
+            println!("removing tmp dir...");
         }
         // delete working tmp dir
         fs::remove_dir_all(self.tmp_dir.as_path())?;

@@ -1,3 +1,4 @@
+// lib.rs - sample lib file for local crate
 pub mod action;
 
 use crate::action::*;

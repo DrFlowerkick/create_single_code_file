@@ -25,11 +25,13 @@ pub struct Cli {
     #[structopt(short, long)]
     pub challenge_only: bool,
 
-    /// Select specific modules separated by ";" from lib or all (default all). module name is same name you use with "use" command in Rust
+    /// Select specific modules separated by ";" from local lib (default "all"). Module name is same name you use with "use" command in Rust.
+    /// keyword "all": select all modules required by main.rs
+    /// keyword "lib": select all required modules in crate of main.rs
     #[structopt(short, long, default_value = "all")]
     pub modules: String,
 
-    /// block specific hidden modules seperated by ";" from lib (default none). module name is same name you use with "use" command in Rust
+    /// block specific hidden modules seperated by ";" from lib (default ""). Module name is same name you use with "use" command in Rust.
     #[structopt(short, long, default_value = "")]
     pub block_hidden: String,
 
@@ -45,7 +47,7 @@ pub struct Cli {
     #[structopt(short, long)]
     pub simulate: bool,
 
-    /// delete comment
+    /// delete comments
     #[structopt(short, long)]
     pub del_comments: bool,
 }
@@ -65,6 +67,7 @@ impl fmt::Display for Cli {
 
 #[derive(Debug)]
 pub enum CGError {
+    MustProvideInPutFile,
     MustProvideOutPutFile,
     PackageStructureError(PathBuf),
     OutputFileError(PathBuf),
@@ -76,6 +79,9 @@ pub enum CGError {
 impl fmt::Display for CGError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MustProvideInPutFile => {
+                write!(f, "No input file main.rs specified!")
+            }
             Self::MustProvideOutPutFile => {
                 write!(f, "No output file specified with active insert options!")
             }

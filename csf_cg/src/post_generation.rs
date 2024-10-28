@@ -191,7 +191,7 @@ impl CGData {
                 let line_start = message.message.spans[index_primary_span].line_start;
                 let byte_start = message.message.spans[index_primary_span].byte_start as usize;
                 if self.options.verbose {
-                    eprintln!("[{} {}] adjusting cargo check message \"{}\" (line_start: {}, byte_start: {})", verbose_start, error_code, message.message.message, line_start, byte_start);
+                    println!("[{} {}] adjusting cargo check message \"{}\" (line_start: {}, byte_start: {})", verbose_start, error_code, message.message.message, line_start, byte_start);
                 }
                 (
                     PatchAction::AdjustUnusedVariableName(line_start, byte_start),
@@ -201,7 +201,7 @@ impl CGData {
             PatchAction::SnipNamesSpace(_) => {
                 let line_start = message.message.spans[index_primary_span].line_start;
                 if self.options.verbose {
-                    eprintln!(
+                    println!(
                         "[{} {}] filtering cargo check message \"{}\" (line_start: {})",
                         verbose_start, error_code, message.message.message, line_start
                     );
@@ -227,7 +227,7 @@ impl CGData {
         let (new_output, filtered) = name_space.filter_name_space();
         *output = new_output;
         if self.options.verbose {
-            eprintln!("SNIP\n{}\nSNAP", filtered);
+            println!("SNIP\n{}\nSNAP", filtered);
         }
         Ok(())
     }
@@ -239,18 +239,18 @@ impl CGData {
         byte_start: usize,
     ) {
         if self.options.verbose {
-            eprintln!("OLD: {}", output.lines().nth(line_start - 1).unwrap());
+            println!("OLD: {}", output.lines().nth(line_start - 1).unwrap());
         }
         output.insert(byte_start, '_');
         if self.options.verbose {
-            eprintln!("NEW: {}", output.lines().nth(line_start - 1).unwrap());
+            println!("NEW: {}", output.lines().nth(line_start - 1).unwrap());
         }
     }
 
     pub fn filter_unused_code(&self) -> BoxResult<()> {
         if !self.options.simulate {
             if self.options.verbose {
-                eprintln!("starting filtering unused code in output...");
+                println!("starting filtering unused code in output...");
             }
             // use check_counter to prevent endless checking results
             let mut check_counter = 0;
@@ -261,7 +261,7 @@ impl CGData {
                     break;
                 }
                 check_counter += 1;
-                eprintln!("check_counter: {}", check_counter);
+                println!("check_counter: {}", check_counter);
                 // ToDo: Debug stuff. remove later
                 if message.message.level == DiagnosticLevel::Warning {
                     //break
@@ -289,7 +289,7 @@ impl CGData {
             // removing comments, if option is set
             if self.options.del_comments {
                 if self.options.verbose {
-                    eprintln!("deleting comments...");
+                    println!("deleting comments...");
                 }
                 output = output
                     .lines()
@@ -308,7 +308,7 @@ impl CGData {
             }
             // deleting empty lines
             if self.options.verbose {
-                eprintln!("deleting empty lines...");
+                println!("deleting empty lines...");
             }
             output = output
                 .lines()
