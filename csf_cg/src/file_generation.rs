@@ -2,7 +2,7 @@ use super::*;
 use std::fmt;
 use std::fs;
 use std::path::Path;
-use syn::{visit::Visit, File, ItemUse, ItemMod, UseTree};
+use syn::{visit::Visit, File, ItemMod, ItemUse, UseTree};
 
 use crate::configuration::*;
 
@@ -18,6 +18,23 @@ impl<'ast> Visit<'ast> for SrcVisitor {
     }
     fn visit_item_mod(&mut self, i: &'ast ItemMod) {
         self.mods.push(i.clone());
+    }
+}
+
+impl SrcVisitor {
+    fn new(path: &PathBuf) -> BoxResult<SrcVisitor> {
+        // load source code
+        let code = fs::read_to_string(path)?;
+        // Parse the source code into a syntax tree
+        let syntax: File = syn::parse_file(&code)?;
+        // Create a visitor to find use statements
+        let mut visitor = SrcVisitor {
+            uses: Vec::new(),
+            mods: Vec::new(),
+        };
+        // Visit the syntax tree and collect all use statements
+        visitor.visit_file(&syntax);
+        Ok(visitor)
     }
 }
 
@@ -55,10 +72,13 @@ impl CGData {
             _ => &mut self.lib_modules,
         };
         for module in module_path_iter {
-            if self.options.modules.as_str() == "all" || self.options.modules.split(';').any(|m| m == module) {
+            if self.options.modules.as_str() == "all"
+                || self.options.modules.split(';').any(|m| m == module)
+            {
                 let mut path = start_path.join(module);
                 path.set_extension("rs");
-                if mod_type.is_hidden() && self.options.block_hidden.split(';').any(|m| m == module) {
+                if mod_type.is_hidden() && self.options.block_hidden.split(';').any(|m| m == module)
+                {
                     if self.options.verbose {
                         println!(
                             "blocked hidden module {} (found in {:?})...",
@@ -75,15 +95,19 @@ impl CGData {
                             match mod_type {
                                 ModuleType::Local => println!(
                                     "found locale module \"{}\", adding {} to module list...",
-                                    module, path.display()
+                                    module,
+                                    path.display()
                                 ),
                                 ModuleType::Lib => println!(
                                     "found lib module \"{}\", adding {} to module list...",
-                                    module, path.display()
+                                    module,
+                                    path.display()
                                 ),
                                 ModuleType::Hidden(ref source) => println!(
                                     "found hidden module {} in {}, adding {} to module list...",
-                                    module, source, path.display()
+                                    module,
+                                    source,
+                                    path.display()
                                 ),
                             }
                         }
@@ -96,6 +120,75 @@ impl CGData {
                 break;
             }
         }
+    }
+    fn parse_mod_from_src_file(&self, src_path: &PathBuf, is_hidden: bool) -> BoxResult<Option<Vec<PathBuf>>> {
+        // set directory, which contains the modules, if there are some
+        let mod_dir = match src_path.file_name().unwrap().to_str().unwrap() {
+            "main.rs" | "lib.rs" | "mod.rs" => {
+                src_path.parent().unwrap().to_path_buf()
+            }
+            _ => {
+                let mut mod_path = src_path.clone();
+                mod_path.set_extension("");
+                mod_path
+            }
+        };
+
+        // if mod_dir does not exist, it cannot contain further modules.
+        // therefore no parsing required
+        if !mod_dir.is_dir() {
+            return Ok(None);
+        }
+        
+        // create visitor from source code
+        let visitor = SrcVisitor::new(src_path)?;
+
+        // collection for mod path
+        let mut mod_path_vec: Vec<PathBuf> = Vec::with_capacity(visitor.mods.len());
+
+        // parse mod entries, which are empty
+        for item_mod in visitor.mods.iter().filter(|m| m.content.is_none()) {
+            let module = item_mod.ident.to_string();
+            let mut path = mod_dir.join(module.clone() + ".rs");
+            if !path.is_file() {
+                path.set_extension("");
+                path = path.join("mod.rs");
+                assert!(path.is_file());
+            }
+            if self.lib_modules.iter().any(|lm| *lm == path) {
+                // lib module already added
+                continue;
+            }
+            if is_hidden {
+                if self.options.block_hidden.split(';').any(|bh| bh == module) {
+                    // block hidden module
+                    if self.options.verbose {
+                        println!(
+                            "blocked hidden module {} (found in {:?})...",
+                            module,
+                            mod_dir.file_name().unwrap().to_str().unwrap(),
+                        );
+                    }
+                    continue;
+                }
+                if self.options.verbose {
+                    println!(
+                        "found hidden module {} in {}, adding {} to module list...",
+                        module,
+                        mod_dir.file_name().unwrap().to_str().unwrap(),
+                        path.display()
+                    )
+                }
+            } else if self.options.verbose  {
+                println!(
+                    "found locale module \"{}\", adding {} to module list...",
+                    module,
+                    path.display()
+                );
+            }
+            mod_path_vec.push(path);
+        }
+        Ok(Some(mod_path_vec))
     }
     fn get_local_modules_v2(&mut self) -> BoxResult<()> {
         // get local modules if either modules is set to all or contains the keyword lib
@@ -115,19 +208,13 @@ impl CGData {
         let mut parse_path: Vec<PathBuf> = vec![self.tmp_input_file.clone()];
         let mut index = 0;
         while index < parse_path.len() {
-            // load source code
-            let code = fs::read_to_string(&parse_path[index])?;
-            // Parse the source code into a syntax tree
-            let syntax: File = syn::parse_file(&code)?;
-            // Create a visitor to find use statements
-            let mut visitor = SrcVisitor { uses: Vec::new(), mods: Vec::new() };
-            // Visit the syntax tree and collect all use statements
-            visitor.visit_file(&syntax);
+            // create visitor from source code
+            let visitor = SrcVisitor::new(&parse_path[index])?;
             // parse main.rs input file for crate lib.rs (use project_name::*;)
             if parse_path[index].file_name().unwrap().to_str().unwrap() == "main.rs" {
                 if visitor.uses.iter().any(|v| match &v.tree {
                     UseTree::Path(use_path) => use_path.ident.to_string() == self.crate_name,
-                    _ => false
+                    _ => false,
                 }) {
                     let path = self.crate_dir.join("src").join("lib.rs");
                     if self.options.verbose {
@@ -140,42 +227,127 @@ impl CGData {
                     parse_path.push(path);
                 }
             }
-            // set directory, which contains the modules, if there are some
-            let mod_dir = match parse_path[index].file_name().unwrap().to_str().unwrap() {
-                "main.rs" | "lib.rs" | "mod.rs" => parse_path[index].parent().unwrap().to_path_buf(),
-                _ => {
-                    let mut mod_path = parse_path[index].clone();
-                    mod_path.set_extension("");
-                    mod_path
+
+            match self.parse_mod_from_src_file(&parse_path[index], false)? {
+                Some(mod_path_vec) => for path in mod_path_vec{
+                    self.local_modules.push(path.clone());
+                    parse_path.push(path);
                 },
-            };
-            
-            // increment index before checking, if mod_dir exists
-            index += 1;
-            // if mod_dir does not exist, continue while loop, since module cannot contain further modules.
-            if !mod_dir.is_dir() {
-                continue;
+                None => (),
             }
-            // parse mod entries, which are empty
-            for item_mod in visitor.mods.iter().filter(|m| m.content.is_none()) {
-                let mut path = mod_dir.join(item_mod.ident.to_string() + ".rs");
-                if !path.is_file() {
-                    path.set_extension("");
-                    path = path.join("mod.rs");
-                    assert!(path.is_file());
+
+            // increment index
+            index += 1;
+        }
+        Ok(())
+    }
+    fn parse_use_item_recursive(&mut self, use_tree: &UseTree, mut mod_dir: PathBuf, level: usize) {
+        match use_tree {
+            UseTree::Path(use_path) => {
+                let module = use_path.ident.to_string();
+                if level == 0 && module != self.options.lib {
+                    // use statement does not refer to my_lib
+                    return;
+                } else if level > 0 {
+                    // sub module of my_lib
+                    mod_dir = mod_dir.join(&module);
+                    let mut path = mod_dir.join("mod.rs");
+                    if !path.is_file() {
+                        path = mod_dir.clone();
+                        path.set_extension("rs");
+                        assert!(path.is_file());
+                    }
+                    // add module path to lib_modules, if not done yet
+                    if !self.lib_modules.iter().any(|p| p == &path) {
+                        if self.options.verbose {
+                            println!(
+                                "found lib module \"{}\", adding {} to module list...",
+                                module,
+                                path.display()
+                            );
+                        }
+                        self.lib_modules.push(path);
+                    }
                 }
-                if self.options.verbose {
-                    println!(
-                        "found library crate, adding {} to module list...",
-                        path.display()
-                    );
+                self.parse_use_item_recursive(&use_path.tree, mod_dir, level + 1);
+            }
+            UseTree::Group(use_group) => {
+                for group_item in use_group.items.iter() {
+                    self.parse_use_item_recursive(group_item, mod_dir.clone(), level);
                 }
-                self.local_modules.push(path.clone());
-                parse_path.push(path);
+            }
+            UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => {
+                if level == 1 {
+                    // item of my_lib is used -> add lib.rs of my_lib to lib_modules
+                    let path = mod_dir.join("lib.rs");
+                    // add module path to lib_modules, if not done yet
+                    if !self.lib_modules.iter().any(|p| p == &path) {
+                        if self.options.verbose {
+                            println!(
+                                "found lib module \"{}\", adding {} to module list...",
+                                self.options.lib,
+                                path.display()
+                            );
+                        }
+                        self.lib_modules.push(path);
+                    }
+                }
             }
         }
-        
-
+    }
+    fn get_lib_modules_v2(&mut self) -> BoxResult<()> {
+        // get lib modules if modules if not challenge_only and my_lib is specified
+        if self.options.challenge_only {
+            if self.options.verbose {
+                println!(
+                    "challenge_only -> skipping collecting path of all specified modules of lib..."
+                );
+            }
+            return Ok(());
+        }
+        if !self.my_lib.is_dir() {
+            if self.options.verbose {
+                println!("lib \"{}\" not specified in toml -> skipping collecting path of all specified modules of lib...", self.options.lib);
+            }
+            return Ok(());
+        }
+        if self.options.verbose {
+            println!("collecting path of all specified modules of lib...");
+        }
+        // set list of src files for used modules
+        let mut src_files = self.local_modules.clone();
+        src_files.push(self.tmp_input_file.clone());
+        // parse use statements in all project crate src files
+        for src_path in src_files.iter() {
+            // create visitor from source code
+            let visitor = SrcVisitor::new(src_path)?;
+            // parse use statements
+            for use_item in visitor.uses.iter() {
+                // recursive parsing of use items
+                self.parse_use_item_recursive(&use_item.tree, self.my_lib.clone(), 0);
+            }
+        }
+        // parse lib modules for mod statements "hidden" inside lib, which are empty
+        // hidden means, that they are not directly used in crate scr files
+        if self.options.modules.as_str() == "all" {
+            if self.options.verbose {
+                println!("collecting path of all hidden modules of lib...");
+            }
+            let mut index = 0;
+            while index < self.lib_modules.len() {
+                // parse lib module
+                match self.parse_mod_from_src_file(&self.lib_modules[index], true)? {
+                    Some(mod_path_vec) => for path in mod_path_vec{
+                        self.lib_modules.push(path.clone());
+                        self.lib_modules.push(path);
+                    },
+                    None => (),
+                }
+    
+                // increment index
+                index += 1;
+            }
+        }
         Ok(())
     }
     fn get_local_modules(&mut self) -> BoxResult<()> {
@@ -558,7 +730,8 @@ mod tests {
         let mut data = CGData::new(options);
         data.prepare_cg_data().unwrap();
         data.get_local_modules_v2().unwrap();
-        
+        data.get_lib_modules_v2().unwrap();
+
         // clean up tmp dir
         data.cleanup_cg_data().unwrap();
         // assert tmp file is removed

@@ -201,7 +201,18 @@ impl CGData {
                 .join(self.output_file.file_name().unwrap());
         }
         // set new variable tmp_input
-        self.tmp_input_file = if self.options.input.as_path().parent().unwrap().file_name().unwrap().to_str().unwrap() == "src" {
+        self.tmp_input_file = if self
+            .options
+            .input
+            .as_path()
+            .parent()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            == "src"
+        {
             self.tmp_dir.join("src").join("main.rs")
         } else {
             self.tmp_dir.join("src").join("bin").join("main.rs")
