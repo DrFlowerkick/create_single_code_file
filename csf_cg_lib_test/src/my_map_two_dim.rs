@@ -1,8 +1,8 @@
 pub mod my_map_point;
 
-use crate::my_array::*;
-use crate::my_map_two_dim::my_map_point::*;
-use crate::my_map_two_dim::my_map_point::my_compass::*;
+use super::my_array::*;
+use self::my_map_point::*;
+use my_map_point::my_compass::*;
 
 // use MyMap2D if compilation time is suffice, because it is more efficient and has cleaner interface
 #[derive(Copy, Clone, PartialEq)]

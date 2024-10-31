@@ -1,6 +1,7 @@
 //⏬my_map_two_dim.rs
 mod my_map_point;
 
+use my_map_point::my_compass::*;
 
 // use MyMap2D if compilation time is suffice, because it is more efficient and has cleaner interface
 #[derive(Copy, Clone, PartialEq)]
@@ -466,228 +467,8 @@ impl<const X: usize, const Y: usize> Iterator for OrientationIter<X, Y> {
     }
 }
 //⏫my_map_point.rs
-//⏬my_array.rs
-use std::iter::FromIterator;
-
-#[derive(Copy, Clone, PartialEq)]
-struct MyArray<T, const N: usize> {
-    items: [T ; N],
-    n_items: usize,
-}
-
-impl<T: Copy + Clone + Default, const N: usize> MyArray<T, N> {
-    fn new() -> Self {
-        Self {
-            items: [T::default(); N],
-            n_items: 0,
-        }
-    }
-    fn init(init_item: T, n_init_items: usize) -> Self {
-        Self {
-            items: [init_item; N],
-            n_items: n_init_items,
-        }
-    }
-    fn push(&mut self, item: T) {
-        if self.n_items == N {
-            panic!("line {}", line!());
-        }
-        self.items[self.n_items] = item;
-        self.n_items += 1;
-    }
-    fn pop(&mut self) -> Option<T> {
-        if self.n_items == 0 {
-            return None;
-        }
-        self.n_items -= 1;
-        Some(self.items[self.n_items])
-    }
-    fn insert(&mut self, index: usize, item: T) {
-        if index > self.n_items || self.n_items == N {
-            panic!("line {}", line!());
-        }
-        self.items[index..].rotate_right(1);
-        self.items[index] = item;
-        self.n_items += 1;
-    }
-    fn replace(&mut self, index: usize, item: T) -> Option<T> {
-        if index >= self.n_items {
-            return None;
-        }
-        let result = self.items[index];
-        self.items[index] = item;
-        Some(result)
-    }
-    fn remove(&mut self, index: usize) -> Option<T> {
-        if index >= self.n_items {
-            return None;
-        }
-        let result = self.items[index];
-        self.items[index..].rotate_left(1);
-        self.n_items -= 1;
-        Some(result)
-    }
-    fn flush(&mut self) {
-        self.n_items = 0;
-    }
-    fn get(&self, index: usize) -> Option<&T> {
-        if index >= self.n_items {
-            return None;
-        }
-        Some(&self.items[index])
-    }
-    fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        if index >= self.n_items {
-            return None;
-        }
-        Some(&mut self.items[index])
-    }
-    fn get_last(&mut self) -> Option<&T> {
-        if self.n_items == 0 {
-            return None;
-        }
-        Some(&self.items[self.n_items])
-    }
-    fn get_slice(&self, index: usize, len: usize) -> &[T] {
-        if len == 0 {
-            panic!("line {}", line!());
-        }
-        if index + len - 1 >= self.n_items {
-            panic!("line {}", line!());
-        }
-        &self.items[index..index+len]
-    }
-    fn as_slice(&self) -> &[T] {
-        &self.items[..self.n_items]
-    }
-    fn as_slice_mut(&mut self) -> &mut [T] {
-        &mut self.items[..self.n_items]
-    }
-    fn append_slice(&mut self, slice: &[T]) {
-        if self.n_items + slice.len() > N {
-            panic!("line {}", line!());
-        }
-        for (i,item) in slice.iter().enumerate() {
-            self.items[self.n_items + i] = *item;
-        }
-        self.n_items += slice.len();
-    }
-    fn set(&mut self, index: usize, item: T) -> Option<&T> {
-        if index >= self.n_items {
-            return None;
-        }
-        self.items[index] = item;
-        Some(&self.items[index])
-    }
-    fn len(&self) -> usize {
-        self.n_items
-    }
-    fn remaining_len(&self) -> usize {
-        N - self.n_items
-    }
-    fn iter(&self) -> impl Iterator<Item = &T> {
-        self.items.iter().take(self.n_items)
-    }
-    fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.items.iter_mut().take(self.n_items)
-    }
-}
-
-impl<T: Copy + Clone + Default, const N: usize> FromIterator<T> for MyArray<T, N> {
-    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
-        let mut my_array: MyArray<T, N> = MyArray::new();
-
-        for i in iter {
-            my_array.push(i);
-        }
-        my_array
-    }
-}
-
-impl<T: Copy + Clone + Default, const N: usize> Default for MyArray<T, N> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-//⏫my_array.rs
-//⏬my_compass.rs
-#[derive(Clone, Copy, PartialEq)]
-enum Compass {
-    N,
-    NE,
-    E,
-    SE,
-    S,
-    SW,
-    W,
-    NW,
-    Center,
-}
-
-impl Default for Compass {
-    fn default() -> Self {
-        Compass::N
-    }
-}
-
-impl Compass {
-    fn flip(&self) -> Self {
-        match self {
-            Compass::N => Compass::S,
-            Compass::NE => Compass::SW,
-            Compass::E => Compass::W,
-            Compass::SE => Compass::NW,
-            Compass::S => Compass::N,
-            Compass::SW => Compass::NE,
-            Compass::W => Compass::E,
-            Compass::NW => Compass::SE,
-            Compass::Center => Compass::Center,
-        }
-    }
-    fn clockwise(&self) -> Self {
-        match self {
-            Compass::N => Compass::NE,
-            Compass::NE => Compass::E,
-            Compass::E => Compass::SE,
-            Compass::SE => Compass::S,
-            Compass::S => Compass::SW,
-            Compass::SW => Compass::W,
-            Compass::W => Compass::NW,
-            Compass::NW => Compass::N,
-            Compass::Center => Compass::Center,
-        }
-    }
-    fn counterclockwise(&self) -> Self {
-        match self {
-            Compass::N => Compass::NW,
-            Compass::NW => Compass::W,
-            Compass::W => Compass::SW,
-            Compass::SW => Compass::S,
-            Compass::S => Compass::SE,
-            Compass::SE => Compass::E,
-            Compass::E => Compass::NE,
-            Compass::NE => Compass::N,
-            Compass::Center => Compass::Center,
-        }
-    }
-    fn is_cardinal(&self) -> bool {
-        match self {
-            Compass::N | Compass::E | Compass::S | Compass::W => true,
-            _ => false
-        }
-    }
-    fn is_ordinal(&self) -> bool {
-        match self {
-            Compass::NE | Compass::SE | Compass::SW | Compass::NW => true,
-            _ => false
-        }
-    }
-    fn is_center(&self) -> bool {
-        *self == Compass::Center
-    }
-}
-//⏫my_compass.rs
 //⏬lib.rs
+// lib.rs - sample lib file for local crate
 mod action;
 
 
@@ -759,6 +540,7 @@ impl Action {
 }
 //⏫action.rs
 //⏬main.rs
+// main.rs - main test input file
 
 
 

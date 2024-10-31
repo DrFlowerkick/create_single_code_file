@@ -60,6 +60,7 @@ impl<const X: usize, const Y: usize> MapPoint<X, Y> {
 }
 //⏫my_map_point.rs
 //⏬lib.rs
+// lib.rs - sample lib file for local crate
 use std::fmt;
 const X: usize = 19;
 const Y: usize = X;
@@ -111,6 +112,7 @@ impl Action {
 }
 //⏫action.rs
 //⏬main.rs
+// main.rs - main test input file
 fn main() {
     let mut my_go = Go::new();
     let action = Action::set_white(MapPoint::<X, Y>::new(0, 0));

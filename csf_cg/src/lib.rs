@@ -2,6 +2,7 @@ pub mod configuration;
 pub mod file_generation;
 pub mod post_generation;
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -42,9 +43,9 @@ pub struct CGData {
     options: Cli,
     crate_dir: PathBuf,
     crate_name: String,
-    local_modules: Vec<PathBuf>,
-    my_lib: PathBuf,
-    lib_modules: Vec<PathBuf>,
+    local_modules: BTreeMap<String, PathBuf>,
+    my_lib: Option<PathBuf>,
+    lib_modules: BTreeMap<String, PathBuf>,
     tmp_dir: PathBuf,
     tmp_input_file: PathBuf,
     tmp_output_file: PathBuf,
@@ -58,9 +59,9 @@ impl CGData {
             options,
             crate_dir: PathBuf::new(),
             crate_name: "".to_string(),
-            local_modules: Vec::new(),
-            my_lib: PathBuf::new(),
-            lib_modules: Vec::new(),
+            local_modules: BTreeMap::new(),
+            my_lib: None,
+            lib_modules: BTreeMap::new(),
             tmp_dir: PathBuf::new(),
             tmp_input_file: PathBuf::new(),
             tmp_output_file: PathBuf::new(),
@@ -100,10 +101,9 @@ impl CGData {
             println!("crate_dir: {}", self.crate_dir.display());
             println!("toml_path: {}", toml_path.display());
         }
-        let toml = fs::read_to_string(toml_path.clone())?;
-        let value = toml.parse::<Value>()?;
+        let toml = fs::read_to_string(toml_path.clone())?.parse::<Value>()?;
         // get package name
-        let package = value
+        let package = toml
             .as_table()
             .unwrap()
             .get("package")
@@ -120,7 +120,7 @@ impl CGData {
             None => panic!("could not find package name in {}", toml_path.display()),
         }
         // get lib path, if any is used
-        let dependencies = value
+        let dependencies = toml
             .as_table()
             .unwrap()
             .get("dependencies")
@@ -129,7 +129,7 @@ impl CGData {
             .unwrap();
         match dependencies.get(self.options.lib.as_str()) {
             Some(my_lib) => {
-                self.my_lib = self.crate_dir.clone();
+                let mut my_lib_path = self.crate_dir.clone();
                 for lib_path_element in Path::new(
                     my_lib
                         .as_table()
@@ -142,15 +142,16 @@ impl CGData {
                 .join("src")
                 .iter()
                 {
-                    self.my_lib.push(lib_path_element);
+                    my_lib_path.push(lib_path_element);
                 }
                 if self.options.verbose {
                     println!(
                         "path if lib {}: {}",
                         self.options.lib,
-                        self.my_lib.display()
+                        my_lib_path.display()
                     );
                 }
+                self.my_lib = Some(my_lib_path);
             }
             None => {
                 if self.options.verbose {
@@ -271,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_generating_output() {
-        // Act 1 - genrate full output
+        // Act 1 - generate full output
         // set parameters
         let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
         let options = Cli {
@@ -304,7 +305,7 @@ mod tests {
 
         // replace current bin file with prepared test file
         let modified_file_path =
-            PathBuf::from(r".\test\bin_modifications\modifications_in_challange.rs");
+            PathBuf::from(r".\test\bin_modifications\modifications_in_challenge.rs");
         fs::copy(modified_file_path, &data.tmp_output_file).unwrap();
 
         // recreate output
