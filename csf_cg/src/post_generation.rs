@@ -1,12 +1,21 @@
-use cargo_metadata::diagnostic::DiagnosticLevel;
-use cargo_metadata::CompilerMessage;
-use cargo_metadata::Message;
+use cargo_metadata::{
+    diagnostic::{DiagnosticCode, DiagnosticLevel, DiagnosticSpan},
+    Message,
+};
+use std::collections::BTreeMap;
 use std::fs;
 use std::process::Command;
 use std::process::Output;
 
 use super::*;
 use crate::configuration::*;
+
+struct CargoCheckItem {
+    message: String,
+    code: Option<DiagnosticCode>,
+    level: DiagnosticLevel,
+    span: DiagnosticSpan,
+}
 
 enum PatchAction {
     SnipNamesSpace(usize),
@@ -31,8 +40,11 @@ struct NameSpace<'a> {
 }
 
 impl<'a> NameSpace<'a> {
-    const NAME_SPACE_PATTERNS: [&'a str; 9] = ["fn", "struct", "impl", "enum", "use", "mod", "#[", "const", "type"];
-    const POSSIBLE_SINGLE_LINE_PATTERNS: [&'a str; 6] = ["use", "mod", "impl", "struct", "#[", "const"];
+    const NAME_SPACE_PATTERNS: [&'a str; 9] = [
+        "fn", "struct", "impl", "enum", "use", "mod", "#[", "const", "type",
+    ];
+    const POSSIBLE_SINGLE_LINE_PATTERNS: [&'a str; 6] =
+        ["use", "mod", "impl", "struct", "#[", "const"];
     const MUST_END_ON_SEMICOLON: [&'a str; 1] = ["type"];
     fn new(output: &'a str, line_end_chars: String) -> NameSpace {
         NameSpace {
@@ -177,7 +189,8 @@ impl CGData {
             .arg("--message-format=json")
             .output()?)
     }
-    fn get_cargo_check_compiler_message(&self) -> BoxResult<Option<CompilerMessage>> {
+    fn collect_cargo_check_compiler_messages(&self) -> BoxResult<Option<BTreeMap<usize, CargoCheckItem>>> {
+        let mut message_collection: BTreeMap<usize, CargoCheckItem> = BTreeMap::new();
         let result = self.command_cargo_check()?;
         for message in cargo_metadata::Message::parse_stream(&result.stdout[..]) {
             if let Message::CompilerMessage(msg) = message? {
@@ -188,44 +201,47 @@ impl CGData {
                         if msg.message.message.contains("variant") {
                             continue;
                         }
-                        if !msg.message.spans.is_empty() {
-                            return Ok(Some(msg));
+                        for span in msg.message.spans.iter().filter(|s| s.is_primary) {
+                            let cargo_check_item = CargoCheckItem {
+                                message: msg.message.message.to_owned(),
+                                code: msg.message.code.clone(),
+                                level: msg.message.level.clone(),
+                                span: span.clone(),
+                            };
+                            message_collection.insert(span.line_start, cargo_check_item);
                         }
                     }
                     _ => (),
                 }
             }
         }
-        Ok(None)
+        if message_collection.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(message_collection))
     }
     fn analyze_cargo_check_compiler_message(
         &self,
-        message: CompilerMessage,
+        message: &CargoCheckItem,
     ) -> (PatchAction, bool) {
-        let error_code = message
-            .message
-            .code
-            .map_or_else(|| "No code provided".to_string(), |c| c.code);
+        let error_code = match message.code {
+            Some(ref dc) => dc.code.to_owned(),
+            None => "No code provided".into(),
+        };
         let patch_action = match error_code.as_str() {
             "unused_variables" => PatchAction::AdjustUnusedVariableName(0, 0),
             _ => PatchAction::SnipNamesSpace(0),
         };
 
-        let index_primary_span = message
-            .message
-            .spans
-            .iter()
-            .position(|s| s.is_primary)
-            .unwrap();
-        let is_warning = message.message.level == DiagnosticLevel::Warning;
+        let is_warning = message.level == DiagnosticLevel::Warning;
         let verbose_start = if is_warning { "WARNING" } else { "ERROR" };
 
         match patch_action {
             PatchAction::AdjustUnusedVariableName(_, _) => {
-                let line_start = message.message.spans[index_primary_span].line_start;
-                let byte_start = message.message.spans[index_primary_span].byte_start as usize;
+                let line_start = message.span.line_start;
+                let byte_start = message.span.byte_start as usize;
                 if self.options.verbose {
-                    println!("[{} {}] adjusting cargo check message \"{}\" (line_start: {}, byte_start: {})", verbose_start, error_code, message.message.message, line_start, byte_start);
+                    println!("[{} {}] adjusting cargo check message \"{}\" (line_start: {}, byte_start: {})", verbose_start, error_code, message.message, line_start, byte_start);
                 }
                 (
                     PatchAction::AdjustUnusedVariableName(line_start, byte_start),
@@ -233,11 +249,11 @@ impl CGData {
                 )
             }
             PatchAction::SnipNamesSpace(_) => {
-                let line_start = message.message.spans[index_primary_span].line_start;
+                let line_start = message.span.line_start;
                 if self.options.verbose {
                     println!(
                         "[{} {}] filtering cargo check message \"{}\" (line_start: {})",
-                        verbose_start, error_code, message.message.message, line_start
+                        verbose_start, error_code, message.message, line_start
                     );
                 }
                 (PatchAction::SnipNamesSpace(line_start), is_warning)
@@ -292,36 +308,38 @@ impl CGData {
             let max_check_counter = 10_000;
             //let max_check_counter = 1;
             let mut unused_enum_variant = String::new();
-            while let Some(message) = self.get_cargo_check_compiler_message()? {
-                if check_counter >= max_check_counter {
-                    break;
-                }
-                check_counter += 1;
-                println!("check_counter: {}", check_counter);
-                // ToDo: Debug stuff. remove later
-                if message.message.level == DiagnosticLevel::Warning {
-                    //break
-                }
-                // debug
-                if message.message.message == "expected item after doc comment" {
-                    println!("found message \"expected item after doc comment\"");
-                    break;
-                }
-                
+            // collect compiler messages in BTreeMap
+            // using line_start as key. This results in compiler messages sorted by line_start.
+            // By reverse iteration through message_collection the fixes can be applied from bottom to top.
+            // When all fixes are applied, the file is saved and a new round is started, until no more
+            // messages are collected.
+            while let Some(message_collection) = self.collect_cargo_check_compiler_messages()? {
                 let mut output = String::new();
                 self.load_output(&mut output)?;
-
-                let (patch_action, is_warning) = self.analyze_cargo_check_compiler_message(message);
-                match patch_action {
-                    PatchAction::AdjustUnusedVariableName(line_start, byte_start) => {
-                        self.adjust_unused_variable_name(&mut output, line_start, byte_start)
+                // revers iteration of message_collection, which results to work through messages from bottom to top
+                for (_, message) in message_collection.iter().rev() {
+                    if check_counter >= max_check_counter {
+                        break;
                     }
-                    PatchAction::SnipNamesSpace(line_start) => self.snip_name_space(
-                        &mut output,
-                        line_start,
-                        &mut unused_enum_variant,
-                        is_warning,
-                    )?,
+                    check_counter += 1;
+                    println!("check_counter: {}", check_counter);
+                    // ToDo: Debug stuff. remove later
+                    if message.level == DiagnosticLevel::Warning {
+                        //break
+                    }
+
+                    let (patch_action, is_warning) = self.analyze_cargo_check_compiler_message(message);
+                    match patch_action {
+                        PatchAction::AdjustUnusedVariableName(line_start, byte_start) => {
+                            self.adjust_unused_variable_name(&mut output, line_start, byte_start)
+                        }
+                        PatchAction::SnipNamesSpace(line_start) => self.snip_name_space(
+                            &mut output,
+                            line_start,
+                            &mut unused_enum_variant,
+                            is_warning,
+                        )?,
+                    }
                 }
 
                 self.save_output(&output)?;

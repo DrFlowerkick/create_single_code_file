@@ -390,7 +390,7 @@ mod tests {
             //block_hidden: "my_array;my_line;my_rectangle".to_string(),
             block_hidden: "".to_string(),
             lib: "my_lib".to_string(),
-            verbose: true,
+            verbose: false,
             simulate: false,
             del_comments: false,
             keep_empty_lines: true,
@@ -400,7 +400,7 @@ mod tests {
         let mut data = CGData::new(options);
         data.prepare_cg_data().unwrap();
         data.create_output().unwrap();
-        
+
         if !data.options.simulate {
             // open tmp_dir in VC
             Command::new("code.cmd")
