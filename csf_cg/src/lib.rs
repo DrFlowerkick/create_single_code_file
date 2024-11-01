@@ -269,6 +269,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+    use std::process::Command;
 
     #[test]
     fn test_generating_output() {
@@ -285,6 +286,7 @@ mod tests {
             verbose: true,
             simulate: false,
             del_comments: false,
+            keep_empty_lines: false,
         };
         // prepare output
         let mut data = CGData::new(options);
@@ -354,6 +356,7 @@ mod tests {
             verbose: true,
             simulate: false,
             del_comments: true,
+            keep_empty_lines: false,
         };
 
         // prepare output
@@ -373,5 +376,68 @@ mod tests {
         data.cleanup_cg_data().unwrap();
         // assert tmp file is removed
         assert!(!data.tmp_output_file.is_file());
+    }
+    #[test]
+    fn test_ult_tictactoe() {
+        // set parameters
+        let input = PathBuf::from(r"..\..\cg_ultimate_tic_tac_toe\src\main.rs");
+        let output = PathBuf::from(r"..\..\cg_ultimate_tic_tac_toe\src\bin\codingame.rs");
+        let options = Cli {
+            input: input,
+            output: Some(output),
+            challenge_only: false,
+            modules: "all".to_string(),
+            //block_hidden: "my_array;my_line;my_rectangle".to_string(),
+            block_hidden: "".to_string(),
+            lib: "my_lib".to_string(),
+            verbose: true,
+            simulate: false,
+            del_comments: false,
+            keep_empty_lines: true,
+        };
+
+        // prepare output
+        let mut data = CGData::new(options);
+        data.prepare_cg_data().unwrap();
+        data.create_output().unwrap();
+        
+        if !data.options.simulate {
+            // open tmp_dir in VC
+            Command::new("code.cmd")
+                .arg(".")
+                .current_dir(data.tmp_dir.as_path())
+                .spawn()
+                .unwrap();
+        }
+
+        data.filter_unused_code().unwrap();
+        /*
+        let cargo_check = data.command_cargo_check().unwrap();
+        let msg_buffer: Vec<cargo_metadata::CompilerMessage> =
+            cargo_metadata::Message::parse_stream(&cargo_check.stdout[..])
+                .filter_map(|ps| match ps {
+                    Ok(cargo_metadata::Message::CompilerMessage(msg)) => Some(msg.to_owned()),
+                    _ => None,
+                })
+                .filter(|m| match m.message.level {
+                    cargo_metadata::diagnostic::DiagnosticLevel::Error | cargo_metadata::diagnostic::DiagnosticLevel::Warning => true,
+                    _ => false,
+                })
+                .filter(|m| !m.message.spans.is_empty())
+                .collect();
+        let mut msg_debug = String::new();
+        use std::fmt::Write;
+        write!(&mut msg_debug, "{:?}", &msg_buffer).unwrap();
+        msg_debug = msg_debug.replace("\\r\\n", "\r\n\r\n");
+        msg_debug = msg_debug.replace("\\n", "\n");
+        std::fs::write("../output.txt", msg_debug).unwrap();
+        dbg!(&data.lib_modules);
+        */
+        // clean up tmp_file
+        if data.options.simulate {
+            data.cleanup_cg_data().unwrap();
+            // assert tmp file is removed
+            assert!(!data.tmp_output_file.is_file());
+        }
     }
 }

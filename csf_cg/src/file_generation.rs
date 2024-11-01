@@ -358,10 +358,12 @@ impl CGData {
         }
 
         // parse use statements in used lib modules
-        let used_lib_modules = self.lib_modules.clone();
-        for (mod_name, mod_path) in used_lib_modules.iter() {
+        let mut index = 0;
+        while index < self.lib_modules.keys().count() {
+            let mod_name = self.lib_modules.keys().nth(index).unwrap().to_owned();
+            let mod_path = self.lib_modules.get(&mod_name).unwrap().to_owned();
             // create visitor from source code
-            let visitor = SrcVisitor::new(mod_path)?;
+            let visitor = SrcVisitor::new(&mod_path)?;
             for use_item in visitor.uses.iter() {
                 self.parse_use_item(
                     &use_item.tree,
@@ -373,6 +375,8 @@ impl CGData {
                     &lib_modules,
                 );
             }
+            // increment index
+            index += 1;
         }
 
         Ok(())
@@ -408,13 +412,13 @@ impl CGData {
         }
         self.load(path, output)?;
         // filter usage of modules of crate, since all modules will be copied into one single file
-        *output = output
-            .lines()
-            .filter(|l| !l.trim().starts_with("use crate::"))
-            .filter(|l| !l.trim().starts_with("use super::"))
-            .filter(|l| !l.trim().starts_with("use self::"))
-            .collect::<Vec<&str>>()
-            .join(self.line_end_chars.as_str());
+        /* *output = output
+        .lines()
+        .filter(|l| !l.trim().starts_with("use crate::"))
+        .filter(|l| !l.trim().starts_with("use super::"))
+        .filter(|l| !l.trim().starts_with("use self::"))
+        .collect::<Vec<&str>>()
+        .join(self.line_end_chars.as_str());*/
         Ok(())
     }
     fn load_challenge(&self, path: &Path, output: &mut String) -> BoxResult<()> {
@@ -423,7 +427,7 @@ impl CGData {
         }
         self.load(path, output)?;
         // remove lines including use of lib, local crate or modules of local crate
-        let lib_pattern = "use ".to_string() + self.options.lib.as_str() + "::";
+        /*let lib_pattern = "use ".to_string() + self.options.lib.as_str() + "::";
         let local_crate_pattern = "use ".to_string() + self.crate_name.as_str() + "::";
         *output = output
             .lines()
@@ -433,7 +437,7 @@ impl CGData {
                     || l.trim().starts_with("use crate::"))
             })
             .collect::<Vec<&str>>()
-            .join(self.line_end_chars.as_str());
+            .join(self.line_end_chars.as_str());*/
         Ok(())
     }
     fn insert(&self, input: &mut str, output: &mut String) -> BoxResult<()> {
@@ -535,6 +539,7 @@ mod tests {
             verbose: false,
             simulate: true,
             del_comments: false,
+            keep_empty_lines: false,
         };
         // simulate output
         let mut data = CGData::new(options);
@@ -563,6 +568,7 @@ mod tests {
             verbose: false,
             simulate: true,
             del_comments: false,
+            keep_empty_lines: false,
         };
         // simulate output
         let mut data = CGData::new(options);
@@ -591,6 +597,7 @@ mod tests {
             verbose: false,
             simulate: false,
             del_comments: false,
+            keep_empty_lines: false,
         };
         // create output
         let mut data = CGData::new(options);

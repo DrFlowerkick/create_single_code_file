@@ -50,6 +50,10 @@ pub struct Cli {
     /// delete comments
     #[structopt(short, long)]
     pub del_comments: bool,
+
+    /// do not delete empty lines
+    #[structopt(short, long)]
+    pub keep_empty_lines: bool,
 }
 
 impl fmt::Display for Cli {
