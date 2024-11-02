@@ -177,6 +177,8 @@ impl CGData {
             self.crate_dir.join("Cargo.toml"),
             self.tmp_dir.join("Cargo.toml"),
         )?;
+        let bin_dir = self.tmp_dir.join("src").join("bin");
+        fs::create_dir_all(&bin_dir)?;
         copy_dir_recursive(&self.crate_dir.join("src"), &self.tmp_dir.join("src"))?;
         if self.options.output.is_none() {
             if self.options.challenge_only || self.options.modules.as_str() != "all" {
@@ -186,8 +188,6 @@ impl CGData {
             if self.options.verbose {
                 println!("creating tmp bin file path for cargo check...");
             }
-            let bin_dir = self.tmp_dir.join("src").join("bin");
-            fs::create_dir_all(&bin_dir)?;
             let tmp_file = String::from(Uuid::new_v4()) + ".rs";
             self.tmp_output_file = bin_dir.join(tmp_file);
         } else {
@@ -275,7 +275,7 @@ mod tests {
     fn test_generating_output() {
         // Act 1 - generate full output
         // set parameters
-        let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
+        let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
         let options = Cli {
             input: input,
             output: None,
@@ -297,7 +297,7 @@ mod tests {
         // Act 1 - assert file content
         let output = fs::read_to_string(&data.tmp_output_file).unwrap();
         let expected_output =
-            PathBuf::from(r".\test\expected_test_results\lib_tests_with_comments.rs");
+            PathBuf::from(r"./test/expected_test_results/lib_tests_with_comments.rs");
         let expected_output = fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
 
@@ -307,7 +307,7 @@ mod tests {
 
         // replace current bin file with prepared test file
         let modified_file_path =
-            PathBuf::from(r".\test\bin_modifications\modifications_in_challenge.rs");
+            PathBuf::from(r"./test/bin_modifications/modifications_in_challenge.rs");
         fs::copy(modified_file_path, &data.tmp_output_file).unwrap();
 
         // recreate output
@@ -325,7 +325,7 @@ mod tests {
 
         // replace current bin file with prepared test file
         let modified_file_path =
-            PathBuf::from(r".\test\bin_modifications\modifications_in_my_map_two_dim.rs");
+            PathBuf::from(r"./test/bin_modifications/modifications_in_my_map_two_dim.rs");
         fs::copy(modified_file_path, &data.tmp_output_file).unwrap();
 
         // recreate output
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn test_generating_output_no_comments() {
         // set parameters
-        let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
+        let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
         let options = Cli {
             input: input,
             output: None,
@@ -368,7 +368,7 @@ mod tests {
         // assert file content
         let output = fs::read_to_string(&data.tmp_output_file).unwrap();
         let expected_output =
-            PathBuf::from(r".\test\expected_test_results\lib_test_no_comments.rs");
+            PathBuf::from(r"./test/expected_test_results/lib_test_no_comments.rs");
         let expected_output = fs::read_to_string(expected_output).unwrap();
         assert_eq!(output, expected_output);
 
@@ -380,8 +380,8 @@ mod tests {
     #[test]
     fn test_ult_tictactoe() {
         // set parameters
-        let input = PathBuf::from(r"..\..\cg_ultimate_tic_tac_toe\src\main.rs");
-        let output = PathBuf::from(r"..\..\cg_ultimate_tic_tac_toe\src\bin\codingame.rs");
+        let input = PathBuf::from(r"../../cg_ultimate_tic_tac_toe/src/main.rs");
+        let output = PathBuf::from(r"../../cg_ultimate_tic_tac_toe/src/bin/codingame.rs");
         let options = Cli {
             input: input,
             output: Some(output),
@@ -402,8 +402,13 @@ mod tests {
         data.create_output().unwrap();
 
         if !data.options.simulate {
+            let command = if cfg!(target_os = "windows") {
+                "code.cmd"
+            } else {
+                "code"
+            };
             // open tmp_dir in VC
-            Command::new("code.cmd")
+            Command::new(command)
                 .arg(".")
                 .current_dir(data.tmp_dir.as_path())
                 .spawn()

@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_simulation_output() {
-        let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
+        let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
         let options = Cli {
             input: input,
             output: None,
@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn test_simulation_output_with_block_hidden_modules() {
-        let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
+        let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
         let options = Cli {
             input: input,
             output: None,
@@ -586,7 +586,7 @@ mod tests {
 
     #[test]
     fn test_creation_tmp_file_output() {
-        let input = PathBuf::from(r"..\csf_cg_binary_test\src\main.rs");
+        let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
         let options = Cli {
             input: input,
             output: None,
@@ -611,7 +611,7 @@ mod tests {
         let mut file_content = String::new();
         data.load_output(&mut file_content).unwrap();
         let expected_file_content = fs::read_to_string(PathBuf::from(
-            r".\test\expected_test_results\test_creation_tmp_file_output.rs",
+            r"./test/expected_test_results/test_creation_tmp_file_output.rs",
         ))
         .unwrap();
         assert_eq!(file_content, expected_file_content);
