@@ -78,6 +78,7 @@ pub enum CGError {
     NoStartLine(usize),
     NoEndLine,
     TooManyClosingBrackets,
+    CouldNotFindEnumName,
 }
 
 impl fmt::Display for CGError {
@@ -109,6 +110,9 @@ impl fmt::Display for CGError {
                 f,
                 "More closing brackets than starting brackets for name space"
             ),
+            Self::CouldNotFindEnumName => {
+                write!(f, "Could not find enum name of never constructed variant")
+            }
         }
     }
 }

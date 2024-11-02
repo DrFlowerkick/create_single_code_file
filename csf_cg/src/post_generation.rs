@@ -18,8 +18,9 @@ struct CargoCheckItem {
 }
 
 enum PatchAction {
-    SnipNamesSpace(usize),
+    SnipNameSpace(usize),
     AdjustUnusedVariableName(usize, usize),
+    SnipNeverConstructedEnumVariant(usize),
 }
 
 enum NameSpaceResult {
@@ -30,7 +31,7 @@ enum NameSpaceResult {
 }
 
 struct NameSpace<'a> {
-    starts_with: &'a str,
+    starts_with: String,
     start_line: usize,
     end_line: usize,
     lines: Vec<&'a str>,
@@ -48,7 +49,7 @@ impl<'a> NameSpace<'a> {
     const MUST_END_ON_SEMICOLON: [&'a str; 1] = ["type"];
     fn new(output: &'a str, line_end_chars: String) -> NameSpace {
         NameSpace {
-            starts_with: "",
+            starts_with: "".into(),
             start_line: 0,
             end_line: output.lines().count() - 1,
             lines: output.lines().collect(),
@@ -60,73 +61,46 @@ impl<'a> NameSpace<'a> {
     fn find_start_line(
         &mut self,
         message_line: usize,
-        unused_enum_variant: &mut String,
-        is_warning: bool,
+        never_constructed_variants: &Vec<String>,
     ) -> BoxResult<NameSpaceResult> {
-        if is_warning {
-            // reset unused_enum_variant to empty string, if warning, since all errors of removed unused enum variant are solved
-            *unused_enum_variant = String::new();
-        }
         // message lines always starts at 1, while lines index starts at 0
         // therefore index of message_line is "message_line - 1",
-        // which is the reason why message_line is not included in range statement
-        for (line, slice) in self.lines[0..message_line].iter().enumerate().rev() {
-            if !unused_enum_variant.is_empty()
-                && slice.trim_start().starts_with(unused_enum_variant.as_str())
-            {
-                self.start_line = line;
-                return Ok(NameSpaceResult::FindEndLineMatchArm);
-            }
-            for pat in NameSpace::NAME_SPACE_PATTERNS.iter() {
-                if slice.trim_start().starts_with(pat) {
-                    // ToDo: have to think more about handling variants
-                    // at the moment let's ignore them
-                    /*
-                    if *pat == "enum" && is_warning {
-                        // variant not constructed warning -> remove line with dead enum entry, which is message_line
-                        self.start_line = message_line - 1;
+        self.start_line = message_line - 1;
+        let slice = self.lines[self.start_line];
+        for pat in never_constructed_variants
+            .iter()
+            .map(|ncv| ncv.as_str())
+            .chain(NameSpace::NAME_SPACE_PATTERNS.into_iter())
+        {
+            if slice.trim_start().starts_with(pat) {
+                self.starts_with = pat.to_owned();
+                if never_constructed_variants.contains(&pat.to_owned()) {
+                    return Ok(NameSpaceResult::FindEndLineMatchArm);
+                }
+                if NameSpace::POSSIBLE_SINGLE_LINE_PATTERNS
+                    .iter()
+                    .any(|s| *s == self.starts_with)
+                {
+                    if (self.starts_with == "#[" && slice.trim_end().ends_with(']'))
+                        || slice.trim_end().ends_with(';')
+                    {
                         self.end_line = self.start_line;
-                        let enum_name = slice
-                            .trim()
-                            .split(|c: char| !c.is_alphanumeric())
-                            .nth(1)
-                            .unwrap();
-                        let variant_name = self.lines[self.start_line]
-                            .trim()
-                            .split(|c: char| !c.is_alphanumeric())
-                            .next()
-                            .unwrap();
-                        *unused_enum_variant = String::from(enum_name) + "::" + variant_name;
                         return Ok(NameSpaceResult::Finished);
                     }
-                    */
-                    self.starts_with = pat;
-                    self.start_line = line;
-                    if NameSpace::POSSIBLE_SINGLE_LINE_PATTERNS
-                        .iter()
-                        .any(|s| *s == self.starts_with)
-                    {
-                        if (self.starts_with == "#[" && slice.trim_end().ends_with(']'))
-                            || slice.trim_end().ends_with(';')
-                        {
-                            self.end_line = self.start_line;
-                            return Ok(NameSpaceResult::Finished);
-                        }
-                    }
-                    if NameSpace::MUST_END_ON_SEMICOLON
-                        .iter()
-                        .any(|s| *s == self.starts_with)
-                    {
-                        return Ok(NameSpaceResult::FindNextSemicolon);
-                    }
-
-                    if self.starts_with == "#[" {
-                        self.open_bracket_typ = '[';
-                        self.closing_bracket_typ = ']';
-                    }
-                    // return true -> search for end_line of name space
-                    return Ok(NameSpaceResult::FindEndLine);
                 }
+                if NameSpace::MUST_END_ON_SEMICOLON
+                    .iter()
+                    .any(|s| *s == self.starts_with)
+                {
+                    return Ok(NameSpaceResult::FindNextSemicolon);
+                }
+
+                if self.starts_with == "#[" {
+                    self.open_bracket_typ = '[';
+                    self.closing_bracket_typ = ']';
+                }
+                // return true -> search for end_line of name space
+                return Ok(NameSpaceResult::FindEndLine);
             }
         }
         Err(Box::new(CGError::NoStartLine(message_line)))
@@ -145,8 +119,7 @@ impl<'a> NameSpace<'a> {
             match bracket_count {
                 1.. => (),
                 0 => {
-                    //if (!must_open_bracket || open_bracket_found)
-                    if open_bracket_found && (!is_match_arm || slice.trim().ends_with(',')) {
+                    if open_bracket_found || (is_match_arm && slice.trim().ends_with(',')) {
                         self.end_line = self.start_line + line;
                         return Ok(());
                     }
@@ -189,7 +162,9 @@ impl CGData {
             .arg("--message-format=json")
             .output()?)
     }
-    fn collect_cargo_check_compiler_messages(&self) -> BoxResult<Option<BTreeMap<usize, CargoCheckItem>>> {
+    fn collect_cargo_check_compiler_messages(
+        &self,
+    ) -> BoxResult<Option<BTreeMap<usize, CargoCheckItem>>> {
         let mut message_collection: BTreeMap<usize, CargoCheckItem> = BTreeMap::new();
         let result = self.command_cargo_check()?;
         for message in cargo_metadata::Message::parse_stream(&result.stdout[..]) {
@@ -199,7 +174,7 @@ impl CGData {
                         // ToDo: have to think more about handling variants
                         // at the moment let's ignore them
                         if msg.message.message.contains("variant") {
-                            continue;
+                            //continue;
                         }
                         for span in msg.message.spans.iter().filter(|s| s.is_primary) {
                             let cargo_check_item = CargoCheckItem {
@@ -220,17 +195,22 @@ impl CGData {
         }
         Ok(Some(message_collection))
     }
-    fn analyze_cargo_check_compiler_message(
-        &self,
-        message: &CargoCheckItem,
-    ) -> (PatchAction, bool) {
+    fn analyze_cargo_check_compiler_message(&self, message: &CargoCheckItem) -> PatchAction {
         let error_code = match message.code {
             Some(ref dc) => dc.code.to_owned(),
             None => "No code provided".into(),
         };
         let patch_action = match error_code.as_str() {
             "unused_variables" => PatchAction::AdjustUnusedVariableName(0, 0),
-            _ => PatchAction::SnipNamesSpace(0),
+            _ => {
+                if message.message.contains("variant")
+                    && message.message.contains("never constructed")
+                {
+                    PatchAction::SnipNeverConstructedEnumVariant(0)
+                } else {
+                    PatchAction::SnipNameSpace(0)
+                }
+            }
         };
 
         let is_warning = message.level == DiagnosticLevel::Warning;
@@ -238,25 +218,34 @@ impl CGData {
 
         match patch_action {
             PatchAction::AdjustUnusedVariableName(_, _) => {
-                let line_start = message.span.line_start;
-                let byte_start = message.span.byte_start as usize;
                 if self.options.verbose {
-                    println!("[{} {}] adjusting cargo check message \"{}\" (line_start: {}, byte_start: {})", verbose_start, error_code, message.message, line_start, byte_start);
+                    println!(
+                        "[{} {}] adjusting cargo check message \"{}\" (line_start: {}, byte_start: {})",
+                        verbose_start, error_code, message.message, message.span.line_start, message.span.byte_start
+                    );
                 }
-                (
-                    PatchAction::AdjustUnusedVariableName(line_start, byte_start),
-                    is_warning,
+                PatchAction::AdjustUnusedVariableName(
+                    message.span.line_start,
+                    message.span.byte_start as usize,
                 )
             }
-            PatchAction::SnipNamesSpace(_) => {
-                let line_start = message.span.line_start;
+            PatchAction::SnipNameSpace(_) => {
                 if self.options.verbose {
                     println!(
                         "[{} {}] filtering cargo check message \"{}\" (line_start: {})",
-                        verbose_start, error_code, message.message, line_start
+                        verbose_start, error_code, message.message, message.span.line_start
                     );
                 }
-                (PatchAction::SnipNamesSpace(line_start), is_warning)
+                PatchAction::SnipNameSpace(message.span.line_start)
+            }
+            PatchAction::SnipNeverConstructedEnumVariant(_) => {
+                if self.options.verbose {
+                    println!(
+                        "[{} {}] filtering never constructed variant \"{}\" (line_start: {})",
+                        verbose_start, error_code, message.message, message.span.line_start
+                    );
+                }
+                PatchAction::SnipNeverConstructedEnumVariant(message.span.line_start)
             }
         }
     }
@@ -265,11 +254,10 @@ impl CGData {
         &self,
         output: &mut String,
         line_start: usize,
-        unused_enum_variant: &mut String,
-        is_warning: bool,
+        never_constructed_variants: &Vec<String>,
     ) -> BoxResult<()> {
         let mut name_space = NameSpace::new(output, self.line_end_chars.clone());
-        match name_space.find_start_line(line_start, unused_enum_variant, is_warning)? {
+        match name_space.find_start_line(line_start, never_constructed_variants)? {
             NameSpaceResult::Finished => (),
             NameSpaceResult::FindEndLine => name_space.find_end_line(false)?,
             NameSpaceResult::FindEndLineMatchArm => name_space.find_end_line(true)?,
@@ -280,6 +268,49 @@ impl CGData {
         if self.options.verbose {
             println!("SNIP\n{}\nSNAP", filtered);
         }
+        Ok(())
+    }
+
+    fn snip_never_constructed_enum_variant(
+        &self,
+        output: &mut String,
+        line_start: usize,
+        never_constructed_variants: &mut Vec<String>,
+    ) -> BoxResult<()> {
+        // collect lines
+        let mut lines: Vec<&str> = output.lines().collect();
+        // remove variant from message line
+        let filtered = lines.remove(line_start - 1);
+
+        let mut enum_variant = filtered.trim().replace(",", "");
+        // if variant contains a variable, just take the name
+        if enum_variant.contains('(') {
+            enum_variant = enum_variant.split_once('(').unwrap().0.to_string();
+        }
+        // find enum of variant
+        for line in lines[0..line_start].iter().rev() {
+            if line.trim().starts_with("enum") {
+                let mut enum_name = line.trim().split_whitespace().nth(1).unwrap().to_owned();
+                if enum_name.contains('<') {
+                    enum_name = enum_name.split_once('<').unwrap().0.to_string();
+                }
+                enum_variant = enum_name + "::" + &enum_variant;
+                break;
+            }
+        }
+        // check if enum was found
+        if !enum_variant.contains("::") {
+            return Err(Box::new(CGError::CouldNotFindEnumName));
+        }
+        // save enum variant to later remove match arms, which use never constructed variant, if any remain
+        never_constructed_variants.push(enum_variant);
+        
+        if self.options.verbose {
+            println!("SNIP\n{}\nSNAP", filtered);
+        }
+        
+        // join lines for new output
+        *output = lines.join(self.line_end_chars.as_str());
         Ok(())
     }
 
@@ -307,7 +338,7 @@ impl CGData {
             let mut check_counter = 0;
             let max_check_counter = 10_000;
             //let max_check_counter = 1;
-            let mut unused_enum_variant = String::new();
+            let mut never_constructed_variants: Vec<String> = Vec::new();
             // collect compiler messages in BTreeMap
             // using line_start as key. This results in compiler messages sorted by line_start.
             // By reverse iteration through message_collection the fixes can be applied from bottom to top.
@@ -328,17 +359,21 @@ impl CGData {
                         //break
                     }
 
-                    let (patch_action, is_warning) = self.analyze_cargo_check_compiler_message(message);
-                    match patch_action {
+                    match self.analyze_cargo_check_compiler_message(message) {
                         PatchAction::AdjustUnusedVariableName(line_start, byte_start) => {
                             self.adjust_unused_variable_name(&mut output, line_start, byte_start)
                         }
-                        PatchAction::SnipNamesSpace(line_start) => self.snip_name_space(
+                        PatchAction::SnipNameSpace(line_start) => self.snip_name_space(
                             &mut output,
                             line_start,
-                            &mut unused_enum_variant,
-                            is_warning,
+                            &never_constructed_variants,
                         )?,
+                        PatchAction::SnipNeverConstructedEnumVariant(line_start) => self
+                            .snip_never_constructed_enum_variant(
+                                &mut output,
+                                line_start,
+                                &mut never_constructed_variants,
+                            )?,
                     }
                 }
 
