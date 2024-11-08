@@ -1,3 +1,5 @@
+// merge input with all local dependencies including local library files
+/*
 use super::*;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -622,3 +624,4 @@ mod tests {
         assert!(!data.tmp_dir.is_dir());
     }
 }
+*/

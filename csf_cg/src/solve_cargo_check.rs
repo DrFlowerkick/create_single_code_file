@@ -1,3 +1,5 @@
+// solve cargo check messages of merged output file
+/*
 use cargo_metadata::{
     diagnostic::{DiagnosticCode, DiagnosticLevel, DiagnosticSpan},
     Message,
@@ -42,10 +44,10 @@ struct NameSpace<'a> {
 
 impl<'a> NameSpace<'a> {
     const NAME_SPACE_PATTERNS: [&'a str; 9] = [
-        "fn", "struct", "impl", "enum", "use", "mod", "#[", "const", "type",
+        "fn", "struct", "impl", "use", "mod", "#[", "const", "enum", "type",
     ];
-    const POSSIBLE_SINGLE_LINE_PATTERNS: [&'a str; 6] =
-        ["use", "mod", "impl", "struct", "#[", "const"];
+    const POSSIBLE_SINGLE_LINE_PATTERNS: [&'a str; 7] =
+        ["fn", "struct", "impl", "use", "mod", "#[", "const"];
     const MUST_END_ON_SEMICOLON: [&'a str; 1] = ["type"];
     fn new(output: &'a str, line_end_chars: String) -> NameSpace {
         NameSpace {
@@ -63,44 +65,48 @@ impl<'a> NameSpace<'a> {
         message_line: usize,
         never_constructed_variants: &Vec<String>,
     ) -> BoxResult<NameSpaceResult> {
-        // message lines always starts at 1, while lines index starts at 0
-        // therefore index of message_line is "message_line - 1",
-        self.start_line = message_line - 1;
-        let slice = self.lines[self.start_line];
-        for pat in never_constructed_variants
-            .iter()
-            .map(|ncv| ncv.as_str())
-            .chain(NameSpace::NAME_SPACE_PATTERNS.into_iter())
-        {
-            if slice.trim_start().starts_with(pat) {
-                self.starts_with = pat.to_owned();
-                if never_constructed_variants.contains(&pat.to_owned()) {
-                    return Ok(NameSpaceResult::FindEndLineMatchArm);
-                }
-                if NameSpace::POSSIBLE_SINGLE_LINE_PATTERNS
-                    .iter()
-                    .any(|s| *s == self.starts_with)
-                {
-                    if (self.starts_with == "#[" && slice.trim_end().ends_with(']'))
-                        || slice.trim_end().ends_with(';')
-                    {
-                        self.end_line = self.start_line;
-                        return Ok(NameSpaceResult::Finished);
+        // searching known line_start pattern going up line for line starting at message_line (range [0..=message_line])
+        for (line, slice) in self.lines[0..message_line].iter().enumerate().rev() {
+            for pat in never_constructed_variants
+                .iter()
+                .map(|ncv| ncv.as_str())
+                .chain(NameSpace::NAME_SPACE_PATTERNS.into_iter())
+            {
+                if slice.trim_start().starts_with(pat) {
+                    self.starts_with = pat.to_owned();
+                    self.start_line = line;
+                    // ToDo: we have to test this better; up until then just continue
+                    if never_constructed_variants.contains(&pat.to_owned()) {
+                        continue;
+                        //return Ok(NameSpaceResult::FindEndLineMatchArm);
                     }
-                }
-                if NameSpace::MUST_END_ON_SEMICOLON
-                    .iter()
-                    .any(|s| *s == self.starts_with)
-                {
-                    return Ok(NameSpaceResult::FindNextSemicolon);
-                }
+                    // check items, which must end on semicolon
+                    if NameSpace::MUST_END_ON_SEMICOLON
+                        .iter()
+                        .any(|s| *s == self.starts_with)
+                    {
+                        return Ok(NameSpaceResult::FindNextSemicolon);
+                    }
+                    // check items, which can end on a single line
+                    if NameSpace::POSSIBLE_SINGLE_LINE_PATTERNS
+                        .iter()
+                        .any(|s| *s == self.starts_with)
+                    {
+                        if (self.starts_with == "#[" && slice.trim_end().ends_with(']'))
+                            || slice.trim_end().ends_with(';')
+                        {
+                            self.end_line = self.start_line;
+                            return Ok(NameSpaceResult::Finished);
+                        }
+                    }
 
-                if self.starts_with == "#[" {
-                    self.open_bracket_typ = '[';
-                    self.closing_bracket_typ = ']';
+                    if self.starts_with == "#[" {
+                        self.open_bracket_typ = '[';
+                        self.closing_bracket_typ = ']';
+                    }
+                    // return true -> search for end_line of name space
+                    return Ok(NameSpaceResult::FindEndLine);
                 }
-                // return true -> search for end_line of name space
-                return Ok(NameSpaceResult::FindEndLine);
             }
         }
         Err(Box::new(CGError::NoStartLine(message_line)))
@@ -138,9 +144,14 @@ impl<'a> NameSpace<'a> {
         }
         Err(Box::new(CGError::NoEndLine))
     }
-    fn filter_name_space(&self) -> (String, String) {
+    fn filter_name_space(&self, snip_snap_lines: &mut Vec<usize>) -> (String, String) {
         let pre_lines = &self.lines[0..self.start_line];
         let post_lines = &self.lines[self.end_line + 1..];
+        // push filtered lines to snip_snap_lines
+        for line in self.start_line..=self.end_line {
+            snip_snap_lines.push(line);
+        }
+        
         (
             [pre_lines, post_lines]
                 .concat()
@@ -167,14 +178,15 @@ impl CGData {
     ) -> BoxResult<Option<BTreeMap<usize, CargoCheckItem>>> {
         let mut message_collection: BTreeMap<usize, CargoCheckItem> = BTreeMap::new();
         let result = self.command_cargo_check()?;
-        for message in cargo_metadata::Message::parse_stream(&result.stdout[..]) {
-            if let Message::CompilerMessage(msg) = message? {
-                match msg.message.level {
-                    DiagnosticLevel::Error | DiagnosticLevel::Warning => {
+        let filter_levels = [DiagnosticLevel::Error, DiagnosticLevel::Warning];
+        for filter_level in filter_levels {
+            for message in cargo_metadata::Message::parse_stream(&result.stdout[..]) {
+                if let Message::CompilerMessage(msg) = message? {
+                    if msg.message.level == filter_level {
                         // ToDo: have to think more about handling variants
                         // at the moment let's ignore them
                         if msg.message.message.contains("variant") {
-                            //continue;
+                            continue;
                         }
                         for span in msg.message.spans.iter().filter(|s| s.is_primary) {
                             let cargo_check_item = CargoCheckItem {
@@ -183,17 +195,20 @@ impl CGData {
                                 level: msg.message.level.clone(),
                                 span: span.clone(),
                             };
-                            message_collection.insert(span.line_start, cargo_check_item);
+                            // line count in messages start at 1, not 0
+                            // therefore we decrement line_start, since we are parsing lines
+                            message_collection.insert(span.line_start - 1, cargo_check_item);
                         }
                     }
-                    _ => (),
                 }
             }
+            // fix errors before warnings
+            if !message_collection.is_empty() {
+                return Ok(Some(message_collection));
+            }
         }
-        if message_collection.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(message_collection))
+        // no errors or warnings
+        Ok(None)
     }
     fn analyze_cargo_check_compiler_message(&self, message: &CargoCheckItem) -> PatchAction {
         let error_code = match message.code {
@@ -255,6 +270,7 @@ impl CGData {
         output: &mut String,
         line_start: usize,
         never_constructed_variants: &Vec<String>,
+        snip_snap_lines: &mut Vec<usize>,
     ) -> BoxResult<()> {
         let mut name_space = NameSpace::new(output, self.line_end_chars.clone());
         match name_space.find_start_line(line_start, never_constructed_variants)? {
@@ -263,7 +279,7 @@ impl CGData {
             NameSpaceResult::FindEndLineMatchArm => name_space.find_end_line(true)?,
             NameSpaceResult::FindNextSemicolon => name_space.find_next_semicolon()?,
         }
-        let (new_output, filtered) = name_space.filter_name_space();
+        let (new_output, filtered) = name_space.filter_name_space(snip_snap_lines);
         *output = new_output;
         if self.options.verbose {
             println!("SNIP\n{}\nSNAP", filtered);
@@ -276,11 +292,12 @@ impl CGData {
         output: &mut String,
         line_start: usize,
         never_constructed_variants: &mut Vec<String>,
+        snip_snap_lines: &mut Vec<usize>,
     ) -> BoxResult<()> {
         // collect lines
         let mut lines: Vec<&str> = output.lines().collect();
         // remove variant from message line
-        let filtered = lines.remove(line_start - 1);
+        let filtered = lines.remove(line_start);
 
         let mut enum_variant = filtered.trim().replace(",", "");
         // if variant contains a variable, just take the name
@@ -304,11 +321,14 @@ impl CGData {
         }
         // save enum variant to later remove match arms, which use never constructed variant, if any remain
         never_constructed_variants.push(enum_variant);
-        
+
+        // push filtered line to snip_snap_lines
+        snip_snap_lines.push(line_start);
+
         if self.options.verbose {
             println!("SNIP\n{}\nSNAP", filtered);
         }
-        
+
         // join lines for new output
         *output = lines.join(self.line_end_chars.as_str());
         Ok(())
@@ -345,10 +365,24 @@ impl CGData {
             // When all fixes are applied, the file is saved and a new round is started, until no more
             // messages are collected.
             while let Some(message_collection) = self.collect_cargo_check_compiler_messages()? {
+                // initialize output
                 let mut output = String::new();
                 self.load_output(&mut output)?;
+                // initialize snip snap array
+                let mut snip_snap_lines: Vec<usize> = Vec::with_capacity(message_collection.len());
+                if self.options.verbose {
+                    println!(
+                        "number of compiler messages in BTreeMap: {}",
+                        message_collection.len()
+                    );
+                }
                 // revers iteration of message_collection, which results to work through messages from bottom to top
-                for (_, message) in message_collection.iter().rev() {
+                for (message_line, message) in message_collection.iter().rev() {
+                    // if message_line has already been snip snap, ignore message and continue
+                    if snip_snap_lines.contains(message_line) {
+                        continue;
+                    }
+                    // check counter
                     if check_counter >= max_check_counter {
                         break;
                     }
@@ -367,12 +401,14 @@ impl CGData {
                             &mut output,
                             line_start,
                             &never_constructed_variants,
+                            &mut snip_snap_lines,
                         )?,
                         PatchAction::SnipNeverConstructedEnumVariant(line_start) => self
                             .snip_never_constructed_enum_variant(
                                 &mut output,
                                 line_start,
                                 &mut never_constructed_variants,
+                                &mut snip_snap_lines,
                             )?,
                     }
                 }
@@ -417,3 +453,4 @@ impl CGData {
         Ok(())
     }
 }
+*/

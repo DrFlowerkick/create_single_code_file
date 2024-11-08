@@ -1,6 +1,11 @@
+// central library
+
 pub mod configuration;
+pub mod preparation;
+pub mod analysis;
+pub mod error;
 pub mod file_generation;
-pub mod post_generation;
+pub mod solve_cargo_check;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -10,36 +15,12 @@ use std::{io, io::Write};
 use toml::Value;
 use uuid::Uuid;
 
-use crate::configuration::*;
+use configuration::*;
+use error::{CGError, CGResult};
 
-/// Recursively copies the contents of one directory to another destination.
-fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
-    // Create the destination directory if it does not exist
-    if !dst.exists() {
-        fs::create_dir_all(dst)?;
-    }
 
-    // Iterate through the source directory
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let src_path = entry.path();
-        let mut dst_path = PathBuf::from(dst);
-        dst_path.push(entry.file_name());
-
-        // If it's a directory, call the function recursively
-        if file_type.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else if file_type.is_file() {
-            // Copy the file
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-
-    Ok(())
-}
-
-pub struct CGData {
+pub struct CGData<S> {
+    state_data: S,
     options: Cli,
     crate_dir: PathBuf,
     crate_name: String,
@@ -53,191 +34,19 @@ pub struct CGData {
     line_end_chars: String,
 }
 
+/*
 impl CGData {
-    pub fn new(options: Cli) -> Self {
-        let mut result = CGData {
-            options,
-            crate_dir: PathBuf::new(),
-            crate_name: "".to_string(),
-            local_modules: BTreeMap::new(),
-            my_lib: None,
-            lib_modules: BTreeMap::new(),
-            tmp_dir: PathBuf::new(),
-            tmp_input_file: PathBuf::new(),
-            tmp_output_file: PathBuf::new(),
-            output_file: PathBuf::new(),
-            line_end_chars: "".to_string(),
-        };
-        if result.options.simulate {
-            println!("Start of simulation");
-            result.options.verbose = true;
-        }
-        if result.options.verbose {
-            println!("{}", result.options);
-        }
-        result
-    }
-    pub fn prepare_cg_data(&mut self) -> BoxResult<()> {
-        if self.options.verbose {
-            println!("reading path of lib from toml file...");
-        }
-        // only accept existing main.rs as input
-        if !self.options.input.is_file() || self.options.input.file_name().unwrap() != "main.rs" {
-            return Err(Box::new(CGError::MustProvideInPutFile));
-        }
-        let crate_dir = self.options.input.as_path().parent().unwrap();
-        self.crate_dir = match crate_dir.file_name().unwrap().to_str().unwrap() {
-            "bin" => crate_dir.parent().unwrap().parent().unwrap().to_path_buf(),
-            "src" => crate_dir.parent().unwrap().to_path_buf(),
-            _ => {
-                return Err(Box::new(CGError::PackageStructureError(
-                    self.options.input.clone(),
-                )))
-            }
-        };
-        // get toml content
-        let toml_path = self.crate_dir.join("Cargo.toml");
-        if self.options.verbose {
-            println!("crate_dir: {}", self.crate_dir.display());
-            println!("toml_path: {}", toml_path.display());
-        }
-        let toml = fs::read_to_string(toml_path.clone())?.parse::<Value>()?;
-        // get package name
-        let package = toml
-            .as_table()
-            .unwrap()
-            .get("package")
-            .unwrap()
-            .as_table()
-            .unwrap();
-        match package.get("name") {
-            Some(crate_name) => {
-                self.crate_name = crate_name.to_string().trim().replace('\"', "");
-                if self.options.verbose {
-                    println!("crate name: {}", self.crate_name);
-                }
-            }
-            None => panic!("could not find package name in {}", toml_path.display()),
-        }
-        // get lib path, if any is used
-        let dependencies = toml
-            .as_table()
-            .unwrap()
-            .get("dependencies")
-            .unwrap()
-            .as_table()
-            .unwrap();
-        match dependencies.get(self.options.lib.as_str()) {
-            Some(my_lib) => {
-                let mut my_lib_path = self.crate_dir.clone();
-                for lib_path_element in Path::new(
-                    my_lib
-                        .as_table()
-                        .unwrap()
-                        .get("path")
-                        .unwrap()
-                        .as_str()
-                        .unwrap(),
-                )
-                .join("src")
-                .iter()
-                {
-                    my_lib_path.push(lib_path_element);
-                }
-                if self.options.verbose {
-                    println!(
-                        "path if lib {}: {}",
-                        self.options.lib,
-                        my_lib_path.display()
-                    );
-                }
-                self.my_lib = Some(my_lib_path);
-            }
-            None => {
-                if self.options.verbose {
-                    println!("lib \"{}\" not specified in toml", self.options.lib);
-                }
-            }
-        }
-        // prepare working directory
-        // tmp dir must be on same path as crate dir, otherwise relative paths im Cargo.toml will not work
-        self.tmp_dir = self
-            .crate_dir
-            .parent()
-            .unwrap()
-            .join(String::from(Uuid::new_v4()));
-        if self.options.verbose {
-            println!(
-                "creating tmp working directory for cargo check: {}",
-                self.tmp_dir.display()
-            );
-        }
-        fs::create_dir_all(&self.tmp_dir)?;
-        fs::copy(
-            self.crate_dir.join("Cargo.toml"),
-            self.tmp_dir.join("Cargo.toml"),
-        )?;
-        let bin_dir = self.tmp_dir.join("src").join("bin");
-        fs::create_dir_all(&bin_dir)?;
-        copy_dir_recursive(&self.crate_dir.join("src"), &self.tmp_dir.join("src"))?;
-        if self.options.output.is_none() {
-            if self.options.challenge_only || self.options.modules.as_str() != "all" {
-                // these options require an already existing output file to insert changed code
-                return Err(Box::new(CGError::MustProvideOutPutFile));
-            }
-            if self.options.verbose {
-                println!("creating tmp bin file path for cargo check...");
-            }
-            let tmp_file = String::from(Uuid::new_v4()) + ".rs";
-            self.tmp_output_file = bin_dir.join(tmp_file);
-        } else {
-            self.output_file = self.options.output.as_ref().unwrap().clone();
-            if self.crate_dir.join("src").join("bin") != self.output_file.parent().unwrap() {
-                return Err(Box::new(CGError::OutputFileError(self.output_file.clone())));
-            }
-            self.tmp_output_file = self
-                .tmp_dir
-                .join("src")
-                .join("bin")
-                .join(self.output_file.file_name().unwrap());
-        }
-        // set new variable tmp_input
-        self.tmp_input_file = if self
-            .options
-            .input
-            .as_path()
-            .parent()
-            .unwrap()
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            == "src"
-        {
-            self.tmp_dir.join("src").join("main.rs")
-        } else {
-            self.tmp_dir.join("src").join("bin").join("main.rs")
-        };
-        // checking for line end chars (either \n or \r\n)
-        let input = fs::read_to_string(&self.tmp_input_file)?;
-        self.line_end_chars = if input.contains("\r\n") {
-            "\r\n".to_string()
-        } else {
-            "\n".to_string()
-        };
-        Ok(())
-    }
-    fn load_output(&self, output: &mut String) -> BoxResult<()> {
+    fn load_output(&self, output: &mut String) -> CGResult<()> {
         *output = fs::read_to_string(self.tmp_output_file.as_path())?;
         Ok(())
     }
-    fn save_output(&self, output: &String) -> BoxResult<()> {
+    fn save_output(&self, output: &String) -> CGResult<()> {
         let mut file = fs::File::create(self.tmp_output_file.as_path())?;
         file.write_all(output.as_bytes())?;
         file.flush()?;
         Ok(())
     }
-    pub fn cleanup_cg_data(&self) -> BoxResult<String> {
+    pub fn cleanup_cg_data(&self) -> CGResult<String> {
         let output = if self.options.simulate {
             "".into()
         } else if self.options.output.is_none() {
@@ -390,7 +199,7 @@ mod tests {
             //block_hidden: "my_array;my_line;my_rectangle".to_string(),
             block_hidden: "".to_string(),
             lib: "my_lib".to_string(),
-            verbose: false,
+            verbose: true,
             simulate: false,
             del_comments: false,
             keep_empty_lines: true,
@@ -446,3 +255,4 @@ mod tests {
         }
     }
 }
+*/

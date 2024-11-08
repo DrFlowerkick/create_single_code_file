@@ -1,8 +1,10 @@
 {
     "cSpell.words": [
+        "bijective",
         "canonicalize",
         "codingame",
         "seperated",
-        "structopt"
+        "structopt",
+        "thiserror"
     ]
 }
