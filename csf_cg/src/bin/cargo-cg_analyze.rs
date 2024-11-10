@@ -3,7 +3,7 @@
 ///   - local library if applicable.
 /// Results are printed to std-out. No challenge file is created.
 /// Has to be executed in root folder of a package crate. Does not support workspace crates.
-/// cargo-cg_analyze is a "short-cut" binary for configuration 'analysis_only' of
+/// cargo-cg_analyze is a "short-cut" binary for configuration 'analyze_only' of
 /// cargo-cg_make.
 
 use anyhow::Context;
@@ -14,13 +14,13 @@ use create_codingame_challenge_file::configuration::*;
 use create_codingame_challenge_file::error::CGResult;
 
 fn main() {
-    let options = Cli::from_args();
+    let options = CliMake::from_args();
     if let Err(err) = run(options) {
         eprintln!("Error occurred: {:?}", err);
     }
 }
 
-fn run(_options: Cli) -> CGResult<()> {
+fn run(_options: CliMake) -> CGResult<()> {
     //let mut data = options.initialize_cg_data();
     //data.prepare_cg_data()?;
     //data.create_output()?;

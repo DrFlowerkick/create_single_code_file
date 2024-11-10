@@ -12,13 +12,13 @@ use create_codingame_challenge_file::configuration::*;
 use create_codingame_challenge_file::error::CGResult;
 
 fn main() {
-    let options = Cli::from_args();
+    let options = CliMake::from_args();
     if let Err(err) = run(options) {
         eprintln!("Error occurred: {:?}", err);
     }
 }
 
-fn run(_options: Cli) -> CGResult<()> {
+fn run(_options: CliMake) -> CGResult<()> {
     //let mut data = options.initialize_cg_data();
     //data.prepare_cg_data()?;
     //data.create_output()?;

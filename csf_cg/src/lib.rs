@@ -21,7 +21,7 @@ use error::{CGError, CGResult};
 
 pub struct CGData<S> {
     state_data: S,
-    options: Cli,
+    options: CliMake,
     crate_dir: PathBuf,
     crate_name: String,
     local_modules: BTreeMap<String, PathBuf>,
@@ -85,7 +85,7 @@ mod tests {
         // Act 1 - generate full output
         // set parameters
         let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
-        let options = Cli {
+        let options = CliMake {
             input: input,
             output: None,
             challenge_only: false,
@@ -155,7 +155,7 @@ mod tests {
     fn test_generating_output_no_comments() {
         // set parameters
         let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
-        let options = Cli {
+        let options = CliMake {
             input: input,
             output: None,
             challenge_only: false,
@@ -191,7 +191,7 @@ mod tests {
         // set parameters
         let input = PathBuf::from(r"../../cg_ultimate_tic_tac_toe/src/main.rs");
         let output = PathBuf::from(r"../../cg_ultimate_tic_tac_toe/src/bin/codingame.rs");
-        let options = Cli {
+        let options = CliMake {
             input: input,
             output: Some(output),
             challenge_only: false,
