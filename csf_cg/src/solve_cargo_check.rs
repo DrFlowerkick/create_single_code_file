@@ -151,7 +151,7 @@ impl<'a> NameSpace<'a> {
         for line in self.start_line..=self.end_line {
             snip_snap_lines.push(line);
         }
-        
+
         (
             [pre_lines, post_lines]
                 .concat()

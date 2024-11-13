@@ -1,10 +1,10 @@
 // central library
 
-pub mod configuration;
-pub mod preparation;
 pub mod analysis;
+pub mod configuration;
 pub mod error;
 pub mod file_generation;
+pub mod preparation;
 pub mod solve_cargo_check;
 
 use std::collections::BTreeMap;
@@ -15,13 +15,12 @@ use std::{io, io::Write};
 use toml::Value;
 use uuid::Uuid;
 
-use configuration::*;
+use configuration::FusionCli;
 use error::{CGError, CGResult};
-
 
 pub struct CGData<S> {
     state_data: S,
-    options: CliMake,
+    options: FusionCli,
     crate_dir: PathBuf,
     crate_name: String,
     local_modules: BTreeMap<String, PathBuf>,
@@ -85,7 +84,7 @@ mod tests {
         // Act 1 - generate full output
         // set parameters
         let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
-        let options = CliMake {
+        let options = FusionCli {
             input: input,
             output: None,
             challenge_only: false,
@@ -155,7 +154,7 @@ mod tests {
     fn test_generating_output_no_comments() {
         // set parameters
         let input = PathBuf::from(r"../csf_cg_binary_test/src/main.rs");
-        let options = CliMake {
+        let options = FusionCli {
             input: input,
             output: None,
             challenge_only: false,
@@ -191,7 +190,7 @@ mod tests {
         // set parameters
         let input = PathBuf::from(r"../../cg_ultimate_tic_tac_toe/src/main.rs");
         let output = PathBuf::from(r"../../cg_ultimate_tic_tac_toe/src/bin/codingame.rs");
-        let options = CliMake {
+        let options = FusionCli {
             input: input,
             output: Some(output),
             challenge_only: false,

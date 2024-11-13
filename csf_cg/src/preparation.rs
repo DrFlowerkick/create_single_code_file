@@ -1,9 +1,45 @@
 // preparation of working environment
 
-// state for preparation
-pub struct PrepState;
+use crate::{CGData, FusionCli};
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 /*
+// state for preparation
+pub struct PrepState {
+    analyze_only: bool
+}
+
+impl FusionCli {
+    pub fn initialize_cg_data(self) -> CGData<PrepState> {
+        let mut result: CGData<PrepState> = CGData {
+            state_data: PrepState {
+                analyze_only: self.analyze_only,
+            },
+            options: self,
+            crate_dir: PathBuf::new(),
+            crate_name: "".to_string(),
+            local_modules: BTreeMap::new(),
+            my_lib: None,
+            lib_modules: BTreeMap::new(),
+            tmp_dir: PathBuf::new(),
+            tmp_input_file: PathBuf::new(),
+            tmp_output_file: PathBuf::new(),
+            output_file: PathBuf::new(),
+            line_end_chars: "".to_string(),
+        };
+        if result.options.analyze_only {
+            result.options.verbose = true;
+        }
+        if result.options.verbose {
+            println!("{}", result.options);
+        }
+        result
+    }
+}
+
+
 use super::{CGData, configuration::OutputMode, analysis::AnaState, error::{CGResult, CGError}};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
