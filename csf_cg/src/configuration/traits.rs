@@ -4,7 +4,7 @@ use super::{InputOptions, MergeOptions, OutputOptions, PurgeOptions};
 
 pub trait CliCommon {
     fn verbose(&self) -> bool;
-    fn manifest_command(&self) -> cargo_metadata::MetadataCommand;
+    fn manifest_metadata_command(&self) -> cargo_metadata::MetadataCommand;
 }
 
 pub trait CliInput: CliCommon {

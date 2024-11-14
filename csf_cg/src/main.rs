@@ -5,15 +5,12 @@
 /// Does not support workspace crates.
 /// cargo-cg-fusion acts as a cargo extension, as the name already suggests. It provides
 /// three additional modes for fine control of fusion process: analyze, merge, and purge.
-use anyhow::Context;
-
-use cargo_cg_fusion::configuration::{CargoCli, CliCommon};
-use cargo_cg_fusion::error::CGResult;
+use cargo_cg_fusion::{configuration::CargoCli, error::CgResult, CgDataBuilder, CgMode};
 use clap::Parser;
 
 fn main() {
     let options = CargoCli::parse();
-    let delete_tmp_file = options.keep_tmp_files();
+    let delete_tmp_file = options.delete_tmp_files();
     if let Err(err) = run(options) {
         if let Some(true) = delete_tmp_file {
             // ToDo: check for tmp file(s), which have a valid uuid as filename and delete it.
@@ -22,21 +19,21 @@ fn main() {
     }
 }
 
-fn run(options: CargoCli) -> CGResult<()> {
-    if let CargoCli::CgFusion(fusion_cli) = options {
-        fusion_cli.verbose();
-        let metadata = fusion_cli
-            .manifest_command()
-            .exec()
-            .context("Test of cargo metadata")?;
-
-        println!("{:?}", metadata.root_package());
+fn run(options: CargoCli) -> CgResult<()> {
+    match CgDataBuilder::new()
+        .set_options(options)
+        .set_command()
+        .build()?
+    {
+        CgMode::Fusion(fusion) => (),
+        CgMode::Analyze(_analyze) => (),
+        CgMode::Merge(_merge) => (),
+        CgMode::Purge(_purge) => (),
     }
     //let _data = options.initialize_cg_data();
     //data.prepare_cg_data()?;
     //data.create_output()?;
     //data.filter_unused_code()?;
     //data.cleanup_cg_data()?;
-
     Ok(())
 }

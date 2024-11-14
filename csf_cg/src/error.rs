@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub type CGResult<T> = Result<T, CGError>;
+pub type CgResult<T> = Result<T, CgError>;
 
 pub fn error_chain_fmt(
     e: &impl std::error::Error,
@@ -18,7 +18,7 @@ pub fn error_chain_fmt(
 }
 
 #[derive(thiserror::Error)]
-pub enum CGError {
+pub enum CgError {
     #[error("Not existing input file '{}' or filename is not ./src/main.rs .", .0.display())]
     MustProvideValidInputFilePath(PathBuf),
     #[error("Invalid output file name '{0}': file does not exist or is identical to input or does not end on '.rs'.")]
@@ -39,7 +39,7 @@ pub enum CGError {
     UnexpectedError(#[from] anyhow::Error),
 }
 
-impl std::fmt::Debug for CGError {
+impl std::fmt::Debug for CgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         error_chain_fmt(self, f)
     }

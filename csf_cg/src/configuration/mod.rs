@@ -10,6 +10,7 @@ mod purge;
 mod traits;
 
 pub use analyze::AnalyzeCli;
+use cargo_metadata::MetadataCommand;
 pub use common::CommonOptions;
 pub use fusion::FusionCli;
 pub use input::{InputOptions, Mode};
@@ -35,12 +36,21 @@ pub enum CargoCli {
 }
 
 impl CargoCli {
-    pub fn keep_tmp_files(&self) -> Option<bool> {
+    pub fn delete_tmp_files(&self) -> Option<bool> {
         match self {
-            CargoCli::CgFusion(fusion_cli) => Some(fusion_cli.output().keep_tmp_file),
+            CargoCli::CgFusion(fusion_cli) => Some(!fusion_cli.output().keep_tmp_file),
             CargoCli::CgAnalyze(_) => None,
-            CargoCli::CgMerge(merge_cli) => Some(merge_cli.output().keep_tmp_file),
-            CargoCli::CgPurge(purge_cli) => Some(purge_cli.output().keep_tmp_file),
+            CargoCli::CgMerge(merge_cli) => Some(!merge_cli.output().keep_tmp_file),
+            CargoCli::CgPurge(purge_cli) => Some(!purge_cli.output().keep_tmp_file),
+        }
+    }
+
+    pub fn metadata_command(&self) -> MetadataCommand {
+        match self {
+            CargoCli::CgFusion(fusion_cli) => fusion_cli.manifest_metadata_command(),
+            CargoCli::CgAnalyze(analyze_cli) => analyze_cli.manifest_metadata_command(),
+            CargoCli::CgMerge(merge_cli) => merge_cli.manifest_metadata_command(),
+            CargoCli::CgPurge(purge_cli) => purge_cli.manifest_metadata_command(),
         }
     }
 }

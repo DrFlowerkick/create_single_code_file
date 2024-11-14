@@ -7,20 +7,96 @@ pub mod file_generation;
 pub mod preparation;
 pub mod solve_cargo_check;
 
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
-use std::path::PathBuf;
-use std::{io, io::Write};
-use toml::Value;
-use uuid::Uuid;
+use anyhow::Context;
 
-use configuration::FusionCli;
-use error::{CGError, CGResult};
+use configuration::{AnalyzeCli, CargoCli, FusionCli, MergeCli, PurgeCli};
+use error::{CgError, CgResult};
+use preparation::PrepState;
 
-pub struct CGData<S> {
-    state_data: S,
-    options: FusionCli,
+pub enum CgMode {
+    Fusion(CgData<FusionCli, PrepState>),
+    Analyze(CgData<AnalyzeCli, PrepState>),
+    Merge(CgData<MergeCli, PrepState>),
+    Purge(CgData<PurgeCli, PrepState>),
+}
+
+pub struct NoOptions;
+pub struct NoCommand;
+
+pub struct CgDataBuilder<O, M> {
+    options: O,
+    metadata_command: M,
+}
+
+impl Default for CgDataBuilder<NoOptions, NoCommand> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CgDataBuilder<NoOptions, NoCommand> {
+    pub fn new() -> Self {
+        Self {
+            options: NoOptions,
+            metadata_command: NoCommand,
+        }
+    }
+}
+
+impl CgDataBuilder<NoOptions, NoCommand> {
+    pub fn set_options(self, options: CargoCli) -> CgDataBuilder<CargoCli, NoCommand> {
+        CgDataBuilder {
+            options,
+            metadata_command: NoCommand,
+        }
+    }
+}
+
+impl CgDataBuilder<CargoCli, NoCommand> {
+    pub fn set_command(self) -> CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
+        CgDataBuilder {
+            metadata_command: self.options.metadata_command(),
+            options: self.options,
+        }
+    }
+}
+
+impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
+    pub fn build(self) -> CgResult<CgMode> {
+        let metadata = self
+            .metadata_command
+            .exec()
+            .context("Failed to extract Metadata.")?;
+        match self.options {
+            CargoCli::CgFusion(fusion_cli) => Ok(CgMode::Fusion(CgData {
+                state: PrepState,
+                options: fusion_cli,
+                metadata,
+            })),
+            CargoCli::CgAnalyze(analyze_cli) => Ok(CgMode::Analyze(CgData {
+                state: PrepState,
+                options: analyze_cli,
+                metadata,
+            })),
+            CargoCli::CgMerge(merge_cli) => Ok(CgMode::Merge(CgData {
+                state: PrepState,
+                options: merge_cli,
+                metadata,
+            })),
+            CargoCli::CgPurge(purge_cli) => Ok(CgMode::Purge(CgData {
+                state: PrepState,
+                options: purge_cli,
+                metadata,
+            })),
+        }
+    }
+}
+
+pub struct CgData<O, S> {
+    state: S,
+    options: O,
+    metadata: cargo_metadata::Metadata,
+    /*
     crate_dir: PathBuf,
     crate_name: String,
     local_modules: BTreeMap<String, PathBuf>,
@@ -31,21 +107,31 @@ pub struct CGData<S> {
     tmp_output_file: PathBuf,
     output_file: PathBuf,
     line_end_chars: String,
+    */
 }
 
 /*
-impl CGData {
-    fn load_output(&self, output: &mut String) -> CGResult<()> {
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::{io, io::Write};
+use toml::Value;
+use uuid::Uuid;
+
+impl CgData {
+    fn load_output(&self, output: &mut String) -> CgResult<()> {
         *output = fs::read_to_string(self.tmp_output_file.as_path())?;
         Ok(())
     }
-    fn save_output(&self, output: &String) -> CGResult<()> {
+    fn save_output(&self, output: &String) -> CgResult<()> {
         let mut file = fs::File::create(self.tmp_output_file.as_path())?;
         file.write_all(output.as_bytes())?;
         file.flush()?;
         Ok(())
     }
-    pub fn cleanup_cg_data(&self) -> CGResult<String> {
+    pub fn cleanup_cg_data(&self) -> CgResult<String> {
         let output = if self.options.simulate {
             "".into()
         } else if self.options.output.is_none() {
@@ -97,7 +183,7 @@ mod tests {
             keep_empty_lines: false,
         };
         // prepare output
-        let mut data = CGData::new(options);
+        let mut data = CgData::new(options);
         data.prepare_cg_data().unwrap();
         data.create_output().unwrap();
         data.filter_unused_code().unwrap();
@@ -168,7 +254,7 @@ mod tests {
         };
 
         // prepare output
-        let mut data = CGData::new(options);
+        let mut data = CgData::new(options);
         data.prepare_cg_data().unwrap();
         data.create_output().unwrap();
         data.filter_unused_code().unwrap();
@@ -205,7 +291,7 @@ mod tests {
         };
 
         // prepare output
-        let mut data = CGData::new(options);
+        let mut data = CgData::new(options);
         data.prepare_cg_data().unwrap();
         data.create_output().unwrap();
 

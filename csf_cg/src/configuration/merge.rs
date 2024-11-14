@@ -69,7 +69,7 @@ impl CliCommon for MergeCli {
     fn verbose(&self) -> bool {
         self.common_cli.verbose
     }
-    fn manifest_command(&self) -> cargo_metadata::MetadataCommand {
+    fn manifest_metadata_command(&self) -> cargo_metadata::MetadataCommand {
         self.common_cli.manifest.metadata()
     }
 }

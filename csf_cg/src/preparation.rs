@@ -1,19 +1,17 @@
 // preparation of working environment
 
-use crate::{CGData, FusionCli};
+// state for preparation
+pub struct PrepState;
 
+/*
+
+use crate::{CgData, FusionCli};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-/*
-// state for preparation
-pub struct PrepState {
-    analyze_only: bool
-}
-
 impl FusionCli {
-    pub fn initialize_cg_data(self) -> CGData<PrepState> {
-        let mut result: CGData<PrepState> = CGData {
+    pub fn initialize_cg_data(self) -> CgData<PrepState> {
+        let mut result: CgData<PrepState> = CgData {
             state_data: PrepState {
                 analyze_only: self.analyze_only,
             },
@@ -40,7 +38,7 @@ impl FusionCli {
 }
 
 
-use super::{CGData, configuration::OutputMode, analysis::AnaState, error::{CGResult, CGError}};
+use super::{CgData, configuration::OutputMode, analysis::AnaState, error::{CGResult, CGError}};
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 use anyhow::Context;
@@ -90,10 +88,10 @@ fn relative_path_of_input(input: &Path) -> PathBuf {
     rel_input_file_path
 }
 
-/// Implement CGData for PrepState
+/// Implement CgData for PrepState
 
-impl CGData<PrepState> {
-    pub fn prepare_working_environment(&mut self) -> CGResult<CGData<AnaState>> {
+impl CgData<PrepState> {
+    pub fn prepare_working_environment(&mut self) -> CGResult<CgData<AnaState>> {
         if self.options.verbose {
             println!("reading path of lib from toml file...");
         }

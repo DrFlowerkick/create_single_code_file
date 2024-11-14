@@ -4,7 +4,7 @@ use clap::{Args, ValueEnum};
 use std::fmt::{self, Display};
 use std::str::FromStr;
 
-use crate::CGError;
+use crate::CgError;
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "kebab-case")]
@@ -24,12 +24,12 @@ pub enum Mode {
 }
 
 impl FromStr for Mode {
-    type Err = CGError;
+    type Err = CgError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "merge" => Ok(Self::Merge),
             "update" => Ok(Self::Update),
-            _ => Err(CGError::NotAcceptedOutputMode),
+            _ => Err(CgError::NotAcceptedOutputMode),
         }
     }
 }
