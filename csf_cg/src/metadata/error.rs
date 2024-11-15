@@ -15,6 +15,17 @@ pub enum MetadataError {
     BinaryNotFound(String),
     #[error("Error executing 'cargo check' command.")]
     CargoCheckError(#[from] std::io::Error),
+    #[error("Codingame does not support '{0}'.")]
+    CodingameUnsupportedDependencyOfChallenge(String),
+    #[error("Codingame does not support '{0}', use '--force' to ignore.")]
+    CodingameUnsupportedDependencyOfLocalLibrary(String),
+    #[error(
+        "Dependency of local library '{0}' is not in dependencies of challenge, \
+         use '--force' to ignore or add '{0}' as dependency to challenge."
+    )]
+    DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
 }
 
 impl std::fmt::Debug for MetadataError {

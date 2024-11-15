@@ -16,16 +16,6 @@ pub struct OutputOptions {
     )]
     pub filename: Option<String>,
 
-    /// Force overwriting existing output file. Force although fusion of challenge src files
-    /// in case of missing dependencies from crate.io of a local library crate in challenge
-    /// crate manifest.
-    #[arg(
-        short,
-        long,
-        help = "Force fusion and overwriting existing output file."
-    )]
-    pub force: bool,
-
     /// In debug mode temporary files are used for initial merged output file and for each
     /// purge cycle. Analyze these files if you get unexpected results. If no error occurs,
     /// these temporary files will be deleted.
@@ -45,7 +35,7 @@ pub struct OutputOptions {
 impl Display for OutputOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "filename: {:?}", self.filename)?;
-        writeln!(f, "force: {}", self.force)?;
+        writeln!(f, "debug: {}", self.debug)?;
         writeln!(f, "keep-tmp-file: {}", self.keep_tmp_file)
     }
 }

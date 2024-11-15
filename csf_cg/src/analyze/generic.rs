@@ -126,7 +126,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         let input = self.get_input_path()?;
 
         let mut src_files = self.get_challenge_src_files(&input)?;
-
+        let local_libraries = self.analyze_dependencies_of_package()?;
         Ok(src_files)
     }
 }

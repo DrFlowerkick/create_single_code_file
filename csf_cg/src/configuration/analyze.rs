@@ -35,6 +35,9 @@ impl CliCommon for AnalyzeCli {
     fn manifest_metadata_command(&self) -> cargo_metadata::MetadataCommand {
         self.common_cli.manifest.metadata()
     }
+    fn force(&self) -> bool {
+        self.common_cli.force
+    }
 }
 
 impl CliInput for AnalyzeCli {
