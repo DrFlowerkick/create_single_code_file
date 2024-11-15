@@ -18,8 +18,9 @@ pub enum Mode {
     Merge,
 
     /// Updates existing output file with configured components. Falls back to 'merge' if no file exists.
-    #[value(help = "Updates existing output file with configured components. \
-                Falls back to 'merge' if no file exists.")]
+    #[value(
+        help = "Updates existing output file with configured components. Falls back to 'merge' if no file exists."
+    )]
     Update,
 }
 

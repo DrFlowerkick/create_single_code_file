@@ -52,10 +52,9 @@ impl Display for PurgeOptions {
                   execution and in-depth analysis of purge results use debug mode, \
                   set 'max-purge-cycles' to 1, keep the temporary files, and run cg-purge as often \
                   as is required to finalize the purge process indicated by a 'purge finished' message. \
-                  This will result in one temporary file per cycle starting with '001' as extension and \
-                  counting up ('000' is reserved for original merged output file). In case of an error, \
-                  the last file processed by cg-purge will have an 'rs' extension. Otherwise the \
-                  last temporary file will be copied to configured output file."
+                  This will result in one temporary file per cycle starting with '001.rs' as extension and \
+                  counting up ('000.rs' is reserved for original merged output file). If there is nothing \
+                  left to purge, the last temporary file will be copied to configured output file."
 )]
 pub struct PurgeCli {
     #[command(flatten)]

@@ -42,3 +42,9 @@ impl CliInput for AnalyzeCli {
         &self.input_cli
     }
 }
+
+impl AnalyzeCli {
+    pub fn force_verbose(&mut self) {
+        self.common_cli.verbose = true;
+    }
+}

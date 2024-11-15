@@ -25,9 +25,15 @@ fn run(options: CargoCli) -> CgResult<()> {
         .set_command()
         .build()?
     {
-        CgMode::Fusion(fusion) => (),
-        CgMode::Analyze(_analyze) => (),
-        CgMode::Merge(_merge) => (),
+        CgMode::Fusion(fusion) => {
+            fusion.analyze()?;
+        }
+        CgMode::Analyze(analyze) => {
+            analyze.analyze()?;
+        }
+        CgMode::Merge(merge) => {
+            merge.analyze()?;
+        }
         CgMode::Purge(_purge) => (),
     }
     //let _data = options.initialize_cg_data();

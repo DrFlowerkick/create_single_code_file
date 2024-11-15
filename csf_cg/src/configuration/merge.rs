@@ -36,11 +36,10 @@ impl Display for MergeOptions {
                   Blocked indirect dependencies are of course not merged in. By default, all \
                   comments and empty lines are removed from merged output file.\n\n\
                   In debug mode cg-merge creates a temporary file as merge target. The filename \
-                  is a uuid, with extension of '000' or 'rs' in case of abortion as a result of \
-                  an error. Normally the temporary file will be deleted. But if you want to \
-                  execute the fusion process step-by-step by running first cg-merge followed by \
-                  cg-purge, you should keep the temporary files for analysis in case of unexpected \
-                  results."
+                  is a uuid, with extension of '000.rs'. Normally the temporary file will be \
+                  deleted. But if you want to execute the fusion process step-by-step by running \
+                  first cg-merge followed by cg-purge, you should keep the temporary files for \
+                  analysis in case of unexpected results."
 )]
 pub struct MergeCli {
     #[command(flatten)]

@@ -1,23 +1,25 @@
 // central library
 
-pub mod analysis;
+pub mod analyze;
 pub mod configuration;
 pub mod error;
 pub mod file_generation;
+pub mod merge;
+pub mod metadata;
 pub mod preparation;
 pub mod solve_cargo_check;
+pub mod utilities;
 
-use anyhow::Context;
-
+use analyze::AnalyzeState;
 use configuration::{AnalyzeCli, CargoCli, FusionCli, MergeCli, PurgeCli};
 use error::{CgError, CgResult};
-use preparation::PrepState;
+use metadata::MetadataError;
 
 pub enum CgMode {
-    Fusion(CgData<FusionCli, PrepState>),
-    Analyze(CgData<AnalyzeCli, PrepState>),
-    Merge(CgData<MergeCli, PrepState>),
-    Purge(CgData<PurgeCli, PrepState>),
+    Fusion(CgData<FusionCli, AnalyzeState>),
+    Analyze(CgData<AnalyzeCli, AnalyzeState>),
+    Merge(CgData<MergeCli, AnalyzeState>),
+    Purge(CgData<PurgeCli, AnalyzeState>),
 }
 
 pub struct NoOptions;
@@ -63,28 +65,25 @@ impl CgDataBuilder<CargoCli, NoCommand> {
 
 impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
     pub fn build(self) -> CgResult<CgMode> {
-        let metadata = self
-            .metadata_command
-            .exec()
-            .context("Failed to extract Metadata.")?;
+        let metadata = self.metadata_command.exec().map_err(MetadataError::from)?;
         match self.options {
             CargoCli::CgFusion(fusion_cli) => Ok(CgMode::Fusion(CgData {
-                state: PrepState,
+                state: AnalyzeState,
                 options: fusion_cli,
                 metadata,
             })),
             CargoCli::CgAnalyze(analyze_cli) => Ok(CgMode::Analyze(CgData {
-                state: PrepState,
+                state: AnalyzeState,
                 options: analyze_cli,
                 metadata,
             })),
             CargoCli::CgMerge(merge_cli) => Ok(CgMode::Merge(CgData {
-                state: PrepState,
+                state: AnalyzeState,
                 options: merge_cli,
                 metadata,
             })),
             CargoCli::CgPurge(purge_cli) => Ok(CgMode::Purge(CgData {
-                state: PrepState,
+                state: AnalyzeState,
                 options: purge_cli,
                 metadata,
             })),

@@ -1,5 +1,7 @@
 // error and result definitions
 
+use crate::{analyze::AnalyzeError, metadata::MetadataError};
+
 use std::path::PathBuf;
 
 pub type CgResult<T> = Result<T, CgError>;
@@ -19,6 +21,11 @@ pub fn error_chain_fmt(
 
 #[derive(thiserror::Error)]
 pub enum CgError {
+    #[error("Something went wrong during Analysis.")]
+    AnalyzeError(#[from] AnalyzeError),
+    #[error("Something went wrong with using Metadata of challenge crate.")]
+    MetadataError(#[from] MetadataError),
+
     #[error("Not existing input file '{}' or filename is not ./src/main.rs .", .0.display())]
     MustProvideValidInputFilePath(PathBuf),
     #[error("Invalid output file name '{0}': file does not exist or is identical to input or does not end on '.rs'.")]
