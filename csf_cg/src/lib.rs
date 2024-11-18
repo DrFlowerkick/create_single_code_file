@@ -1,6 +1,7 @@
 // central library
 
 pub mod analyze;
+pub mod challenge_tree;
 pub mod configuration;
 pub mod error;
 pub mod file_generation;
@@ -11,9 +12,12 @@ pub mod solve_cargo_check;
 pub mod utilities;
 
 use analyze::AnalyzeState;
+use challenge_tree::{EdgeType, LocalPackage, NodeTyp};
 use configuration::{AnalyzeCli, CargoCli, FusionCli, MergeCli, PurgeCli};
 use error::{CgError, CgResult};
 use metadata::MetadataError;
+
+use petgraph::{graph::Graph, Directed};
 
 pub enum CgMode {
     Fusion(CgData<FusionCli, AnalyzeState>),
@@ -66,26 +70,31 @@ impl CgDataBuilder<CargoCli, NoCommand> {
 impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
     pub fn build(self) -> CgResult<CgMode> {
         let metadata = self.metadata_command.exec().map_err(MetadataError::from)?;
+        // initialize root node with challenge metadata
+        let root_node_value = NodeTyp::LocalPackage(LocalPackage::try_from(metadata)?);
+        let mut tree: Graph<NodeTyp, EdgeType, Directed> = Graph::new();
+        // root node should have index 0
+        assert_eq!(tree.add_node(root_node_value), 0.into());
         match self.options {
             CargoCli::CgFusion(fusion_cli) => Ok(CgMode::Fusion(CgData {
                 state: AnalyzeState,
                 options: fusion_cli,
-                metadata,
+                tree,
             })),
             CargoCli::CgAnalyze(analyze_cli) => Ok(CgMode::Analyze(CgData {
                 state: AnalyzeState,
                 options: analyze_cli,
-                metadata,
+                tree,
             })),
             CargoCli::CgMerge(merge_cli) => Ok(CgMode::Merge(CgData {
                 state: AnalyzeState,
                 options: merge_cli,
-                metadata,
+                tree,
             })),
             CargoCli::CgPurge(purge_cli) => Ok(CgMode::Purge(CgData {
                 state: AnalyzeState,
                 options: purge_cli,
-                metadata,
+                tree,
             })),
         }
     }
@@ -94,7 +103,7 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
 pub struct CgData<O, S> {
     state: S,
     options: O,
-    metadata: cargo_metadata::Metadata,
+    tree: Graph<NodeTyp, EdgeType, Directed>,
     /*
     crate_dir: PathBuf,
     crate_name: String,

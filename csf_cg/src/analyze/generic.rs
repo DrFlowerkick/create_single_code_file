@@ -6,6 +6,7 @@ use crate::{add_context, configuration::CliInput, error::CgResult, CgData};
 
 use anyhow::{anyhow, Context};
 use cargo_metadata::{camino::Utf8PathBuf, Message};
+use quote::quote;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -19,7 +20,10 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         let bin_name = self.input_binary_name()?;
 
         // run 'cargo check' on bin_name to make sure, that input is ready to be processed
-        let output = self.run_cargo_check_for_binary_of_root_package(bin_name)?;
+        let output = self
+            .challenge_package()
+            .metadata
+            .run_cargo_check_for_binary_of_root_package(bin_name)?;
         // collect any remaining messages
         let mut check_messages = String::new();
         for message in Message::parse_stream(&output.stdout[..]) {
@@ -50,7 +54,10 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         }
 
         // get bin path from metadata
-        let input = self.get_binary_path_of_root_package(bin_name)?;
+        let input = self
+            .challenge_package()
+            .metadata
+            .get_binary_path_of_root_package(bin_name)?;
 
         if self.options.verbose() {
             println!("input src file: {}", input);
@@ -67,7 +74,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         if self.options.verbose() {
             println!(
                 "collecting modules of bin_crate '{}'...",
-                self.package_name()?
+                self.challenge_package().name
             );
         }
         // init challenge src file collection
@@ -91,7 +98,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         // parse main.rs input file for crate lib.rs (use package_name::*;)
         // create visitor from source code
         let visitor = SrcVisitor::new(&input)?;
-        let package_name = self.package_name()?;
+        let package_name = self.challenge_package().name.to_owned();
         // check for use of package_name
         if visitor.uses.iter().any(|v| match &v.tree {
             UseTree::Path(use_path) => use_path.ident == package_name,
@@ -101,21 +108,21 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             if self.options.verbose() {
                 println!(
                     "collecting modules of lib_crate '{}'...",
-                    self.package_name()?
+                    self.challenge_package().name
                 );
             }
             // set path to lib.rs
-            let lib_rs = self.package_src_dir()?.join("lib.rs");
+            let lib_rs = self.challenge_package().path.join("lib.rs");
             // add lib.rs to challenge_src_files
             if self.options.verbose() {
                 println!(
                     "found module '{}', adding {} to challenge src file list...",
-                    self.package_name()?,
+                    self.challenge_package().name,
                     lib_rs,
                 );
             }
             // parse modules of lib_crate
-            challenge_src_files.insert(self.package_name()?.to_owned(), lib_rs.clone());
+            challenge_src_files.insert(self.challenge_package().name.to_owned(), lib_rs.clone());
             parse_mod_from_src_file(lib_rs, "lib_crate".into(), &mut challenge_src_files, true)?;
         }
         // return challenge_src_files
@@ -127,15 +134,88 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 
         let mut src_files = self.get_challenge_src_files(&input)?;
         let local_libraries = self.analyze_dependencies_of_package()?;
+
+        let code = fs::read_to_string(&input)
+            .context(add_context!("Unexpected failure of reading src file."))?;
+        // Parse the source code into a syntax tree
+        let mut syntax: File = syn::parse_file(&code).context(add_context!(
+            "Unexpected failure of parsing src file content."
+        ))?;
+
+        let mut attr_visitor = AttrVisitor;
+        attr_visitor.visit_file(&syntax);
+
+        let mut attr_fold = AttrFoldRemoveDocComments;
+        syntax = attr_fold.fold_file(syntax);
+        let mut attr_fold = AttrFoldRemoveModTests;
+        syntax = attr_fold.fold_file(syntax);
+
+        let mut attr_visitor = AttrVisitor;
+        attr_visitor.visit_file(&syntax);
+
+        let reversed_syntax = quote!(#syntax).to_string();
+        std::fs::write("./src/bin/output.rs", reversed_syntax).unwrap();
+
         Ok(src_files)
     }
 }
 
 // analyze specific helper functions
+use proc_macro2::TokenStream;
+use std::fs;
+use syn::{fold::Fold, visit::Visit, Attribute, File, ItemMod, ItemUse, Meta, UseTree};
+struct AttrVisitor;
+
+impl<'ast> Visit<'ast> for AttrVisitor {
+    fn visit_attribute(&mut self, i: &'ast Attribute) {
+        if let Meta::NameValue(attr) = &i.meta {
+            if let Some(path) = attr.path.segments.last() {
+                if path.ident.to_string() == "doc" {
+                    println!("{:?}", attr.value);
+                }
+            }
+        }
+    }
+}
+
+struct AttrFoldRemoveDocComments;
+
+impl Fold for AttrFoldRemoveDocComments {
+    fn fold_attributes(&mut self, i: Vec<syn::Attribute>) -> Vec<syn::Attribute> {
+        let attributes: Vec<syn::Attribute> = i
+            .iter()
+            .filter(|i| match &i.meta {
+                Meta::NameValue(attr) => match attr.path.segments.last() {
+                    // filter all doc comments
+                    Some(path) => path.ident.to_string() != "doc",
+                    None => true,
+                },
+                _ => true,
+            })
+            .map(|a| a.to_owned())
+            .collect();
+        attributes
+    }
+}
+struct AttrFoldRemoveModTests;
+
+impl Fold for AttrFoldRemoveModTests {
+    fn fold_item(&mut self, i: syn::Item) -> syn::Item {
+        match &i {
+            syn::Item::Mod(mod_item) => {
+                // remove tests module by replacing it with empty TokenStream
+                if mod_item.ident.to_string() == "tests" {
+                    syn::Item::Verbatim(TokenStream::new())
+                } else {
+                    i
+                }
+            }
+            _ => i,
+        }
+    }
+}
 
 // Struct to visit source file and collect certain statements
-use std::fs;
-use syn::{visit::Visit, File, ItemMod, ItemUse, UseTree};
 struct SrcVisitor {
     uses: Vec<ItemUse>,
     mods: Vec<ItemMod>,
@@ -216,8 +296,6 @@ fn parse_mod_from_src_file(
         let mut module = item_mod.ident.to_string();
         // set module filename
         let mut path = current_mod_dir.join(module.clone() + ".rs");
-        // set module name space path
-        module = current_module.clone() + "::" + &module;
         // module is either 'module_name.rs' or 'module_name/mod.rs'
         if !path.is_file() {
             path.set_extension("");
@@ -226,6 +304,9 @@ fn parse_mod_from_src_file(
                 Err(anyhow!(add_context!("Unexpected module file path error.")))?;
             }
         }
+
+        // set module name space path
+        module = current_module.clone() + "::" + &module;
 
         if modules.insert(module.clone(), path.clone()).is_some() {
             // module already in collection

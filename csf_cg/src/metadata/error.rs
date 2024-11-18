@@ -3,6 +3,8 @@
 use crate::error::error_chain_fmt;
 use cargo_metadata::camino::Utf8PathBuf;
 
+pub type MetadataResult<T> = Result<T, MetadataError>;
+
 #[derive(thiserror::Error)]
 pub enum MetadataError {
     #[error("Failed to execute MetadataCommand.")]
