@@ -7,7 +7,6 @@
         "codingame",
         "itertools",
         "libc",
-        "petgraph",
         "seperated",
         "structopt",
         "thiserror"
