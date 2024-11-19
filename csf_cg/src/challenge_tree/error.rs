@@ -8,15 +8,8 @@ pub type TreeResult<T> = Result<T, ChallengeTreeError>;
 pub enum ChallengeTreeError {
     #[error("Something went wrong with using Metadata of challenge crate.")]
     MetadataError(#[from] MetadataError),
-    #[error("Codingame does not support '{0}'.")]
-    CodingameUnsupportedDependencyOfChallenge(String),
-    #[error("Codingame does not support '{0}', use '--force' to ignore.")]
-    CodingameUnsupportedDependencyOfLocalLibrary(String),
-    #[error(
-        "Dependency of local library '{0}' is not in dependencies of challenge, \
-         use '--force' to ignore or add '{0}' as dependency to challenge."
-    )]
-    DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(String),
+    #[error("Tree node does not contain a local package.")]
+    NotLocalPackage,
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

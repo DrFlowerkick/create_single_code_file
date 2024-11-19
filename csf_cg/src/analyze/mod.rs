@@ -25,7 +25,7 @@ impl CgData<AnalyzeCli, AnalyzeState> {
 
 // do analyze for merge mode
 impl CgData<MergeCli, AnalyzeState> {
-    pub fn analyze(self) -> CgResult<CgData<MergeCli, MergeState>> {
+    pub fn analyze(mut self) -> CgResult<CgData<MergeCli, MergeState>> {
         let _src_files = self.generic_analyze()?;
         Err(AnalyzeError::SomeAnalyzeError.into())
     }
@@ -33,7 +33,7 @@ impl CgData<MergeCli, AnalyzeState> {
 
 // do analyze for fusion mode
 impl CgData<FusionCli, AnalyzeState> {
-    pub fn analyze(self) -> CgResult<CgData<FusionCli, MergeState>> {
+    pub fn analyze(mut self) -> CgResult<CgData<FusionCli, MergeState>> {
         let _src_files = self.generic_analyze()?;
         Err(AnalyzeError::SomeAnalyzeError.into())
     }

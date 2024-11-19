@@ -27,7 +27,6 @@ pub enum CgError {
     MetadataError(#[from] MetadataError),
     #[error("Something went wrong with the Challenge Tree.")]
     ChallengeTreeError(#[from] ChallengeTreeError),
-
     #[error("Not existing input file '{}' or filename is not ./src/main.rs .", .0.display())]
     MustProvideValidInputFilePath(PathBuf),
     #[error("Invalid output file name '{0}': file does not exist or is identical to input or does not end on '.rs'.")]
@@ -42,8 +41,10 @@ pub enum CgError {
     TooManyClosingBrackets,
     #[error("Could not find enum name of never constructed variant.")]
     CouldNotFindEnumName,
-    #[error("Output mode accepts only 'Merge', 'Update', and 'Increment'.")]
+    #[error("Output mode accepts only 'merge' or 'update'.")]
     NotAcceptedOutputMode,
+    #[error("Platform mode accepts only 'codingame' or 'other'.")]
+    NotAcceptedPlatform,
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

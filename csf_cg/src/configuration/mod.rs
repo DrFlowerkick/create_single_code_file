@@ -13,7 +13,7 @@ pub use analyze::AnalyzeCli;
 use cargo_metadata::MetadataCommand;
 pub use common::CommonOptions;
 pub use fusion::FusionCli;
-pub use input::{InputOptions, Mode};
+pub use input::{ChallengePlatform, InputOptions, Mode};
 pub use merge::{MergeCli, MergeOptions};
 pub use output::OutputOptions;
 pub use purge::{PurgeCli, PurgeOptions};

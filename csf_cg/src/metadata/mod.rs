@@ -4,10 +4,31 @@ mod error;
 pub use error::{MetadataError, MetadataResult};
 
 use cargo_metadata::camino::Utf8PathBuf;
-use std::process::{Command, Output};
+use std::{
+    ops::Deref,
+    process::{Command, Output},
+};
 
 #[derive(Debug)]
 pub struct MetaWrapper(pub cargo_metadata::Metadata);
+
+// try from path of Cargo.toml file
+impl TryFrom<Utf8PathBuf> for MetaWrapper {
+    type Error = MetadataError;
+    fn try_from(value: Utf8PathBuf) -> Result<Self, Self::Error> {
+        let metadata = cargo_metadata::MetadataCommand::new()
+            .manifest_path(value)
+            .exec()?;
+        Ok(MetaWrapper(metadata))
+    }
+}
+
+impl Deref for MetaWrapper {
+    type Target = cargo_metadata::Metadata;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl MetaWrapper {
     pub fn root_package(&self) -> MetadataResult<&cargo_metadata::Package> {
