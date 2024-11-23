@@ -77,22 +77,22 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
         assert_eq!(tree.add_node(root_node_value), 0.into());
         match self.options {
             CargoCli::CgFusion(fusion_cli) => Ok(CgMode::Fusion(CgData {
-                state: AnalyzeState,
+                _state: AnalyzeState,
                 options: fusion_cli,
                 tree,
             })),
             CargoCli::CgAnalyze(analyze_cli) => Ok(CgMode::Analyze(CgData {
-                state: AnalyzeState,
+                _state: AnalyzeState,
                 options: analyze_cli,
                 tree,
             })),
             CargoCli::CgMerge(merge_cli) => Ok(CgMode::Merge(CgData {
-                state: AnalyzeState,
+                _state: AnalyzeState,
                 options: merge_cli,
                 tree,
             })),
             CargoCli::CgPurge(purge_cli) => Ok(CgMode::Purge(CgData {
-                state: AnalyzeState,
+                _state: AnalyzeState,
                 options: purge_cli,
                 tree,
             })),
@@ -101,7 +101,7 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
 }
 
 pub struct CgData<O, S> {
-    state: S,
+    _state: S,
     options: O,
     tree: Graph<NodeTyp, EdgeType, Directed>,
     /*

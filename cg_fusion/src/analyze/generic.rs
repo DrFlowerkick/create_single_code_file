@@ -4,22 +4,43 @@
 use super::{AnalyzeError, AnalyzeState};
 use crate::{
     add_context,
-    challenge_tree::{EdgeType, LocalPackage, NodeTyp},
-    configuration::CliInput,
+    challenge_tree::{EdgeType, LocalPackage, NodeTyp, BfsByEdgeType},
+    configuration::{ChallengePlatform, CliInput},
     error::CgResult,
     metadata::MetaWrapper,
+    utilities::CODINGAME_SUPPORTED_CRATES,
     CgData,
 };
 
 use anyhow::{anyhow, Context};
 use cargo_metadata::{camino::Utf8PathBuf, Message};
-use clap::builder::Str;
 use petgraph::graph::NodeIndex;
-use quote::quote;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
+    fn input_binary_name(&self) -> CgResult<&str> {
+        Ok(if self.options.input().input == "main" {
+            // if main, use crate name for bin name
+            self.challenge_package().name.as_str()
+        } else {
+            self.options.input().input.as_str()
+        })
+    }
+
+    fn iter_supported_crates(&self) -> Box<dyn Iterator<Item = &str> + '_> {
+        match self.options.input().platform {
+            ChallengePlatform::Codingame => Box::new(CODINGAME_SUPPORTED_CRATES.into_iter()),
+            ChallengePlatform::Other => Box::new(
+                self.options
+                    .input()
+                    .other_supported_crates
+                    .iter()
+                    .map(|c| c.as_str()),
+            ),
+        }
+    }
+
     fn get_input_path(&self) -> CgResult<Utf8PathBuf> {
         if self.options.verbose() {
             println!("Analyzing challenge code...");
@@ -138,13 +159,15 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         Ok(challenge_src_files)
     }
 
-    fn analyze_dependencies_of_package(&mut self) -> Result<(), AnalyzeError> {
+    fn analyze_challenge_dependencies(&mut self) -> Result<(), AnalyzeError> {
+        // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = self
             .challenge_package()
             .metadata
             .root_package()?
             .dependencies
             .to_owned();
+        // add all direct dependencies of challenge package to tree
         for dep in dependencies.iter() {
             if let Some(ref local_path) = dep.path {
                 let dep_toml = local_path.join("Cargo.toml");
@@ -157,9 +180,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     );
                 }
                 // add dependency to tree
-                let dep_index = self.tree.add_node(NodeTyp::LocalPackage(dependency));
-                self.tree
-                    .add_edge(0.into(), dep_index, EdgeType::Dependency);
+                self.add_local_package(dependency);
             } else {
                 let dep_name = dep.name.to_owned();
                 if self.iter_supported_crates().any(|c| c == dep_name.as_str()) {
@@ -167,10 +188,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     if self.options.verbose() {
                         println!("Found supported crate dependency '{}'", dep_name);
                     }
-                    let supported_crate_index =
-                        self.tree.add_node(NodeTyp::SupportedCrate(dep_name));
-                    self.tree
-                        .add_edge(0.into(), supported_crate_index, EdgeType::Dependency);
+                    self.add_external_supported_package(dep_name);
                 } else {
                     return Err(AnalyzeError::CodingameUnsupportedDependencyOfChallenge(
                         dep_name,
@@ -178,20 +196,21 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 }
             }
         }
-        // check local dependencies for further dependencies
-        let dependency_nodes: Vec<NodeIndex> =
-            self.iter_local_dependencies().map(|(n, _)| n).collect();
-        for dependency_node in dependency_nodes {
-            self.analyze_dependencies_of_local_dependency(dependency_node)?;
+        // check direct dependencies of challenge for further dependencies
+        let mut dependency_walker = BfsByEdgeType::new(&self.tree, 0.into(), EdgeType::Dependency);
+        // skip first element, which is challenge
+        dependency_walker.next(&self.tree);
+        while let Some(dependency_node) = dependency_walker.next(&self.tree) {
+            self.analyze_challenge_sub_dependencies(dependency_node)?;
         }
         Ok(())
     }
 
-    fn analyze_dependencies_of_local_dependency(
+    fn analyze_challenge_sub_dependencies(
         &mut self,
         node: NodeIndex,
     ) -> Result<(), AnalyzeError> {
-        // get dependencies of local dependency
+        // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = self
             .get_local_dependency_package(node)?
             .metadata
@@ -229,7 +248,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 self.tree
                     .add_edge(node, dependency_node, EdgeType::Dependency);
                 // recursive call for checking dependencies of dependency
-                self.analyze_dependencies_of_local_dependency(dependency_node)?;
+                self.analyze_challenge_sub_dependencies(dependency_node)?;
             } else {
                 let dep_name = dep.name.to_owned();
                 if !self.iter_supported_crates().any(|c| c == dep_name) && !self.options.force() {
@@ -251,17 +270,11 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 
     pub fn generic_analyze(&mut self) -> CgResult<BTreeMap<String, Utf8PathBuf>> {
         // add root package and dependencies to tree
-        self.analyze_dependencies_of_package()?;
-
-        let local_packages: Vec<&str> = self
-            .iter_local_packages()
-            .map(|(_, w)| w.name.as_str())
-            .collect();
-        println!("found local packages: {:?}", local_packages);
+        self.analyze_challenge_dependencies()?;
 
         let input = self.get_input_path()?;
 
-        let mut src_files = self.get_challenge_src_files(&input)?;
+        let src_files = self.get_challenge_src_files(&input)?;
 
         Ok(src_files)
     }
@@ -271,9 +284,9 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 use proc_macro2::TokenStream;
 use std::fs;
 use syn::{fold::Fold, visit::Visit, Attribute, File, ItemMod, ItemUse, Meta, UseTree};
-struct AttrVisitor;
+struct _AttrVisitor;
 
-impl<'ast> Visit<'ast> for AttrVisitor {
+impl<'ast> Visit<'ast> for _AttrVisitor {
     fn visit_attribute(&mut self, i: &'ast Attribute) {
         if let Meta::NameValue(attr) = &i.meta {
             if let Some(path) = attr.path.segments.last() {
@@ -285,9 +298,9 @@ impl<'ast> Visit<'ast> for AttrVisitor {
     }
 }
 
-struct AttrFoldRemoveDocComments;
+struct _AttrFoldRemoveDocComments;
 
-impl Fold for AttrFoldRemoveDocComments {
+impl Fold for _AttrFoldRemoveDocComments {
     fn fold_attributes(&mut self, i: Vec<syn::Attribute>) -> Vec<syn::Attribute> {
         let attributes: Vec<syn::Attribute> = i
             .iter()
@@ -304,9 +317,9 @@ impl Fold for AttrFoldRemoveDocComments {
         attributes
     }
 }
-struct AttrFoldRemoveModTests;
+struct _AttrFoldRemoveModTests;
 
-impl Fold for AttrFoldRemoveModTests {
+impl Fold for _AttrFoldRemoveModTests {
     fn fold_item(&mut self, i: syn::Item) -> syn::Item {
         match &i {
             syn::Item::Mod(mod_item) => {

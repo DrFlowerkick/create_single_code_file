@@ -1,5 +1,5 @@
 use super::*;
-use csf_cg_lib_test::my_map_two_dim::my_map_point::*;
+use cg_fusion_lib_test::my_map_two_dim::my_map_point::*;
 
 pub struct Action {
     pub cell: MapPoint<X, Y>,

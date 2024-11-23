@@ -5,6 +5,7 @@
         "canonicalize",
         "chrono",
         "codingame",
+        "fixedbitset",
         "itertools",
         "libc",
         "petgraph",

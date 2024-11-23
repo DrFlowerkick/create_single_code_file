@@ -10,7 +10,7 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct MetaWrapper(pub cargo_metadata::Metadata);
+pub struct MetaWrapper(cargo_metadata::Metadata);
 
 // try from path of Cargo.toml file
 impl TryFrom<Utf8PathBuf> for MetaWrapper {
@@ -31,6 +31,9 @@ impl Deref for MetaWrapper {
 }
 
 impl MetaWrapper {
+    pub fn new(metadata: cargo_metadata::Metadata) -> Self {
+        Self(metadata)
+    }
     pub fn root_package(&self) -> MetadataResult<&cargo_metadata::Package> {
         self.0
             .root_package()
@@ -41,8 +44,8 @@ impl MetaWrapper {
         Ok(self.root_package()?.name.as_str())
     }
 
-    pub fn package_manifest(&self) -> MetadataResult<Utf8PathBuf> {
-        Ok(self.root_package()?.manifest_path.to_owned())
+    pub fn package_manifest(&self) -> MetadataResult<&Utf8PathBuf> {
+        Ok(&self.root_package()?.manifest_path)
     }
 
     pub fn package_root_dir(&self) -> MetadataResult<Utf8PathBuf> {

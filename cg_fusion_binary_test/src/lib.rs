@@ -2,7 +2,7 @@
 pub mod action;
 
 use crate::action::*;
-use csf_cg_lib_test::my_map_two_dim::*;
+use cg_fusion_lib_test::my_map_two_dim::*;
 
 use std::fmt;
 
