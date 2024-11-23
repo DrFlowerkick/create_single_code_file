@@ -47,6 +47,3 @@ impl Go {
         self.board.set(action.cell, action.value);
     }
 }
-
-
-

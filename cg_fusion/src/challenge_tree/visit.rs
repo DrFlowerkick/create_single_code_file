@@ -72,6 +72,9 @@ impl<'a> Iterator for BfsByEdgeTypeIterator<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.walker.walker.stack.len(), Some(self.graph.node_count()))
+        (
+            self.walker.walker.stack.len(),
+            Some(self.graph.node_count()),
+        )
     }
 }

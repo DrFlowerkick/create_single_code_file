@@ -12,7 +12,7 @@ use petgraph::graph::NodeIndex;
 use std::cell::RefCell;
 use syn::File;
 
-use crate::{add_context, metadata::MetaWrapper, CgData};
+use crate::{add_context, configuration::CliInput, metadata::MetaWrapper, CgData};
 
 #[derive(Debug)]
 pub enum NodeTyp {
@@ -77,22 +77,8 @@ impl<O, S> CgData<O, S> {
         unreachable!("Challenge package is created at instantiation of CgDate and should always be at index 0.");
     }
 
-    pub fn add_local_package(&mut self, package: LocalPackage) -> NodeIndex {
-        let package_index = self.tree.add_node(NodeTyp::LocalPackage(package));
-        self.tree.add_edge(0.into(), package_index, EdgeType::Dependency);
-        package_index
-    }
-
-    pub fn add_external_supported_package(&mut self, package: String) -> NodeIndex {
-        let package_index = self.tree.add_node(NodeTyp::ExternalSupportedPackage(package));
-        self.tree.add_edge(0.into(), package_index, EdgeType::Dependency);
-        package_index
-    }
-
-    pub fn add_external_unsupported_package(&mut self, package: String) -> NodeIndex {
-        let package_index = self.tree.add_node(NodeTyp::ExternalUnsupportedPackage(package));
-        self.tree.add_edge(0.into(), package_index, EdgeType::Dependency);
-        package_index
+    pub fn link_to_package(&mut self, source: NodeIndex, target: NodeIndex) {
+        self.tree.add_edge(source, target, EdgeType::Dependency);
     }
 
     pub fn get_local_dependency_package(
@@ -110,44 +96,27 @@ impl<O, S> CgData<O, S> {
         }
     }
 
-    pub fn iter_dependencies_of_challenge(&self) -> impl Iterator<Item = (NodeIndex, &NodeTyp)> {
+    fn iter_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &NodeTyp)> {
+        // skip first element, which is root of tree and therefore not a dependency
         BfsByEdgeType::new(&self.tree, 0.into(), EdgeType::Dependency)
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .skip(1)
     }
 
-    pub fn iter_local_packages(&self) -> impl Iterator<Item = (NodeIndex, &LocalPackage)> {
-        BfsByEdgeType::new(&self.tree, 0.into(), EdgeType::Dependency)
-            .into_iter(&self.tree)
-            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .filter_map(|(n, w)| {
-                if let NodeTyp::LocalPackage(local_package) = w {
-                    Some((n, local_package))
-                } else {
-                    None
-                }
-            })
+    pub fn iter_accepted_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &str)> {
+        self.iter_dependencies().filter_map(|(n, w)| match w {
+            NodeTyp::LocalPackage(local_package) => Some((n, local_package.name.as_str())),
+            NodeTyp::ExternalSupportedPackage(name) => Some((n, name.as_str())),
+            _ => None,
+        })
     }
 
-    pub fn iter_local_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &LocalPackage)> {
-        // skip challenge package at index 0
-        self.iter_local_packages().skip(1)
-    }
-
-    pub fn iter_challenge_supported_crate_dependencies(
-        &self,
-    ) -> impl Iterator<Item = (NodeIndex, &str)> {
-        self.tree
-            .neighbors(0.into())
-            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .filter_map(|(n, w)| {
-                if let NodeTyp::ExternalSupportedPackage(supported_crate) = w {
-                    Some((n, supported_crate.as_str()))
-                } else {
-                    None
-                }
-            })
+    pub fn iter_unsupported_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &str)> {
+        self.iter_dependencies().filter_map(|(n, w)| match w {
+            NodeTyp::ExternalUnsupportedPackage(name) => Some((n, name.as_str())),
+            _ => None,
+        })
     }
 
     pub fn add_bin_crate(
@@ -155,6 +124,54 @@ impl<O, S> CgData<O, S> {
         package_name: &str,
         bin_name: &str,
     ) -> Result<bool, ChallengeTreeError> {
+        // ToDo: resume your work here
         Ok(false)
+    }
+}
+
+impl<O: CliInput, S> CgData<O, S> {
+    pub fn add_local_package(&mut self, source: NodeIndex, package: LocalPackage) -> NodeIndex {
+        if self.options.verbose() {
+            println!(
+                "Found local dependency '{}' at '{}'",
+                package.name, package.path
+            );
+        }
+        let package_index = self.tree.add_node(NodeTyp::LocalPackage(package));
+        self.tree
+            .add_edge(source, package_index, EdgeType::Dependency);
+        package_index
+    }
+
+    pub fn add_external_supported_package(
+        &mut self,
+        source: NodeIndex,
+        package: String,
+    ) -> NodeIndex {
+        if self.options.verbose() {
+            println!("Found external supported dependency '{}'", package);
+        }
+        let package_index = self
+            .tree
+            .add_node(NodeTyp::ExternalSupportedPackage(package));
+        self.tree
+            .add_edge(source, package_index, EdgeType::Dependency);
+        package_index
+    }
+
+    pub fn add_external_unsupported_package(
+        &mut self,
+        source: NodeIndex,
+        package: String,
+    ) -> NodeIndex {
+        if self.options.verbose() {
+            println!("Found external unsupported dependency '{}'", package);
+        }
+        let package_index = self
+            .tree
+            .add_node(NodeTyp::ExternalUnsupportedPackage(package));
+        self.tree
+            .add_edge(source, package_index, EdgeType::Dependency);
+        package_index
     }
 }

@@ -60,13 +60,13 @@ impl Compass {
     pub fn is_cardinal(&self) -> bool {
         match self {
             Compass::N | Compass::E | Compass::S | Compass::W => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn is_ordinal(&self) -> bool {
         match self {
             Compass::NE | Compass::SE | Compass::SW | Compass::NW => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn is_center(&self) -> bool {

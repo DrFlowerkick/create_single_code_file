@@ -13,9 +13,9 @@ use std::{
 pub struct MetaWrapper(cargo_metadata::Metadata);
 
 // try from path of Cargo.toml file
-impl TryFrom<Utf8PathBuf> for MetaWrapper {
+impl TryFrom<&Utf8PathBuf> for MetaWrapper {
     type Error = MetadataError;
-    fn try_from(value: Utf8PathBuf) -> Result<Self, Self::Error> {
+    fn try_from(value: &Utf8PathBuf) -> Result<Self, Self::Error> {
         let metadata = cargo_metadata::MetadataCommand::new()
             .manifest_path(value)
             .exec()?;
@@ -68,6 +68,15 @@ impl MetaWrapper {
             .find(|t| t.is_bin() && t.name == bin_name)
             .ok_or_else(|| MetadataError::BinaryNotFound(bin_name.to_owned()))?
             .src_path)
+    }
+
+    pub fn get_member_manifests_of_workspace(&self) -> Vec<(String, Utf8PathBuf)> {
+        self.0
+            .workspace_members
+            .iter()
+            .filter_map(|pid| self.0.packages.iter().find(|p| p.id == *pid))
+            .map(|p| (p.name.to_owned(), p.manifest_path.to_owned()))
+            .collect()
     }
 
     pub fn run_cargo_check_for_binary_of_root_package(

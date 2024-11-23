@@ -2,19 +2,10 @@
 // which fullfil the trait CliInput
 
 use super::{AnalyzeError, AnalyzeState};
-use crate::{
-    add_context,
-    challenge_tree::{EdgeType, LocalPackage, NodeTyp, BfsByEdgeType},
-    configuration::{ChallengePlatform, CliInput},
-    error::CgResult,
-    metadata::MetaWrapper,
-    utilities::CODINGAME_SUPPORTED_CRATES,
-    CgData,
-};
+use crate::{add_context, configuration::CliInput, error::CgResult, CgData};
 
 use anyhow::{anyhow, Context};
 use cargo_metadata::{camino::Utf8PathBuf, Message};
-use petgraph::graph::NodeIndex;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -26,19 +17,6 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         } else {
             self.options.input().input.as_str()
         })
-    }
-
-    fn iter_supported_crates(&self) -> Box<dyn Iterator<Item = &str> + '_> {
-        match self.options.input().platform {
-            ChallengePlatform::Codingame => Box::new(CODINGAME_SUPPORTED_CRATES.into_iter()),
-            ChallengePlatform::Other => Box::new(
-                self.options
-                    .input()
-                    .other_supported_crates
-                    .iter()
-                    .map(|c| c.as_str()),
-            ),
-        }
     }
 
     fn get_input_path(&self) -> CgResult<Utf8PathBuf> {
@@ -157,115 +135,6 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         }
         // return challenge_src_files
         Ok(challenge_src_files)
-    }
-
-    fn analyze_challenge_dependencies(&mut self) -> Result<(), AnalyzeError> {
-        // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
-        let dependencies = self
-            .challenge_package()
-            .metadata
-            .root_package()?
-            .dependencies
-            .to_owned();
-        // add all direct dependencies of challenge package to tree
-        for dep in dependencies.iter() {
-            if let Some(ref local_path) = dep.path {
-                let dep_toml = local_path.join("Cargo.toml");
-                let metadata = MetaWrapper::try_from(dep_toml)?;
-                let dependency = LocalPackage::try_from(metadata)?;
-                if self.options.verbose() {
-                    println!(
-                        "Found local dependency '{}' at '{}'",
-                        dependency.name, dependency.path
-                    );
-                }
-                // add dependency to tree
-                self.add_local_package(dependency);
-            } else {
-                let dep_name = dep.name.to_owned();
-                if self.iter_supported_crates().any(|c| c == dep_name.as_str()) {
-                    // found supported crate, add to tree
-                    if self.options.verbose() {
-                        println!("Found supported crate dependency '{}'", dep_name);
-                    }
-                    self.add_external_supported_package(dep_name);
-                } else {
-                    return Err(AnalyzeError::CodingameUnsupportedDependencyOfChallenge(
-                        dep_name,
-                    ));
-                }
-            }
-        }
-        // check direct dependencies of challenge for further dependencies
-        let mut dependency_walker = BfsByEdgeType::new(&self.tree, 0.into(), EdgeType::Dependency);
-        // skip first element, which is challenge
-        dependency_walker.next(&self.tree);
-        while let Some(dependency_node) = dependency_walker.next(&self.tree) {
-            self.analyze_challenge_sub_dependencies(dependency_node)?;
-        }
-        Ok(())
-    }
-
-    fn analyze_challenge_sub_dependencies(
-        &mut self,
-        node: NodeIndex,
-    ) -> Result<(), AnalyzeError> {
-        // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
-        let dependencies = self
-            .get_local_dependency_package(node)?
-            .metadata
-            .root_package()
-            .context(add_context!(
-                "Unexpected missing root_package of dependency"
-            ))?
-            .dependencies
-            .to_owned();
-        // check dependencies of local dependency
-        for dep in dependencies.iter() {
-            if let Some(ref local_path) = dep.path {
-                // if dependency is already in tree, get index of node or None.
-                let dependency_node = self
-                    .iter_local_dependencies()
-                    .find(|(_, w)| w.name == dep.name)
-                    .map(|(n, _)| n);
-                // if Some(n), dependency is already in tree, therefore return node index, otherwise create new node
-                // has to be done in two steps because of borrow checker
-                let dependency_node = match dependency_node {
-                    Some(n) => n,
-                    None => {
-                        let dep_toml = local_path.join("Cargo.toml");
-                        let metadata = MetaWrapper::try_from(dep_toml)?;
-                        let dependency = LocalPackage::try_from(metadata)?;
-                        if self.options.verbose() {
-                            println!(
-                                "Found local dependency '{}' at '{}'",
-                                dependency.name, dependency.path
-                            );
-                        }
-                        self.tree.add_node(NodeTyp::LocalPackage(dependency))
-                    }
-                };
-                self.tree
-                    .add_edge(node, dependency_node, EdgeType::Dependency);
-                // recursive call for checking dependencies of dependency
-                self.analyze_challenge_sub_dependencies(dependency_node)?;
-            } else {
-                let dep_name = dep.name.to_owned();
-                if !self.iter_supported_crates().any(|c| c == dep_name) && !self.options.force() {
-                    return Err(AnalyzeError::CodingameUnsupportedDependencyOfLocalLibrary(
-                        dep_name,
-                    ));
-                }
-                if !self
-                    .iter_challenge_supported_crate_dependencies()
-                    .any(|(_, c)| c == dep_name)
-                    && !self.options.force()
-                {
-                    return Err(AnalyzeError::DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(dep_name));
-                }
-            }
-        }
-        Ok(())
     }
 
     pub fn generic_analyze(&mut self) -> CgResult<BTreeMap<String, Utf8PathBuf>> {

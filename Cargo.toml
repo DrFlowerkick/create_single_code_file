@@ -1,5 +1,6 @@
 [workspace]
 members = ["cg_fusion", "cg_fusion_binary_test", "cg_fusion_lib_test"]
+resolver = "2"
 
 [workspace.metadata]
 description = "Create single rust code file for codingame nad similar challenge platforms."

@@ -1,16 +1,19 @@
 pub mod my_map_point;
 
-use super::my_array::*;
 use self::my_map_point::*;
+use super::my_array::*;
 use my_map_point::my_compass::*;
 
 // use MyMap2D if compilation time is suffice, because it is more efficient and has cleaner interface
 #[derive(Copy, Clone, PartialEq)]
-pub struct MyMap2D<T, const X: usize, const Y: usize, const N: usize> { // X: number of columns, Y: number of rows, N: number of elements in map: X * Y
-    items: [[T; X] ; Y], //outer array rows, inner array columns -> first index chooses row (y), second index chooses column (x)
+pub struct MyMap2D<T, const X: usize, const Y: usize, const N: usize> {
+    // X: number of columns, Y: number of rows, N: number of elements in map: X * Y
+    items: [[T; X]; Y], //outer array rows, inner array columns -> first index chooses row (y), second index chooses column (x)
 }
 
-impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> MyMap2D<T, X, Y, N> {
+impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize>
+    MyMap2D<T, X, Y, N>
+{
     pub fn new() -> Self {
         if X == 0 {
             panic!("line {}, minimum one column", line!());
@@ -18,7 +21,9 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
         if Y == 0 {
             panic!("line {}, minimum one row", line!());
         }
-        Self { items: [[T::default(); X] ; Y], }
+        Self {
+            items: [[T::default(); X]; Y],
+        }
     }
     pub fn init(init_element: T) -> Self {
         if X == 0 {
@@ -27,7 +32,9 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
         if Y == 0 {
             panic!("line {}, minimum one row", line!());
         }
-        Self { items: [[init_element; X] ; Y], }
+        Self {
+            items: [[init_element; X]; Y],
+        }
     }
     pub fn get(&self, coordinates: MapPoint<X, Y>) -> &T {
         &self.items[coordinates.y()][coordinates.x()]
@@ -39,7 +46,11 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
         self.items[coordinates.y()][coordinates.x()] = value;
         &self.items[coordinates.y()][coordinates.x()]
     }
-    pub fn is_cut_off_cell(&self, map_point: MapPoint<X, Y>, is_cell_free_fn: Box<dyn Fn(MapPoint<X, Y>, &T) -> bool>) -> bool {
+    pub fn is_cut_off_cell(
+        &self,
+        map_point: MapPoint<X, Y>,
+        is_cell_free_fn: Box<dyn Fn(MapPoint<X, Y>, &T) -> bool>,
+    ) -> bool {
         // use is_cell_free_fn as follows (use "_" for unused variables):
         // let is_cell_free_fn = Box::new(|current_point: MapPoint<X, Y>, current_cell_value: &T| current_point.use_it_somehow() || current_cell_value.use_it_somehow() );
         let (mut last_free, initial_orientation) = match map_point.map_position() {
@@ -50,10 +61,13 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
             Compass::Center => {
                 let nw = map_point.neighbor(Compass::NW).unwrap();
                 (is_cell_free_fn(nw, self.get(nw)), Compass::N)
-            },
+            }
         };
         let mut free_zones = 0;
-        for (is_free, is_side) in map_point.iter_neighbors(initial_orientation, true, false, true).map(|(p, o)| (is_cell_free_fn(p, self.get(p)), o.is_cardinal())) {
+        for (is_free, is_side) in map_point
+            .iter_neighbors(initial_orientation, true, false, true)
+            .map(|(p, o)| (is_cell_free_fn(p, self.get(p)), o.is_cardinal()))
+        {
             if !last_free {
                 if is_free && is_side {
                     // new free zones start always at a side of map_point, since movement over cornes is not allowed
@@ -71,16 +85,18 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
         free_zones > 1
     }
     pub fn iter(&self) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        self.items
-            .iter()
-            .enumerate()
-            .flat_map(|(y, row)| row.iter().enumerate().map(move |(x, column)| (MapPoint::<X, Y>::new(x, y), column)))
+        self.items.iter().enumerate().flat_map(|(y, row)| {
+            row.iter()
+                .enumerate()
+                .map(move |(x, column)| (MapPoint::<X, Y>::new(x, y), column))
+        })
     }
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (MapPoint<X, Y>, &mut T)> {
-        self.items
-            .iter_mut()
-            .enumerate()
-            .flat_map(|(y, row)| row.iter_mut().enumerate().map(move |(x, column)| (MapPoint::<X, Y>::new(x, y), column)))
+        self.items.iter_mut().enumerate().flat_map(|(y, row)| {
+            row.iter_mut()
+                .enumerate()
+                .map(move |(x, column)| (MapPoint::<X, Y>::new(x, y), column))
+        })
     }
     pub fn iter_row(&self, r: usize) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
         if r >= Y {
@@ -90,60 +106,110 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
             .iter()
             .enumerate()
             .filter(move |(y, _)| *y == r)
-            .flat_map(|(y, row)| row.iter().enumerate().map(move |(x, column)| (MapPoint::new(x, y), column)))
+            .flat_map(|(y, row)| {
+                row.iter()
+                    .enumerate()
+                    .map(move |(x, column)| (MapPoint::new(x, y), column))
+            })
     }
     pub fn iter_column(&self, c: usize) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
         if c >= X {
             panic!("line {}, column index is out of range", line!());
         }
-        self.items
-            .iter()
-            .enumerate()
-            .flat_map(move |(y, row)| row.iter().enumerate().filter(move |(x, _)| *x == c).map(move |(x, column)| (MapPoint::new(x, y), column)))
+        self.items.iter().enumerate().flat_map(move |(y, row)| {
+            row.iter()
+                .enumerate()
+                .filter(move |(x, _)| *x == c)
+                .map(move |(x, column)| (MapPoint::new(x, y), column))
+        })
     }
-    pub fn iter_neighbors(&self, center_point: MapPoint<X, Y>) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        center_point.iter_neighbors(Compass::N, true, false, false).map(move |(p, _)| (p, self.get(p)))
+    pub fn iter_neighbors(
+        &self,
+        center_point: MapPoint<X, Y>,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
+        center_point
+            .iter_neighbors(Compass::N, true, false, false)
+            .map(move |(p, _)| (p, self.get(p)))
     }
-    pub fn iter_neighbors_mut(&mut self, center_point: MapPoint<X, Y>) -> impl Iterator<Item = (MapPoint<X, Y>, &mut T)> {
-        center_point.iter_neighbors(Compass::N, true, false, false).map(move |(p, _)| unsafe { (p, &mut *(self.get_mut(p) as *mut _ )) } )
+    pub fn iter_neighbors_mut(
+        &mut self,
+        center_point: MapPoint<X, Y>,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, &mut T)> {
+        center_point
+            .iter_neighbors(Compass::N, true, false, false)
+            .map(move |(p, _)| unsafe { (p, &mut *(self.get_mut(p) as *mut _)) })
     }
-    pub fn iter_neighbors_with_center(&self, center_point: MapPoint<X, Y>) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        center_point.iter_neighbors(Compass::N, true, true, false).map(move |(p, _)| (p, self.get(p)))
+    pub fn iter_neighbors_with_center(
+        &self,
+        center_point: MapPoint<X, Y>,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
+        center_point
+            .iter_neighbors(Compass::N, true, true, false)
+            .map(move |(p, _)| (p, self.get(p)))
     }
-    pub fn iter_neighbors_with_corners(&self, center_point: MapPoint<X, Y>) -> impl Iterator<Item = (MapPoint<X, Y>, &T, bool)> {
-        center_point.iter_neighbors(Compass::N, true, false, true).map(move |(p, o)| (p, self.get(p), o.is_ordinal()))
+    pub fn iter_neighbors_with_corners(
+        &self,
+        center_point: MapPoint<X, Y>,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, &T, bool)> {
+        center_point
+            .iter_neighbors(Compass::N, true, false, true)
+            .map(move |(p, o)| (p, self.get(p), o.is_ordinal()))
     }
-    pub fn iter_neighbors_with_center_and_corners(&self, center_point: MapPoint<X, Y>) -> impl Iterator<Item = (MapPoint<X, Y>, &T, bool)> {
-        center_point.iter_neighbors(Compass::N, true, true, true).map(move |(p, o)| (p, self.get(p), o.is_ordinal()))
+    pub fn iter_neighbors_with_center_and_corners(
+        &self,
+        center_point: MapPoint<X, Y>,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, &T, bool)> {
+        center_point
+            .iter_neighbors(Compass::N, true, true, true)
+            .map(move |(p, o)| (p, self.get(p), o.is_ordinal()))
     }
-    pub fn iter_orientation(&self, start_point: MapPoint<X, Y>, orientation: Compass) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        start_point.iter_orientation(orientation).map(move |p| (p, self.get(p)))
+    pub fn iter_orientation(
+        &self,
+        start_point: MapPoint<X, Y>,
+        orientation: Compass,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
+        start_point
+            .iter_orientation(orientation)
+            .map(move |p| (p, self.get(p)))
     }
-    pub fn iter_diagonale_top_left(&self)  -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        MapPoint::<X, Y>::new(0, 0).iter_orientation(Compass::SE).map(move |p| (p, self.get(p)))
+    pub fn iter_diagonale_top_left(&self) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
+        MapPoint::<X, Y>::new(0, 0)
+            .iter_orientation(Compass::SE)
+            .map(move |p| (p, self.get(p)))
     }
-    pub fn iter_diagonale_top_right(&self)  -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        MapPoint::<X, Y>::new(X - 1, 0).iter_orientation(Compass::SW).map(move |p| (p, self.get(p)))
+    pub fn iter_diagonale_top_right(&self) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
+        MapPoint::<X, Y>::new(X - 1, 0)
+            .iter_orientation(Compass::SW)
+            .map(move |p| (p, self.get(p)))
     }
-    pub fn iter_diagonale_bottom_left(&self)  -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        MapPoint::<X, Y>::new(0, Y - 1).iter_orientation(Compass::NE).map(move |p| (p, self.get(p)))
+    pub fn iter_diagonale_bottom_left(&self) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
+        MapPoint::<X, Y>::new(0, Y - 1)
+            .iter_orientation(Compass::NE)
+            .map(move |p| (p, self.get(p)))
     }
-    pub fn iter_diagonale_bottom_right(&self)  -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
-        MapPoint::<X, Y>::new(X - 1, Y - 1).iter_orientation(Compass::NW).map(move |p| (p, self.get(p)))
+    pub fn iter_diagonale_bottom_right(&self) -> impl Iterator<Item = (MapPoint<X, Y>, &T)> {
+        MapPoint::<X, Y>::new(X - 1, Y - 1)
+            .iter_orientation(Compass::NW)
+            .map(move |p| (p, self.get(p)))
     }
-    pub fn iter_distance<'a>(&'a self, start_point: MapPoint<X, Y>, filter_fn: Box<dyn Fn(MapPoint<X, Y>, &T, usize) -> bool>) -> impl Iterator<Item = (MapPoint<X, Y>, &'a T, usize)> {
+    pub fn iter_distance<'a>(
+        &'a self,
+        start_point: MapPoint<X, Y>,
+        filter_fn: Box<dyn Fn(MapPoint<X, Y>, &T, usize) -> bool>,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, &'a T, usize)> {
         // use filter_fn as follows (use "_" for unused variables):
         // let filter_fn = Box::new(|point_of_next_cell: MapPoint<X, Y>, value_of_next_cell: &T, current_distance: usize| current_point.use_it_somehow() || current_cell_value.use_it_somehow() || current_distance.use_it_somehow());
         DistanceIter::new(self, start_point, filter_fn)
     }
 }
 
-impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> Default for MyMap2D<T, X, Y, N> {
+impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> Default
+    for MyMap2D<T, X, Y, N>
+{
     fn default() -> Self {
         Self::new()
     }
 }
-
 
 struct DistanceIter<'a, T, const X: usize, const Y: usize, const N: usize> {
     data_map: &'a MyMap2D<T, X, Y, N>,
@@ -152,8 +218,14 @@ struct DistanceIter<'a, T, const X: usize, const Y: usize, const N: usize> {
     index: usize,
 }
 
-impl<'a, T: Copy + Clone, const X: usize, const Y: usize, const N: usize> DistanceIter<'a, T, X, Y, N> {
-    fn new(data_map: &'a MyMap2D<T, X, Y, N>, start_point: MapPoint<X, Y>, filter_fn: Box<dyn Fn(MapPoint<X, Y>, &T, usize) -> bool>) -> Self {
+impl<'a, T: Copy + Clone, const X: usize, const Y: usize, const N: usize>
+    DistanceIter<'a, T, X, Y, N>
+{
+    fn new(
+        data_map: &'a MyMap2D<T, X, Y, N>,
+        start_point: MapPoint<X, Y>,
+        filter_fn: Box<dyn Fn(MapPoint<X, Y>, &T, usize) -> bool>,
+    ) -> Self {
         DistanceIter {
             data_map,
             filter_fn,
@@ -163,16 +235,21 @@ impl<'a, T: Copy + Clone, const X: usize, const Y: usize, const N: usize> Distan
     }
 }
 
-impl<'a, T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> Iterator for DistanceIter<'a, T, X, Y, N> {
+impl<'a, T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> Iterator
+    for DistanceIter<'a, T, X, Y, N>
+{
     type Item = (MapPoint<X, Y>, &'a T, usize);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index == self.next_cells.len() {
-            return None
+            return None;
         }
         let (map_point, distance) = *self.next_cells.get(self.index).unwrap();
         let mut local_next_cells: MyArray<(MapPoint<X, Y>, usize), 4> = MyArray::new();
-        for (next_cell, _) in self.data_map.iter_neighbors(map_point).filter(|(p, c)| self.next_cells.iter().find(|(n, _)| n == p).is_none() && (self.filter_fn)(*p, *c, distance)) {
+        for (next_cell, _) in self.data_map.iter_neighbors(map_point).filter(|(p, c)| {
+            self.next_cells.iter().find(|(n, _)| n == p).is_none()
+                && (self.filter_fn)(*p, *c, distance)
+        }) {
             local_next_cells.push((next_cell, distance + 1));
         }
         self.next_cells.append_slice(local_next_cells.as_slice());
@@ -183,7 +260,7 @@ impl<'a, T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usi
 
 #[cfg(test)]
 mod tests {
-    
+
     use super::*;
 
     #[test]
@@ -200,7 +277,7 @@ mod tests {
             *cut_off_map.get_mut(p) = game_map.is_cut_off_cell(p, is_cell_free_fn);
         }
         assert_eq!(cut_off_map.iter().filter(|(_, c)| **c == true).count(), 5);
-        
+
         game_map.set(MapPoint::<X, Y>::new(8, 2), false);
         for (p, _) in game_map.iter().filter(|(_, c)| **c) {
             let is_cell_free_fn = Box::new(|_: MapPoint<X, Y>, c: &bool| *c);

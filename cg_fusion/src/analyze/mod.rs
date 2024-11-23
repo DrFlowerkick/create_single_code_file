@@ -1,5 +1,6 @@
-// analysis of input file for crate and library dependencies
+// analysis of challenge for dependencies, modules, and use links
 
+mod dependencies;
 mod error;
 mod generic;
 pub use error::AnalyzeError;

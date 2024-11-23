@@ -1,7 +1,7 @@
 pub mod my_compass;
 
-use std::cmp::Ordering;
 use crate::my_map_two_dim::my_map_point::my_compass::*;
+use std::cmp::Ordering;
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]
 pub struct MapPoint<const X: usize, const Y: usize> {
@@ -20,7 +20,7 @@ impl<const X: usize, const Y: usize> MapPoint<X, Y> {
         if Y == 0 {
             panic!("line {}, minimum size of dimension Y is 1", line!());
         }
-        let result = MapPoint { x, y, };
+        let result = MapPoint { x, y };
         if !result.is_in_map() {
             panic!("line {}, coordinates are out of range", line!());
         }
@@ -167,10 +167,24 @@ impl<const X: usize, const Y: usize> MapPoint<X, Y> {
         }
     }
     pub fn orientation_of_neighbor(&self, neighbor: MapPoint<X, Y>) -> Option<Compass> {
-        self.iter_neighbors(Compass::N, true, false, true).find(|(p, _)| *p == neighbor).map_or(None, |(_, o)| Some(o))
+        self.iter_neighbors(Compass::N, true, false, true)
+            .find(|(p, _)| *p == neighbor)
+            .map_or(None, |(_, o)| Some(o))
     }
-    pub fn iter_neighbors(&self, initial_orientation: Compass, rotation_direction: bool, include_center: bool, include_corners: bool) -> impl Iterator<Item = (MapPoint<X, Y>, Compass)> {
-        NeighborIter::new(*self, initial_orientation, rotation_direction, include_center, include_corners)
+    pub fn iter_neighbors(
+        &self,
+        initial_orientation: Compass,
+        rotation_direction: bool,
+        include_center: bool,
+        include_corners: bool,
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, Compass)> {
+        NeighborIter::new(
+            *self,
+            initial_orientation,
+            rotation_direction,
+            include_center,
+            include_corners,
+        )
     }
     pub fn iter_orientation(&self, orientation: Compass) -> impl Iterator<Item = MapPoint<X, Y>> {
         OrientationIter::new(*self, orientation)
@@ -187,8 +201,14 @@ struct NeighborIter<const X: usize, const Y: usize> {
     finished: bool,
 }
 
-impl<const X: usize, const Y: usize>NeighborIter<X, Y> {
-    fn new(center_point: MapPoint<X, Y>, initial_orientation: Compass, rotation_direction: bool, include_center: bool, include_corners: bool) -> Self {
+impl<const X: usize, const Y: usize> NeighborIter<X, Y> {
+    fn new(
+        center_point: MapPoint<X, Y>,
+        initial_orientation: Compass,
+        rotation_direction: bool,
+        include_center: bool,
+        include_corners: bool,
+    ) -> Self {
         if initial_orientation.is_center() {
             panic!("line {}, need direction", line!());
         }
@@ -221,7 +241,9 @@ impl<const X: usize, const Y: usize>NeighborIter<X, Y> {
             self.current_orientation = if self.include_corners {
                 self.current_orientation.counterclockwise()
             } else {
-                self.current_orientation.counterclockwise().counterclockwise()
+                self.current_orientation
+                    .counterclockwise()
+                    .counterclockwise()
             };
             self.finished = self.current_orientation == self.initial_orientation;
         }
@@ -236,13 +258,15 @@ impl<const X: usize, const Y: usize> Iterator for NeighborIter<X, Y> {
             let result = if self.include_center {
                 Some((self.center_point, Compass::Center))
             } else {
-                self.center_point.neighbor(self.current_orientation).map_or(None, |n| Some((n, self.current_orientation)))
+                self.center_point
+                    .neighbor(self.current_orientation)
+                    .map_or(None, |n| Some((n, self.current_orientation)))
             };
             match result {
                 Some(map_point) => {
                     self.rotate_orientation();
                     return Some(map_point);
-                },
+                }
                 None => self.rotate_orientation(),
             }
         }
@@ -256,7 +280,7 @@ struct OrientationIter<const X: usize, const Y: usize> {
     finished: bool,
 }
 
-impl <const X: usize, const Y: usize>OrientationIter<X, Y> {
+impl<const X: usize, const Y: usize> OrientationIter<X, Y> {
     fn new(start_point: MapPoint<X, Y>, orientation: Compass) -> Self {
         if orientation.is_center() {
             panic!("line {}, need direction", line!());
@@ -274,7 +298,7 @@ impl<const X: usize, const Y: usize> Iterator for OrientationIter<X, Y> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
-            return None
+            return None;
         }
         let result = self.current_point;
         match self.current_point.neighbor(self.orientation) {
@@ -287,7 +311,7 @@ impl<const X: usize, const Y: usize> Iterator for OrientationIter<X, Y> {
 
 #[cfg(test)]
 mod tests {
-    
+
     use super::*;
 
     #[test]
