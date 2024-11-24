@@ -28,3 +28,14 @@ impl Display for CommonOptions {
         writeln!(f, "verbose: {}", self.verbose)
     }
 }
+
+#[cfg(test)]
+impl Default for CommonOptions {
+    fn default() -> Self {
+        Self {
+            verbose: true,
+            manifest: clap_cargo::Manifest::default(),
+            force: true,
+        }
+    }
+}

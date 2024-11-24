@@ -27,6 +27,16 @@ impl Display for MergeOptions {
     }
 }
 
+#[cfg(test)]
+impl Default for MergeOptions {
+    fn default() -> Self {
+        Self {
+            keep_comments: false,
+            keep_empty_lines: false,
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 #[command(
     version,
@@ -91,5 +101,17 @@ impl CliOutput for MergeCli {
 impl CliMerge for MergeCli {
     fn merge(&self) -> &MergeOptions {
         &self.merge_cli
+    }
+}
+
+#[cfg(test)]
+impl Default for MergeCli {
+    fn default() -> Self {
+        Self {
+            common_cli: CommonOptions::default(),
+            input_cli: InputOptions::default(),
+            output_cli: OutputOptions::default(),
+            merge_cli: MergeOptions::default(),
+        }
     }
 }

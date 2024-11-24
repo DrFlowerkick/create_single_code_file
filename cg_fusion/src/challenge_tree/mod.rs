@@ -108,14 +108,16 @@ impl<O, S> CgData<O, S> {
         self.iter_dependencies().filter_map(|(n, w)| match w {
             NodeTyp::LocalPackage(local_package) => Some((n, local_package.name.as_str())),
             NodeTyp::ExternalSupportedPackage(name) => Some((n, name.as_str())),
-            _ => None,
+            NodeTyp::ExternalUnsupportedPackage(_) => None,
+            _ => unreachable!("Dependency edges only target package nodes."),
         })
     }
 
     pub fn iter_unsupported_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &str)> {
         self.iter_dependencies().filter_map(|(n, w)| match w {
             NodeTyp::ExternalUnsupportedPackage(name) => Some((n, name.as_str())),
-            _ => None,
+            NodeTyp::LocalPackage(_) | NodeTyp::ExternalSupportedPackage(_) => None,
+            _ => unreachable!("Dependency edges only target package nodes."),
         })
     }
 

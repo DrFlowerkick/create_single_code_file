@@ -44,6 +44,16 @@ impl Display for PurgeOptions {
     }
 }
 
+#[cfg(test)]
+impl Default for PurgeOptions {
+    fn default() -> Self {
+        Self {
+            max_purge_cycles: 1000,
+            max_steps_per_cycle: 1000,
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 #[command(
     version,
@@ -96,5 +106,16 @@ impl CliOutput for PurgeCli {
 impl CliPurge for PurgeCli {
     fn purge(&self) -> &PurgeOptions {
         &self.purge_cli
+    }
+}
+
+#[cfg(test)]
+impl Default for PurgeCli {
+    fn default() -> Self {
+        Self {
+            common_cli: CommonOptions::default(),
+            output_cli: OutputOptions::default(),
+            purge_cli: PurgeOptions::default(),
+        }
     }
 }

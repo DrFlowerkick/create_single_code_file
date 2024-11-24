@@ -1,7 +1,7 @@
 pub mod my_map_point;
 
 use self::my_map_point::*;
-use super::my_array::*;
+use my_array::*;
 use my_map_point::my_compass::*;
 
 // use MyMap2D if compilation time is suffice, because it is more efficient and has cleaner interface

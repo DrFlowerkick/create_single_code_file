@@ -39,3 +39,27 @@ impl CgData<FusionCli, AnalyzeState> {
         Err(AnalyzeError::SomeAnalyzeError.into())
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+
+    use super::*;
+
+    use crate::{configuration::CargoCli, CgDataBuilder, CgMode};
+
+    pub fn setup_analyze_test() -> CgData<AnalyzeCli, AnalyzeState> {
+        let mut analyze_options = AnalyzeCli::default();
+        analyze_options.set_manifest_path("../cg_fusion_binary_test/Cargo.toml".into());
+
+        let cg_data = match CgDataBuilder::new()
+            .set_options(CargoCli::CgAnalyze(analyze_options))
+            .set_command()
+            .build()
+            .unwrap()
+        {
+            CgMode::Analyze(cg_data) => cg_data,
+            _ => unreachable!("It's always analyze"),
+        };
+        cg_data
+    }
+}

@@ -51,3 +51,23 @@ impl AnalyzeCli {
         self.common_cli.verbose = true;
     }
 }
+
+#[cfg(test)]
+impl Default for AnalyzeCli {
+    fn default() -> Self {
+        Self {
+            common_cli: CommonOptions::default(),
+            input_cli: InputOptions::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+use std::path::PathBuf;
+
+#[cfg(test)]
+impl AnalyzeCli {
+    pub fn set_manifest_path(&mut self, path: PathBuf) {
+        self.common_cli.manifest.manifest_path = Some(path);
+    }
+}

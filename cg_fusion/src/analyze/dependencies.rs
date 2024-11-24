@@ -156,3 +156,23 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::super::tests::setup_analyze_test;
+
+    #[test]
+    fn test_collecting_dependencies() {
+        let mut cg_data = setup_analyze_test();
+        cg_data.analyze_challenge_dependencies().unwrap();
+        let dependencies: Vec<&str> = cg_data
+            .iter_accepted_dependencies()
+            .map(|(_, n)| n)
+            .collect();
+        assert_eq!(
+            dependencies,
+            vec!["cg_fusion_lib_test", "my_map_two_dim", "my_array", "rand"]
+        );
+    }
+}

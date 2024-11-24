@@ -109,3 +109,16 @@ impl CliPurge for FusionCli {
         &self.purge_cli
     }
 }
+
+#[cfg(test)]
+impl Default for FusionCli {
+    fn default() -> Self {
+        Self {
+            common_cli: CommonOptions::default(),
+            input_cli: InputOptions::default(),
+            output_cli: OutputOptions::default(),
+            merge_cli: MergeOptions::default(),
+            purge_cli: PurgeOptions::default(),
+        }
+    }
+}

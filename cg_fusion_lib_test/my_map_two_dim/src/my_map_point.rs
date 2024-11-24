@@ -1,6 +1,6 @@
 pub mod my_compass;
 
-use crate::my_map_two_dim::my_map_point::my_compass::*;
+use crate::my_map_point::my_compass::*;
 use std::cmp::Ordering;
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, Default)]

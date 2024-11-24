@@ -39,3 +39,14 @@ impl Display for OutputOptions {
         writeln!(f, "keep-tmp-file: {}", self.keep_tmp_file)
     }
 }
+
+#[cfg(test)]
+impl Default for OutputOptions {
+    fn default() -> Self {
+        Self {
+            filename: None,
+            debug: false,
+            keep_tmp_file: false,
+        }
+    }
+}

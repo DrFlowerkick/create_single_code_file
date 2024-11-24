@@ -6,3 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+rand = "0.8.5"
+my_array = { path = "my_array" }
+my_map_two_dim = { path = "my_map_two_dim" }
+
+[workspace]
+members = ["my_array", "my_map_two_dim"]
+resolver = "2"
+
+[workspace.metadata]
+description = "Testing cg-fusion with workspace."

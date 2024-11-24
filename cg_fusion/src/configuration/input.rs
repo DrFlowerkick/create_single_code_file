@@ -160,3 +160,17 @@ impl Display for InputOptions {
         writeln!(f, "block-indirect: {:?}", self.block_indirect)
     }
 }
+
+#[cfg(test)]
+impl Default for InputOptions {
+    fn default() -> Self {
+        Self {
+            input: "main".into(),
+            mode: Mode::Merge,
+            update_components: Vec::new(),
+            block_indirect: Vec::new(),
+            platform: ChallengePlatform::Codingame,
+            other_supported_crates: Vec::new(),
+        }
+    }
+}
