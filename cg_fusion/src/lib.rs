@@ -7,6 +7,7 @@ pub mod error;
 pub mod file_generation;
 pub mod merge;
 pub mod metadata;
+pub mod parsing;
 pub mod preparation;
 pub mod solve_cargo_check;
 pub mod utilities;

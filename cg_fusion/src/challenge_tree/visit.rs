@@ -48,10 +48,10 @@ impl BfsByEdgeType {
         None
     }
 
-    pub fn into_iter<'a>(
+    pub fn into_iter(
         self,
-        graph: &'a Graph<NodeTyp, EdgeType, Directed>,
-    ) -> BfsByEdgeTypeIterator<'a> {
+        graph: &Graph<NodeTyp, EdgeType, Directed>,
+    ) -> BfsByEdgeTypeIterator<'_> {
         BfsByEdgeTypeIterator {
             walker: self,
             graph,

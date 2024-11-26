@@ -1,14 +1,14 @@
 // analysis of challenge for dependencies, modules, and use links
 
+mod crate_src_files;
 mod dependencies;
 mod error;
-mod generic;
 pub use error::AnalyzeError;
 
 pub struct AnalyzeState;
 
 use crate::{
-    configuration::{AnalyzeCli, FusionCli, MergeCli},
+    configuration::{AnalyzeCli, CliInput, FusionCli, MergeCli},
     error::CgResult,
     merge::MergeState,
     CgData,
@@ -27,7 +27,7 @@ impl CgData<AnalyzeCli, AnalyzeState> {
 // do analyze for merge mode
 impl CgData<MergeCli, AnalyzeState> {
     pub fn analyze(mut self) -> CgResult<CgData<MergeCli, MergeState>> {
-        let _src_files = self.generic_analyze()?;
+        self.generic_analyze()?;
         Err(AnalyzeError::SomeAnalyzeError.into())
     }
 }
@@ -35,8 +35,21 @@ impl CgData<MergeCli, AnalyzeState> {
 // do analyze for fusion mode
 impl CgData<FusionCli, AnalyzeState> {
     pub fn analyze(mut self) -> CgResult<CgData<FusionCli, MergeState>> {
-        let _src_files = self.generic_analyze()?;
+        self.generic_analyze()?;
         Err(AnalyzeError::SomeAnalyzeError.into())
+    }
+}
+
+// generic analyze for all modes with CliInput
+impl<O: CliInput> CgData<O, AnalyzeState> {
+    pub fn generic_analyze(&mut self) -> CgResult<()> {
+        // add dependencies to tree
+        self.add_challenge_dependencies()?;
+        // crate and module src files to tree
+        self.add_bin_src_files_of_challenge()?;
+        self.add_lib_src_files()?;
+
+        Ok(())
     }
 }
 

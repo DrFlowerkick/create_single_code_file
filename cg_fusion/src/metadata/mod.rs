@@ -3,7 +3,7 @@
 mod error;
 pub use error::{MetadataError, MetadataResult};
 
-use cargo_metadata::camino::Utf8PathBuf;
+use cargo_metadata::{camino::Utf8PathBuf, Target};
 use std::{
     ops::Deref,
     process::{Command, Output},
@@ -60,14 +60,16 @@ impl MetaWrapper {
         Ok(self.package_root_dir()?.join("src"))
     }
 
-    pub fn get_binary_path_of_root_package(&self, bin_name: &str) -> MetadataResult<&Utf8PathBuf> {
-        Ok(&self
-            .root_package()?
+    pub fn get_binary_target_of_root_package(&self, bin_name: &str) -> MetadataResult<&Target> {
+        self.root_package()?
             .targets
             .iter()
             .find(|t| t.is_bin() && t.name == bin_name)
-            .ok_or_else(|| MetadataError::BinaryNotFound(bin_name.to_owned()))?
-            .src_path)
+            .ok_or_else(|| MetadataError::BinaryNotFound(bin_name.to_owned()))
+    }
+
+    pub fn get_library_target_of_root_package(&self) -> MetadataResult<Option<&Target>> {
+        Ok(self.root_package()?.targets.iter().find(|t| t.is_lib()))
     }
 
     pub fn get_member_manifests_of_workspace(&self) -> Vec<(String, Utf8PathBuf)> {
@@ -83,7 +85,7 @@ impl MetaWrapper {
         &self,
         bin_name: &str,
     ) -> MetadataResult<Output> {
-        Ok(Command::new("cargo")
+        Command::new("cargo")
             .current_dir(self.package_root_dir()?)
             .arg("check")
             .arg("--bin")
@@ -92,6 +94,6 @@ impl MetaWrapper {
             .arg(self.package_manifest()?)
             .arg("--message-format=json")
             .output()
-            .map_err(MetadataError::from)?)
+            .map_err(MetadataError::from)
     }
 }

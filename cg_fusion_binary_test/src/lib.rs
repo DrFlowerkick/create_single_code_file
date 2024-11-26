@@ -10,8 +10,9 @@ pub const X: usize = 19;
 pub const Y: usize = X;
 const N: usize = X * Y;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Default)]
 pub enum Value {
+    #[default]
     Free,
     White,
     Black,
@@ -27,14 +28,14 @@ impl fmt::Display for Value {
     }
 }
 
-impl Default for Value {
-    fn default() -> Self {
-        Value::Free
-    }
-}
-
 pub struct Go {
     board: MyMap2D<Value, X, Y, N>,
+}
+
+impl Default for Go {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Go {

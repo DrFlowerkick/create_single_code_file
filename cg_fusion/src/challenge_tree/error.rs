@@ -1,6 +1,7 @@
 // error definitions for challenge tree
 
-use crate::{error::error_chain_fmt, metadata::MetadataError};
+use crate::{error::error_chain_fmt, metadata::MetadataError, parsing::ParsingError};
+use petgraph::graph::NodeIndex;
 
 pub type TreeResult<T> = Result<T, ChallengeTreeError>;
 
@@ -8,8 +9,18 @@ pub type TreeResult<T> = Result<T, ChallengeTreeError>;
 pub enum ChallengeTreeError {
     #[error("Something went wrong with using Metadata of challenge crate.")]
     MetadataError(#[from] MetadataError),
-    #[error("Tree node does not contain a local package.")]
-    NotLocalPackage,
+    #[error("Something went wrong with parsing a source file.")]
+    ParsingError(#[from] ParsingError),
+    #[error("Tree node does not contain index '{:?}'.", 0)]
+    IndexError(NodeIndex),
+    #[error("Tree node does not contain local package at index '{:?}'.", 0)]
+    NotLocalPackage(NodeIndex),
+    #[error("Tree node does not contain binary crate at index '{:?}'.", 0)]
+    NotBinaryCrate(NodeIndex),
+    #[error("Tree node does not contain library crate at index '{:?}'.", 0)]
+    NotLibraryCrate(NodeIndex),
+    #[error("Tree node does not contain module at index '{:?}'.", 0)]
+    NotModule(NodeIndex),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

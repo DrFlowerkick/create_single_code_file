@@ -9,8 +9,16 @@
         "itertools",
         "libc",
         "petgraph",
+        "rustup",
         "seperated",
         "structopt",
-        "thiserror"
-    ]
+        "thiserror",
+        "tictactoe"
+    ],
+
+    "cSpell.ignorePaths": [
+        ".git",
+        "**/.cargo/**",
+        "**/.rustup/**"
+    ],
 }

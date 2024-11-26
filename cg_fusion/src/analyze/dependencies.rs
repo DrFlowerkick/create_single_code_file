@@ -12,7 +12,7 @@ use crate::{
 use petgraph::graph::NodeIndex;
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
-    pub fn analyze_challenge_dependencies(&mut self) -> Result<(), AnalyzeError> {
+    pub fn add_challenge_dependencies(&mut self) -> Result<(), AnalyzeError> {
         // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = self
             .challenge_package()
@@ -53,11 +53,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     fn analyze_challenge_sub_dependencies(&mut self, node: NodeIndex) -> Result<(), AnalyzeError> {
         // check for root packages and get dependencies
         // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
-        let dependencies = match self
-            .get_local_dependency_package(node)?
-            .metadata
-            .root_package()
-        {
+        let dependencies = match self.get_local_package(node)?.metadata.root_package() {
             Ok(root_packages) => root_packages.dependencies.to_owned(),
             // if there is no root packages, there should be a workspace
             Err(_) => Vec::new(),
@@ -117,7 +113,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 
         // check for workspace packages
         let members = self
-            .get_local_dependency_package(node)?
+            .get_local_package(node)?
             .metadata
             .get_member_manifests_of_workspace();
         for (member_name, member_path) in members.iter() {
@@ -165,7 +161,7 @@ mod tests {
     #[test]
     fn test_collecting_dependencies() {
         let mut cg_data = setup_analyze_test();
-        cg_data.analyze_challenge_dependencies().unwrap();
+        cg_data.add_challenge_dependencies().unwrap();
         let dependencies: Vec<&str> = cg_data
             .iter_accepted_dependencies()
             .map(|(_, n)| n)
