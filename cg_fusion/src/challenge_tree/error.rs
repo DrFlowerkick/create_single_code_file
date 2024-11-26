@@ -11,15 +11,15 @@ pub enum ChallengeTreeError {
     MetadataError(#[from] MetadataError),
     #[error("Something went wrong with parsing a source file.")]
     ParsingError(#[from] ParsingError),
-    #[error("Tree node does not contain index '{:?}'.", 0)]
+    #[error("Tree node does not contain index '{:?}'.", .0)]
     IndexError(NodeIndex),
-    #[error("Tree node does not contain local package at index '{:?}'.", 0)]
+    #[error("Tree node does not contain local package at index '{:?}'.", .0)]
     NotLocalPackage(NodeIndex),
-    #[error("Tree node does not contain binary crate at index '{:?}'.", 0)]
+    #[error("Tree node does not contain binary crate at index '{:?}'.", .0)]
     NotBinaryCrate(NodeIndex),
-    #[error("Tree node does not contain library crate at index '{:?}'.", 0)]
+    #[error("Tree node does not contain library crate at index '{:?}'.", .0)]
     NotLibraryCrate(NodeIndex),
-    #[error("Tree node does not contain module at index '{:?}'.", 0)]
+    #[error("Tree node does not contain module at index '{:?}'.", .0)]
     NotModule(NodeIndex),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),

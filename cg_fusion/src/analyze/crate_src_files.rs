@@ -11,12 +11,7 @@ use syn::{visit::Visit, File};
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn add_bin_src_files_of_challenge(&mut self) -> CgResult<()> {
         // get bin name
-        let bin_name = if self.options.input().input == "main" {
-            // if main, use crate name for bin name
-            self.challenge_package().name.as_str()
-        } else {
-            self.options.input().input.as_str()
-        };
+        let bin_name = self.get_challenge_bin_name();
 
         if self.options.verbose() {
             println!("Running 'cargo check' for bin challenge code...");
@@ -139,13 +134,65 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 mod tests {
 
     use super::super::tests::setup_analyze_test;
+    use super::*;
 
     #[test]
     fn test_collecting_modules() {
         let mut cg_data = setup_analyze_test();
         cg_data.add_challenge_dependencies().unwrap();
+
         cg_data.add_bin_src_files_of_challenge().unwrap();
-        let (_, bcf) = cg_data.get_challenge_bin_crate().unwrap();
+        let (bcf_index, bcf) = cg_data.get_challenge_bin_crate().unwrap();
         assert_eq!(bcf.name, "cg_fusion_binary_test");
+        assert_eq!(cg_data.iter_modules(bcf_index).count(), 0);
+
+        cg_data.add_lib_src_files().unwrap();
+        let (lcf_index, lcf) = cg_data.get_challenge_lib_crate().unwrap();
+        assert_eq!(lcf.name, "cg_fusion_binary_test");
+        let (challenge_lib_module_indices, challenge_lib_modules): (Vec<NodeIndex>, Vec<String>) =
+            cg_data
+                .iter_modules(lcf_index)
+                .map(|(n, m)| (n, m.name.to_owned()))
+                .unzip();
+        assert_eq!(challenge_lib_modules, &["action"]);
+        let crate_index = cg_data
+            .get_module(challenge_lib_module_indices[0])
+            .unwrap()
+            .crate_index;
+        assert_eq!(crate_index, lcf_index);
+
+        let (dependency_lib_crate_indices, dependency_lib_crates): (Vec<NodeIndex>, Vec<String>) =
+            cg_data
+                .iter_dependencies_lib_crates()
+                .map(|(n, cf)| (n, cf.name.to_owned()))
+                .unzip();
+        assert_eq!(
+            dependency_lib_crates,
+            &["cg_fusion_lib_test", "my_map_two_dim", "my_array"]
+        );
+        assert_eq!(
+            cg_data
+                .iter_modules(dependency_lib_crate_indices[0])
+                .count(),
+            0
+        );
+        assert_eq!(
+            cg_data
+                .iter_modules(dependency_lib_crate_indices[2])
+                .count(),
+            0
+        );
+        let my_map_two_dim_modules: Vec<String> = cg_data
+            .iter_modules(dependency_lib_crate_indices[1])
+            .map(|(_, m)| m.name.to_owned())
+            .collect();
+        assert_eq!(my_map_two_dim_modules, &["my_map_point", "my_compass"]);
+        assert_eq!(
+            cg_data
+                .iter_modules(dependency_lib_crate_indices[1])
+                .filter(|(_, m)| m.crate_index == dependency_lib_crate_indices[1])
+                .count(),
+            2
+        );
     }
 }

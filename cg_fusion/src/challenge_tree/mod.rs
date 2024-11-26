@@ -83,13 +83,6 @@ impl<O, S> CgData<O, S> {
         unreachable!("Challenge package is created at instantiation of CgDate and should always be at index 0.");
     }
 
-    pub fn get_challenge_bin_crate(&self) -> Option<(NodeIndex, &CrateFile)> {
-        self.tree
-            .neighbors(0.into())
-            .filter_map(|n| self.get_binary_crate(n).ok().map(|c| (n, c)))
-            .next()
-    }
-
     pub fn link_to_package(&mut self, source: NodeIndex, target: NodeIndex) {
         self.tree.add_edge(source, target, EdgeType::Dependency);
     }
@@ -177,9 +170,67 @@ impl<O, S> CgData<O, S> {
             _ => unreachable!("Dependency edges only target package nodes."),
         })
     }
+
+    fn iter_package_crates(
+        &self,
+        package_index: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, bool, &CrateFile)> {
+        BfsByEdgeType::new(&self.tree, package_index, EdgeType::Crate)
+            .into_iter(&self.tree)
+            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+            .filter_map(|(n, w)| match w {
+                NodeTyp::BinCrate(bin_crate_file) => Some((n, false, bin_crate_file)),
+                NodeTyp::LibCrate(lib_crate_file) => Some((n, true, lib_crate_file)),
+                _ => None,
+            })
+    }
+
+    pub fn get_challenge_lib_crate(&self) -> Option<(NodeIndex, &CrateFile)> {
+        self.iter_package_crates(0.into())
+            .filter_map(|(n, crate_type, cf)| if crate_type { Some((n, cf)) } else { None })
+            .next()
+    }
+
+    pub fn iter_dependencies_lib_crates(&self) -> impl Iterator<Item = (NodeIndex, &CrateFile)> {
+        // skip first local package, which is root of tree (challenge package)
+        self.iter_local_packages().skip(1).filter_map(|(n, _)| {
+            self.iter_package_crates(n)
+                .filter_map(|(n, crate_type, cf)| if crate_type { Some((n, cf)) } else { None })
+                .next()
+        })
+    }
+
+    pub fn iter_modules(
+        &self,
+        crate_index: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &ModuleFile)> {
+        BfsByEdgeType::new(&self.tree, crate_index, EdgeType::Module)
+            .into_iter(&self.tree)
+            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+            .filter_map(|(n, w)| match w {
+                NodeTyp::Module(module_file) => Some((n, module_file)),
+                _ => None,
+            })
+    }
 }
 
 impl<O: CliInput, S> CgData<O, S> {
+    pub fn get_challenge_bin_name(&self) -> &str {
+        if self.options.input().input == "main" {
+            // if main, use crate name for bin name
+            self.challenge_package().name.as_str()
+        } else {
+            self.options.input().input.as_str()
+        }
+    }
+
+    pub fn get_challenge_bin_crate(&self) -> Option<(NodeIndex, &CrateFile)> {
+        let bin_name = self.get_challenge_bin_name();
+        self.iter_package_crates(0.into())
+            .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
+            .find(|(_, cf)| cf.name == bin_name)
+    }
+
     pub fn add_local_package(&mut self, source: NodeIndex, package: LocalPackage) -> NodeIndex {
         if self.options.verbose() {
             println!(
@@ -256,7 +307,7 @@ impl<O: CliInput, S> CgData<O, S> {
 
         let crate_node_index = self.tree.add_node(NodeTyp::BinCrate(crate_file));
         self.tree
-            .add_edge(0.into(), crate_node_index, EdgeType::Crate);
+            .add_edge(package_node_index, crate_node_index, EdgeType::Crate);
 
         Ok(crate_node_index)
     }
@@ -287,9 +338,9 @@ impl<O: CliInput, S> CgData<O, S> {
                 );
             }
 
-            let crate_node_index = self.tree.add_node(NodeTyp::BinCrate(crate_file));
+            let crate_node_index = self.tree.add_node(NodeTyp::LibCrate(crate_file));
             self.tree
-                .add_edge(0.into(), crate_node_index, EdgeType::Crate);
+                .add_edge(package_node_index, crate_node_index, EdgeType::Crate);
 
             Ok(Some(crate_node_index))
         } else {
