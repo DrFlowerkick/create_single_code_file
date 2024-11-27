@@ -71,11 +71,9 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize>
             .iter_neighbors(initial_orientation, true, false, true)
             .map(|(p, o)| (is_cell_free_fn(p, self.get(p)), o.is_cardinal()))
         {
-            if !last_free {
-                if is_free && is_side {
-                    // new free zones start always at a side of map_point, since movement over corners is not allowed
-                    free_zones += 1;
-                }
+            if !last_free && is_free && is_side {
+                // new free zones start always at a side of map_point, since movement over corners is not allowed
+                free_zones += 1;
             }
             last_free = if is_side || !is_free {
                 // side or blocked corner -> apply is_free to last_free

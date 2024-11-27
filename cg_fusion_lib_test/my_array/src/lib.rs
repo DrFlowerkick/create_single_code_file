@@ -83,7 +83,7 @@ impl<T: Copy + Clone + Default, const N: usize> MyArray<T, N> {
         if len == 0 {
             panic!("line {}", line!());
         }
-        if index + len - 1 >= self.n_items {
+        if index + len > self.n_items {
             panic!("line {}", line!());
         }
         &self.items[index..index + len]
@@ -112,6 +112,9 @@ impl<T: Copy + Clone + Default, const N: usize> MyArray<T, N> {
     }
     pub fn len(&self) -> usize {
         self.n_items
+    }
+    pub fn is_empty(&self) -> bool {
+        self.n_items == 0
     }
     pub fn remaining_len(&self) -> usize {
         N - self.n_items
