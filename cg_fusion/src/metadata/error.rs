@@ -15,17 +15,10 @@ pub enum MetadataError {
     ErrorManifestPathOfMetadata(Utf8PathBuf),
     #[error("Could not find binary '{0}' in root package of metadata.")]
     BinaryNotFound(String),
-    #[error("Error executing 'cargo check' command.")]
-    CargoCheckError(#[from] std::io::Error),
-    #[error("Codingame does not support '{0}'.")]
-    CodingameUnsupportedDependencyOfChallenge(String),
-    #[error("Codingame does not support '{0}', use '--force' to ignore.")]
-    CodingameUnsupportedDependencyOfLocalLibrary(String),
-    #[error(
-        "Dependency of local library '{0}' is not in dependencies of challenge, \
-         use '--force' to ignore or add '{0}' as dependency to challenge."
-    )]
-    DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(String),
+    #[error("Error executing 'cargo' command.")]
+    CargoCommandError(#[from] std::io::Error),
+    #[error("Solve remaining 'cargo {1}' messages before continuing:\n{0}")]
+    RemainingCargoMessages(String, String),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

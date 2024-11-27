@@ -157,11 +157,11 @@ impl<const X: usize, const Y: usize> MapPoint<X, Y> {
         match orientation {
             Compass::Center => Some(*self),
             Compass::N => self.offset_mm((0, 1)),
-            Compass::NE => self.offset_mm((0, 1)).map_or(None, |n| n.offset_pp((1, 0))),
+            Compass::NE => self.offset_mm((0, 1)).and_then(|n| n.offset_pp((1, 0))),
             Compass::E => self.offset_pp((1, 0)),
             Compass::SE => self.offset_pp((1, 1)),
             Compass::S => self.offset_pp((0, 1)),
-            Compass::SW => self.offset_pp((0, 1)).map_or(None, |s| s.offset_mm((1, 0))),
+            Compass::SW => self.offset_pp((0, 1)).and_then(|s| s.offset_mm((1, 0))),
             Compass::W => self.offset_mm((1, 0)),
             Compass::NW => self.offset_mm((1, 1)),
         }
@@ -169,7 +169,7 @@ impl<const X: usize, const Y: usize> MapPoint<X, Y> {
     pub fn orientation_of_neighbor(&self, neighbor: MapPoint<X, Y>) -> Option<Compass> {
         self.iter_neighbors(Compass::N, true, false, true)
             .find(|(p, _)| *p == neighbor)
-            .map_or(None, |(_, o)| Some(o))
+            .map(|(_, o)| o)
     }
     pub fn iter_neighbors(
         &self,
@@ -260,7 +260,7 @@ impl<const X: usize, const Y: usize> Iterator for NeighborIter<X, Y> {
             } else {
                 self.center_point
                     .neighbor(self.current_orientation)
-                    .map_or(None, |n| Some((n, self.current_orientation)))
+                    .map(|n| (n, self.current_orientation))
             };
             match result {
                 Some(map_point) => {

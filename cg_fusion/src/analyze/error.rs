@@ -10,8 +10,6 @@ pub enum AnalyzeError {
     MetadataError(#[from] MetadataError),
     #[error("Something went wrong with using the challenge tree.")]
     ChallengeTreeError(#[from] ChallengeTreeError),
-    #[error("Solve remaining 'cargo check' messages before continuing:\n{0}")]
-    RemainingCargoCheckMessagesOfInput(String),
     #[error("Codingame does not support '{0}'.")]
     CodingameUnsupportedDependencyOfChallenge(String),
     #[error("Codingame does not support '{0}', use '--force' to ignore.")]

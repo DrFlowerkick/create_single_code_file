@@ -1,9 +1,12 @@
 // working with metadata
 
 mod error;
+use crate::add_context;
 pub use error::{MetadataError, MetadataResult};
 
-use cargo_metadata::{camino::Utf8PathBuf, Target};
+use anyhow::Context;
+use cargo_metadata::{camino::Utf8PathBuf, Message, Target};
+use std::fmt::Write;
 use std::{
     ops::Deref,
     process::{Command, Output},
@@ -81,19 +84,74 @@ impl MetaWrapper {
             .collect()
     }
 
-    pub fn run_cargo_check_for_binary_of_root_package(
-        &self,
-        bin_name: &str,
-    ) -> MetadataResult<Output> {
+    fn run_cargo_command(&self, command: &str) -> MetadataResult<OutputWrapper> {
         Command::new("cargo")
-            .current_dir(self.package_root_dir()?)
-            .arg("check")
-            .arg("--bin")
-            .arg(bin_name)
+            .arg(command)
             .arg("--manifest-path")
             .arg(self.package_manifest()?)
             .arg("--message-format=json")
+            .current_dir(self.package_root_dir()?)
             .output()
+            .map(OutputWrapper::from)
             .map_err(MetadataError::from)
+    }
+
+    pub fn run_cargo_check(&self) -> MetadataResult<OutputWrapper> {
+        self.run_cargo_command("check")
+    }
+
+    pub fn run_cargo_clippy(&self) -> MetadataResult<OutputWrapper> {
+        self.run_cargo_command("clippy")
+    }
+}
+
+pub struct OutputWrapper(Output);
+
+impl From<Output> for OutputWrapper {
+    fn from(value: Output) -> Self {
+        Self(value)
+    }
+}
+
+impl OutputWrapper {
+    pub fn collect_cargo_check_messages(&self) -> MetadataResult<()> {
+        self.collect_cargo_messages("check")
+    }
+    pub fn collect_cargo_clippy_messages(&self) -> MetadataResult<()> {
+        self.collect_cargo_messages("clippy")
+    }
+    fn collect_cargo_messages(&self, command: &str) -> MetadataResult<()> {
+        // collect any remaining 'cargo <command>' messages
+        let mut check_messages = String::new();
+        for message in Message::parse_stream(&self.0.stdout[..]) {
+            if let Message::CompilerMessage(msg) = message.context(add_context!(format!(
+                "Unexpected error of parsing 'cargo {command}' messages stream."
+            )))? {
+                if let Some(rendered_msg) = msg.message.rendered {
+                    writeln!(&mut check_messages, "{}", rendered_msg).context(add_context!(
+                        format!(
+                        "Unexpected error while formatting rendered 'cargo {command}' messages."
+                    )
+                    ))?;
+                }
+            }
+        }
+        if !check_messages.is_empty() {
+            writeln!(
+                &mut check_messages,
+                "{}",
+                String::from_utf8(self.0.stderr.to_owned()).context(add_context!(
+                    "Unexpected error while converting stderr to string."
+                ))?
+            )
+            .context(add_context!(format!(
+                "Unexpected error while combining rendered 'cargo {command}' messages with stderr."
+            )))?;
+            return Err(MetadataError::RemainingCargoMessages(
+                check_messages,
+                command.to_owned(),
+            ));
+        }
+        Ok(())
     }
 }

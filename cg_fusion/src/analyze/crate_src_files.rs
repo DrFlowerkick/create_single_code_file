@@ -3,54 +3,14 @@
 use super::{AnalyzeError, AnalyzeState};
 use crate::{add_context, configuration::CliInput, error::CgResult, parsing::ModVisitor, CgData};
 use anyhow::{anyhow, Context};
-use cargo_metadata::{camino::Utf8PathBuf, Message};
+use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::graph::NodeIndex;
-use std::fmt::Write;
 use syn::{visit::Visit, File};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn add_bin_src_files_of_challenge(&mut self) -> CgResult<()> {
         // get bin name
         let bin_name = self.get_challenge_bin_name();
-
-        if self.options.verbose() {
-            println!("Running 'cargo check' for bin challenge code...");
-        }
-
-        // run 'cargo check' on bin_name to make sure, that input is ready to be processed
-        let output = self
-            .challenge_package()
-            .metadata
-            .run_cargo_check_for_binary_of_root_package(bin_name)?;
-
-        // collect any remaining 'cargo check' messages
-        let mut check_messages = String::new();
-        for message in Message::parse_stream(&output.stdout[..]) {
-            if let Message::CompilerMessage(msg) = message.context(add_context!(
-                "Unexpected error of parsing 'cargo check' messages stream."
-            ))? {
-                if let Some(rendered_msg) = msg.message.rendered {
-                    writeln!(&mut check_messages, "{}", rendered_msg).context(add_context!(
-                        "Unexpected error while formatting rendered 'cargo check' messages."
-                    ))?;
-                }
-            }
-        }
-        if !check_messages.is_empty() {
-            writeln!(
-                &mut check_messages,
-                "{}",
-                String::from_utf8(output.stderr).context(add_context!(
-                    "Unexpected error while converting stderr to string."
-                ))?
-            )
-            .context(add_context!(
-                "Unexpected error while combining rendered 'cargo check' messages with stderr."
-            ))?;
-            Err(AnalyzeError::RemainingCargoCheckMessagesOfInput(
-                check_messages,
-            ))?;
-        }
 
         // add bin crate to tree
         let bin_crate_index = self.add_binary_crate_to_package(0.into(), bin_name.to_owned())?;

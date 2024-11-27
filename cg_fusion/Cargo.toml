@@ -19,5 +19,5 @@ clap-cargo = { version = "0.14.1", features = ["cargo_metadata"] }
 quote = "1.0.37"
 petgraph = "0.6.5"
 fixedbitset = { version = "0.4.0", default-features = false }
-my_lib = { path = "../../../mylib" }
 proc-macro2 = "1.0.89"
+heck = "0.5.0"

@@ -14,3 +14,18 @@ macro_rules! add_context {
 // we ignore for now version numbers
 pub const CODINGAME_SUPPORTED_CRATES: [&str; 6] =
     ["chrono", "itertools", "libc", "rand", "regex", "time"];
+
+// functions to test naming conversions
+use heck::{ToPascalCase, ToShoutySnakeCase, ToSnakeCase};
+
+pub fn is_pascal_case(input: &str) -> bool {
+    input == input.to_pascal_case()
+}
+
+pub fn is_snake_case(input: &str) -> bool {
+    input == input.to_snake_case()
+}
+
+pub fn is_shouty_snake_case(input: &str) -> bool {
+    input == input.to_shouty_snake_case()
+}

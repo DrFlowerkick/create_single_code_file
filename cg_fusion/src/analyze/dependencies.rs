@@ -47,6 +47,20 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         while let Some(dependency_node) = dependency_walker.next(&self.tree) {
             self.analyze_challenge_sub_dependencies(dependency_node)?;
         }
+
+        if self.options.verbose() {
+            println!("Running 'cargo check' and 'cargo clippy' for local packages...");
+        }
+        for (_, package) in self.iter_local_packages() {
+            package
+                .metadata
+                .run_cargo_check()?
+                .collect_cargo_check_messages()?;
+            package
+                .metadata
+                .run_cargo_clippy()?
+                .collect_cargo_clippy_messages()?;
+        }
         Ok(())
     }
 
