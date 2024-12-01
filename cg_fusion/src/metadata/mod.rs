@@ -113,6 +113,14 @@ impl From<Output> for OutputWrapper {
     }
 }
 
+impl Deref for OutputWrapper {
+    type Target = Output;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl OutputWrapper {
     pub fn collect_cargo_check_messages(&self) -> MetadataResult<()> {
         self.collect_cargo_messages("check")

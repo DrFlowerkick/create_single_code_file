@@ -3,6 +3,7 @@
 mod crate_src_files;
 mod dependencies;
 mod error;
+mod usage;
 pub use error::AnalyzeError;
 
 pub struct AnalyzeState;
@@ -45,7 +46,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn generic_analyze(&mut self) -> CgResult<()> {
         // add dependencies to tree
         self.add_challenge_dependencies()?;
-        // crate and module src files to tree
+        // add crate and module src files to tree
         self.add_bin_src_files_of_challenge()?;
         self.add_lib_src_files()?;
 

@@ -3,11 +3,10 @@
 mod error;
 pub use error::{ParsingError, ParsingResult};
 
-use syn::{fold::Fold, visit::Visit, Attribute, File, ItemMod, Meta};
-
 use cargo_metadata::camino::Utf8PathBuf;
 use proc_macro2::TokenStream;
 use std::fs;
+use syn::{fold::Fold, visit::Visit, Attribute, File, ItemMod, ItemUse, Meta, UseTree};
 
 // load syntax from given file
 pub fn load_syntax(path: &Utf8PathBuf) -> ParsingResult<File> {
@@ -73,5 +72,40 @@ pub struct ModVisitor {
 impl<'ast> Visit<'ast> for ModVisitor {
     fn visit_item_mod(&mut self, i: &'ast ItemMod) {
         self.mods.push(i.clone());
+    }
+}
+
+// Struct to visit source file and collect use statements
+#[derive(Default)]
+pub struct UseVisitor {
+    pub uses: Vec<ItemUse>,
+    external_dependencies: Vec<String>,
+}
+
+impl UseVisitor {
+    pub fn new(mut external_dependencies: Vec<String>) -> Self {
+        external_dependencies.push("std".into());
+        external_dependencies.push("core".into());
+        external_dependencies.push("alloc".into());
+        Self {
+            uses: Vec::new(),
+            external_dependencies,
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for UseVisitor {
+    fn visit_item_use(&mut self, i: &'ast syn::ItemUse) {
+        if let UseTree::Path(ref use_path) = i.tree {
+            // filter external dependencies
+            if self
+                .external_dependencies
+                .iter()
+                .any(|fi| use_path.ident == fi)
+            {
+                return;
+            }
+        }
+        self.uses.push(i.clone());
     }
 }

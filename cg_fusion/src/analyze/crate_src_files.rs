@@ -104,7 +104,7 @@ mod tests {
         cg_data.add_bin_src_files_of_challenge().unwrap();
         let (bcf_index, bcf) = cg_data.get_challenge_bin_crate().unwrap();
         assert_eq!(bcf.name, "cg_fusion_binary_test");
-        assert_eq!(cg_data.iter_modules(bcf_index).count(), 0);
+        assert_eq!(cg_data.iter_modules(bcf_index).unwrap().count(), 0);
 
         cg_data.add_lib_src_files().unwrap();
         let (lcf_index, lcf) = cg_data.get_challenge_lib_crate().unwrap();
@@ -112,6 +112,7 @@ mod tests {
         let (challenge_lib_module_indices, challenge_lib_modules): (Vec<NodeIndex>, Vec<String>) =
             cg_data
                 .iter_modules(lcf_index)
+                .unwrap()
                 .map(|(n, m)| (n, m.name.to_owned()))
                 .unzip();
         assert_eq!(challenge_lib_modules, &["action"]);
@@ -123,7 +124,8 @@ mod tests {
 
         let (dependency_lib_crate_indices, dependency_lib_crates): (Vec<NodeIndex>, Vec<String>) =
             cg_data
-                .iter_dependencies_lib_crates()
+                .iter_lib_crates()
+                .skip(1)
                 .map(|(n, cf)| (n, cf.name.to_owned()))
                 .unzip();
         assert_eq!(
@@ -133,23 +135,27 @@ mod tests {
         assert_eq!(
             cg_data
                 .iter_modules(dependency_lib_crate_indices[0])
+                .unwrap()
                 .count(),
             0
         );
         assert_eq!(
             cg_data
                 .iter_modules(dependency_lib_crate_indices[2])
+                .unwrap()
                 .count(),
             0
         );
         let my_map_two_dim_modules: Vec<String> = cg_data
             .iter_modules(dependency_lib_crate_indices[1])
+            .unwrap()
             .map(|(_, m)| m.name.to_owned())
             .collect();
         assert_eq!(my_map_two_dim_modules, &["my_map_point", "my_compass"]);
         assert_eq!(
             cg_data
                 .iter_modules(dependency_lib_crate_indices[1])
+                .unwrap()
                 .filter(|(_, m)| m.crate_index == dependency_lib_crate_indices[1])
                 .count(),
             2

@@ -7,11 +7,16 @@ mod visit;
 pub use visit::BfsByEdgeType;
 
 use cargo_metadata::camino::Utf8PathBuf;
-use petgraph::graph::NodeIndex;
+use petgraph::{
+    graph::{Graph, NodeIndex},
+    Directed,
+};
 use std::cell::RefCell;
 use syn::File;
 
 use crate::{configuration::CliInput, metadata::MetaWrapper, parsing::load_syntax, CgData};
+
+pub type ChallengeTree = Graph<NodeTyp, EdgeType, Directed>;
 
 #[derive(Debug)]
 pub enum NodeTyp {
@@ -171,6 +176,16 @@ impl<O, S> CgData<O, S> {
         })
     }
 
+    pub fn iter_external_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &str)> {
+        self.iter_dependencies().filter_map(|(n, w)| match w {
+            NodeTyp::ExternalSupportedPackage(name) | NodeTyp::ExternalUnsupportedPackage(name) => {
+                Some((n, name.as_str()))
+            }
+            NodeTyp::LocalPackage(_) => None,
+            _ => unreachable!("Dependency edges only target package nodes."),
+        })
+    }
+
     fn iter_package_crates(
         &self,
         package_index: NodeIndex,
@@ -191,9 +206,8 @@ impl<O, S> CgData<O, S> {
             .next()
     }
 
-    pub fn iter_dependencies_lib_crates(&self) -> impl Iterator<Item = (NodeIndex, &CrateFile)> {
-        // skip first local package, which is root of tree (challenge package)
-        self.iter_local_packages().skip(1).filter_map(|(n, _)| {
+    pub fn iter_lib_crates(&self) -> impl Iterator<Item = (NodeIndex, &CrateFile)> {
+        self.iter_local_packages().filter_map(|(n, _)| {
             self.iter_package_crates(n)
                 .filter_map(|(n, crate_type, cf)| if crate_type { Some((n, cf)) } else { None })
                 .next()
@@ -202,15 +216,23 @@ impl<O, S> CgData<O, S> {
 
     pub fn iter_modules(
         &self,
-        crate_index: NodeIndex,
-    ) -> impl Iterator<Item = (NodeIndex, &ModuleFile)> {
-        BfsByEdgeType::new(&self.tree, crate_index, EdgeType::Module)
-            .into_iter(&self.tree)
-            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .filter_map(|(n, w)| match w {
-                NodeTyp::Module(module_file) => Some((n, module_file)),
-                _ => None,
-            })
+        node_index: NodeIndex,
+    ) -> TreeResult<impl Iterator<Item = (NodeIndex, &ModuleFile)>> {
+        if let Some(node) = self.tree.node_weight(node_index) {
+            match node {
+                NodeTyp::BinCrate(_) | NodeTyp::LibCrate(_) | NodeTyp::Module(_) => {
+                    return Ok(BfsByEdgeType::new(&self.tree, node_index, EdgeType::Module)
+                        .into_iter(&self.tree)
+                        .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+                        .filter_map(|(n, w)| match w {
+                            NodeTyp::Module(module_file) => Some((n, module_file)),
+                            _ => None,
+                        }))
+                }
+                _ => (),
+            }
+        }
+        Err(ChallengeTreeError::NotSrcFile(node_index))
     }
 }
 

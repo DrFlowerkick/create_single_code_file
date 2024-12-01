@@ -1,14 +1,13 @@
 // functions to visit the challenge tree
 
 use petgraph::{
-    graph::{Graph, NodeIndex},
+    graph::NodeIndex,
     visit::{Bfs, EdgeRef},
-    Directed,
 };
 // petgraph uses FixedBitSet as VisitMap for Bfs
 use fixedbitset::FixedBitSet;
 
-use super::{EdgeType, NodeTyp};
+use super::{ChallengeTree, EdgeType};
 
 pub struct BfsByEdgeType {
     walker: Bfs<NodeIndex, FixedBitSet>,
@@ -16,11 +15,7 @@ pub struct BfsByEdgeType {
 }
 
 impl BfsByEdgeType {
-    pub fn new(
-        graph: &Graph<NodeTyp, EdgeType, Directed>,
-        start: NodeIndex,
-        edge_type: EdgeType,
-    ) -> Self {
+    pub fn new(graph: &ChallengeTree, start: NodeIndex, edge_type: EdgeType) -> Self {
         Self {
             walker: Bfs::new(graph, start),
             edge_type,
@@ -28,7 +23,7 @@ impl BfsByEdgeType {
     }
 
     // code adapted from petgraph, see Bfs implementation of next()
-    pub fn next(&mut self, graph: &Graph<NodeTyp, EdgeType, Directed>) -> Option<NodeIndex> {
+    pub fn next(&mut self, graph: &ChallengeTree) -> Option<NodeIndex> {
         if let Some(node) = self.walker.stack.pop_front() {
             // add only successors, which are connected by specified edge type
             for successor in graph
@@ -48,10 +43,7 @@ impl BfsByEdgeType {
         None
     }
 
-    pub fn into_iter(
-        self,
-        graph: &Graph<NodeTyp, EdgeType, Directed>,
-    ) -> BfsByEdgeTypeIterator<'_> {
+    pub fn into_iter(self, graph: &ChallengeTree) -> BfsByEdgeTypeIterator<'_> {
         BfsByEdgeTypeIterator {
             walker: self,
             graph,
@@ -61,7 +53,7 @@ impl BfsByEdgeType {
 
 pub struct BfsByEdgeTypeIterator<'a> {
     walker: BfsByEdgeType,
-    graph: &'a Graph<NodeTyp, EdgeType, Directed>,
+    graph: &'a ChallengeTree,
 }
 
 impl<'a> Iterator for BfsByEdgeTypeIterator<'a> {

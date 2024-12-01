@@ -13,12 +13,12 @@ pub mod solve_cargo_check;
 pub mod utilities;
 
 use analyze::AnalyzeState;
-use challenge_tree::{EdgeType, LocalPackage, NodeTyp};
+use challenge_tree::{ChallengeTree, LocalPackage, NodeTyp};
 use configuration::{AnalyzeCli, CargoCli, FusionCli, MergeCli, PurgeCli};
 use error::{CgError, CgResult};
 use metadata::MetadataError;
 
-use petgraph::{graph::Graph, Directed};
+use petgraph::graph::Graph;
 
 pub enum CgMode {
     Fusion(CgData<FusionCli, AnalyzeState>),
@@ -73,7 +73,7 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
         let metadata = self.metadata_command.exec().map_err(MetadataError::from)?;
         // initialize root node with challenge metadata
         let root_node_value = NodeTyp::LocalPackage(LocalPackage::try_from(metadata)?);
-        let mut tree: Graph<NodeTyp, EdgeType, Directed> = Graph::new();
+        let mut tree: ChallengeTree = Graph::new();
         // root node should have index 0
         assert_eq!(tree.add_node(root_node_value), 0.into());
         match self.options {
@@ -104,7 +104,7 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
 pub struct CgData<O, S> {
     _state: S,
     options: O,
-    tree: Graph<NodeTyp, EdgeType, Directed>,
+    tree: ChallengeTree,
     /*
     crate_dir: PathBuf,
     crate_name: String,

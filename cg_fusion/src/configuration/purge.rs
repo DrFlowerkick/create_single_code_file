@@ -22,7 +22,7 @@ pub struct PurgeOptions {
     )]
     pub max_purge_cycles: u16,
 
-    /// Max number of purge steps per purgecycle. Each purge cycle consists of a number of compiler messages
+    /// Max number of purge steps per purge cycle. Each purge cycle consists of a number of compiler messages
     /// sorted by line of occurrence inside a BTreeMap. Each compiler message counts as one step. The steps
     /// are resolved from bottom to top of of temporary output file. If the maximum number of steps is
     /// reached, purging is stopped and current output is saved. This option sets the max number of steps.

@@ -21,6 +21,8 @@ pub enum ChallengeTreeError {
     NotLibraryCrate(NodeIndex),
     #[error("Tree node does not contain module at index '{:?}'.", .0)]
     NotModule(NodeIndex),
+    #[error("Tree node does not contain src file at index '{:?}'", .0)]
+    NotSrcFile(NodeIndex),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
