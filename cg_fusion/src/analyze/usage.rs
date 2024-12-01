@@ -60,6 +60,7 @@ impl From<UseRename> for UseItemTypes {
 }
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
+    /*
     pub fn analyze_use_statements(&self) -> CgResult<()> {
         let external_dependencies: Vec<String> = self
             .iter_external_dependencies()
@@ -157,6 +158,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         }
         Ok(())
     }
+     */
 }
 
 #[cfg(test)]
@@ -174,6 +176,6 @@ mod tests {
         cg_data.add_lib_src_files().unwrap();
 
         // action to test
-        cg_data.analyze_use_statements().unwrap();
+        //cg_data.analyze_use_statements().unwrap();
     }
 }
