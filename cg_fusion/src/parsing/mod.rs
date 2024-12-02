@@ -6,7 +6,7 @@ pub use error::{ParsingError, ParsingResult};
 use cargo_metadata::camino::Utf8PathBuf;
 use proc_macro2::TokenStream;
 use std::fs;
-use syn::{fold::Fold, visit::Visit, Attribute, File, ItemMod, ItemUse, Meta, UseTree};
+use syn::{fold::Fold, visit::Visit, Attribute, File, ItemUse, Meta, UseTree};
 
 // load syntax from given file
 pub fn load_syntax(path: &Utf8PathBuf) -> ParsingResult<File> {
@@ -63,16 +63,29 @@ impl Fold for FoldRemoveItemModTests {
     }
 }
 
-// Struct to visit source file and collect mod statements
-#[derive(Default)]
-pub struct ModVisitor {
-    pub mods: Vec<ItemMod>,
-}
-
-impl<'ast> Visit<'ast> for ModVisitor {
-    fn visit_item_mod(&mut self, i: &'ast ItemMod) {
-        self.mods.push(i.clone());
+// expand and collect use tree items from UseTree
+pub fn get_use_items(use_tree: &UseTree) -> Vec<UseTree> {
+    let mut use_trees: Vec<UseTree> = Vec::new();
+    match use_tree {
+        UseTree::Path(use_path) => {
+            for sub_use_tree in get_use_items(&use_path.tree) {
+                let mut new_path = use_path.to_owned();
+                new_path.tree = Box::new(sub_use_tree);
+                use_trees.push(UseTree::Path(new_path));
+            }
+        }
+        UseTree::Group(use_group) => {
+            for group_tree in use_group.items.iter() {
+                for sub_use_tree in get_use_items(group_tree) {
+                    use_trees.push(sub_use_tree);
+                }
+            }
+        }
+        UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => {
+            use_trees.push(use_tree.to_owned());
+        }
     }
+    use_trees
 }
 
 // Struct to visit source file and collect use statements

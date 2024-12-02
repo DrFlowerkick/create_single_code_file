@@ -61,6 +61,7 @@ impl<O, S> CgData<O, S> {
         BfsByEdgeType::new(&self.tree, 0.into(), EdgeType::Dependency)
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+            .fuse()
     }
 
     pub fn iter_local_packages(&self) -> impl Iterator<Item = (NodeIndex, &LocalPackage)> {
@@ -115,6 +116,7 @@ impl<O, S> CgData<O, S> {
                 NodeTyp::LibCrate(lib_crate_file) => Some((n, true, lib_crate_file)),
                 _ => None,
             })
+            .fuse()
     }
 
     pub fn get_challenge_lib_crate(&self) -> Option<(NodeIndex, &CrateFile)> {
@@ -131,7 +133,7 @@ impl<O, S> CgData<O, S> {
         })
     }
 
-    pub fn iter_syn_items(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &Item)> {
+    pub fn iter_syn_neighbors(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &Item)> {
         self.tree
             .edges_directed(node, Direction::Outgoing)
             .filter(|e| *e.weight() == EdgeType::Syn)
@@ -150,6 +152,34 @@ impl<O, S> CgData<O, S> {
                     _ => Some((n, item)),
                 },
                 _ => unreachable!("All syn edges must end in SynItem nodes."),
+            })
+    }
+
+    pub fn iter_syn_items(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &Item)> {
+        BfsByEdgeType::new(&self.tree, node, EdgeType::Syn)
+            .into_iter(&self.tree)
+            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+            .filter_map(|(n, w)| match w {
+                NodeTyp::SynItem(syn_item) => Some((n, syn_item)),
+                _ => None,
+            })
+            .fuse()
+    }
+
+    pub fn get_syn_item_source_index(&self, node: NodeIndex) -> Option<NodeIndex> {
+        self.tree
+            .edges_directed(node, Direction::Incoming)
+            .filter(|e| *e.weight() == EdgeType::Syn)
+            .map(|e| e.source())
+            .next()
+    }
+
+    pub fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {
+        self.tree
+            .node_weight(node)
+            .and_then(|w| match w {
+                NodeTyp::SynItem(item) => Some(item),
+                _ => None,
             })
     }
 }

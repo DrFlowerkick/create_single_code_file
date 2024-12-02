@@ -168,7 +168,7 @@ impl<O: CliInput, S> CgData<O, S> {
                     // change mod item in tree to inline module
                     let mut inline_mod = item_mod.to_owned();
                     let inline_items: Vec<Item> = self
-                        .iter_syn_items(item_index)
+                        .iter_syn_neighbors(item_index)
                         .map(|(_, i)| i.to_owned())
                         .collect();
                     inline_mod.content = Some((Brace::default(), inline_items));

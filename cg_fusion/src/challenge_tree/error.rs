@@ -19,10 +19,8 @@ pub enum ChallengeTreeError {
     NotBinaryCrate(NodeIndex),
     #[error("Tree node does not contain library crate at index '{:?}'.", .0)]
     NotLibraryCrate(NodeIndex),
-    #[error("Tree node does not contain module at index '{:?}'.", .0)]
-    NotModule(NodeIndex),
-    #[error("Tree node does not contain src file at index '{:?}'", .0)]
-    NotSrcFile(NodeIndex),
+    #[error("Tree node does not contain crate or syn items at index '{:?}'.", .0)]
+    NotCrateOrSyn(NodeIndex),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
