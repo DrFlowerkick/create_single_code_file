@@ -49,6 +49,9 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         // add crate and module src files to tree
         self.add_bin_src_files_of_challenge()?;
         self.add_lib_src_files()?;
+        // expand use statements
+        self.expand_use_groups()?;
+        self.expand_use_globs()?;
 
         Ok(())
     }

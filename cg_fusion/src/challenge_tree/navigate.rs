@@ -94,14 +94,16 @@ impl<O, S> CgData<O, S> {
         })
     }
 
-    pub fn iter_external_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &str)> {
-        self.iter_dependencies().filter_map(|(n, w)| match w {
-            NodeTyp::ExternalSupportedPackage(name) | NodeTyp::ExternalUnsupportedPackage(name) => {
-                Some((n, name.as_str()))
-            }
-            NodeTyp::LocalPackage(_) => None,
-            _ => unreachable!("Dependency edges only target package nodes."),
-        })
+    pub fn iter_external_dependencies(&self) -> impl Iterator<Item = &str> {
+        // include elements of rust libraries in iterator
+        self.iter_dependencies()
+            .filter_map(|(_, w)| match w {
+                NodeTyp::ExternalSupportedPackage(name)
+                | NodeTyp::ExternalUnsupportedPackage(name) => Some(name.as_str()),
+                NodeTyp::LocalPackage(_) => None,
+                _ => unreachable!("Dependency edges only target package nodes."),
+            })
+            .chain(["std", "core", "std"])
     }
 
     fn iter_package_crates(
@@ -175,12 +177,24 @@ impl<O, S> CgData<O, S> {
     }
 
     pub fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {
-        self.tree
-            .node_weight(node)
-            .and_then(|w| match w {
-                NodeTyp::SynItem(item) => Some(item),
-                _ => None,
-            })
+        self.tree.node_weight(node).and_then(|w| match w {
+            NodeTyp::SynItem(item) => Some(item),
+            _ => None,
+        })
+    }
+
+    pub fn get_name_of_crate_or_module(&self, node: NodeIndex) -> Option<String> {
+        self.tree.node_weight(node).and_then(|w| match w {
+            NodeTyp::SynItem(item) => {
+                if let Item::Mod(item_mod) = item {
+                    Some(item_mod.ident.to_string())
+                } else {
+                    None
+                }
+            },
+            NodeTyp::BinCrate(crate_file) | NodeTyp::LibCrate(crate_file) => Some(crate_file.name.to_owned()),
+            _ => None,
+        })
     }
 }
 

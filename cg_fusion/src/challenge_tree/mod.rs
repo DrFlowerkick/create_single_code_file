@@ -11,7 +11,7 @@ pub use visit::BfsByEdgeType;
 use crate::metadata::MetaWrapper;
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::{graph::Graph, Directed};
-use syn::{File, ImplItem, Item};
+use syn::{File, ImplItem, Item, ItemUse};
 
 pub type ChallengeTree = Graph<NodeTyp, EdgeType, Directed>;
 
@@ -24,6 +24,16 @@ pub enum NodeTyp {
     LibCrate(CrateFile),
     SynItem(Item),
     SynImplItem(ImplItem),
+}
+
+impl NodeTyp {
+    pub fn get_use_item_from_syn_item_node(&self) -> Option<&ItemUse> {
+        if let NodeTyp::SynItem(Item::Use(use_item)) = self {
+            Some(use_item)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
