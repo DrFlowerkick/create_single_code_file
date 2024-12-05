@@ -99,11 +99,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     .context(add_context!("Expected syn ItemUse."))?
                     .to_owned();
                 if self.options.verbose() {
-                    let module = self.get_name_of_crate_or_module(source_index).context(add_context!("Expected crate or module name."))?;
+                    let module = self
+                        .get_name_of_crate_or_module(source_index)
+                        .context(add_context!("Expected crate or module name."))?;
                     println!(
                         "Expanding use statement of module {}:\n{}",
                         module,
-                        old_use_item.to_token_stream().to_string()
+                        old_use_item.to_token_stream()
                     );
                 }
                 // expand and collect use items and add them to tree
@@ -169,11 +171,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 .context(add_context!("Expected syn ItemUse."))?
                 .to_owned();
             if self.options.verbose() {
-                let module = self.get_name_of_crate_or_module(source_index).context(add_context!("Expected crate or module name."))?;
+                let module = self
+                    .get_name_of_crate_or_module(source_index)
+                    .context(add_context!("Expected crate or module name."))?;
                 println!(
                     "Expanding use glob of module {}:\n{}",
                     module,
-                    old_use_item.to_token_stream().to_string()
+                    old_use_item.to_token_stream()
                 );
             }
             // get visible items of glob import module and create new use items

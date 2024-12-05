@@ -191,8 +191,10 @@ impl<O, S> CgData<O, S> {
                 } else {
                     None
                 }
-            },
-            NodeTyp::BinCrate(crate_file) | NodeTyp::LibCrate(crate_file) => Some(crate_file.name.to_owned()),
+            }
+            NodeTyp::BinCrate(crate_file) | NodeTyp::LibCrate(crate_file) => {
+                Some(crate_file.name.to_owned())
+            }
             _ => None,
         })
     }

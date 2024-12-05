@@ -120,10 +120,7 @@ pub fn get_start_of_use_path(use_tree: &UseTree) -> Option<String> {
 
 // check visibility
 fn is_visible(visibility: &Visibility) -> bool {
-    match visibility {
-        Visibility::Public(_) => true,
-        _ => false,
-    }
+    matches!(visibility, Visibility::Public(_))
 }
 
 // get name of visible item
