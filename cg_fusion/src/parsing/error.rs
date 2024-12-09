@@ -10,6 +10,8 @@ pub enum ParsingError {
     ReadFromFileError(#[from] std::io::Error),
     #[error("Something went wrong with parsing file content.")]
     ParsingFileContentError(#[from] syn::parse::Error),
+    #[error("Parsed file contains verbatim elements:\n{0}")]
+    VerbatimError(String),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

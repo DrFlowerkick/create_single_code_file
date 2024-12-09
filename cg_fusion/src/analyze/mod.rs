@@ -3,6 +3,7 @@
 mod crate_src_files;
 mod dependencies;
 mod error;
+mod semantic_linking;
 mod usage;
 pub use error::AnalyzeError;
 
@@ -52,6 +53,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         // expand use statements
         self.expand_use_groups()?;
         self.expand_use_globs()?;
+        // link items, which are required for challenge
+        self.link_challenge_semantic()?;
 
         Ok(())
     }

@@ -142,17 +142,7 @@ impl<O, S> CgData<O, S> {
             .map(|e| e.target())
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .filter_map(|(n, w)| match w {
-                // ignore empty Verbatim, which is created when 'mod tests' is removed, see load_syntax()
-                NodeTyp::SynItem(item) => match item {
-                    Item::Verbatim(verb) => {
-                        if verb.is_empty() {
-                            None
-                        } else {
-                            Some((n, item))
-                        }
-                    }
-                    _ => Some((n, item)),
-                },
+                NodeTyp::SynItem(item) => Some((n, item)),
                 _ => unreachable!("All syn edges must end in SynItem nodes."),
             })
     }
@@ -196,6 +186,17 @@ impl<O, S> CgData<O, S> {
                 Some(crate_file.name.to_owned())
             }
             _ => None,
+        })
+    }
+    pub fn iter_syn_neighbors_without_semantic_link(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &Item)> {
+        self.iter_syn_neighbors(node).filter(move |(target, _)| {
+            !self
+                .tree
+                .edges_connecting(node, *target)
+                .any(|e| *e.weight() == EdgeType::Semantic)
         })
     }
 }

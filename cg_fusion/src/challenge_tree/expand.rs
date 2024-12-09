@@ -1,6 +1,6 @@
 // functions to expand the challenge tree
 
-use super::{CrateFile, EdgeType, LocalPackage, NodeTyp, TreeResult};
+use super::{ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeTyp, TreeResult};
 use crate::{add_context, configuration::CliInput, parsing::load_syntax, CgData};
 
 use anyhow::anyhow;
@@ -179,5 +179,16 @@ impl<O: CliInput, S> CgData<O, S> {
             }
         }
         Ok(item_index)
+    }
+
+    pub fn add_semantic_link(&mut self, source: NodeIndex, target: NodeIndex) -> TreeResult<()> {
+        self.tree
+            .node_weight(source)
+            .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
+        self.tree
+            .node_weight(target)
+            .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
+        self.tree.add_edge(source, target, EdgeType::Semantic);
+        Ok(())
     }
 }

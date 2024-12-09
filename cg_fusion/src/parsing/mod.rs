@@ -3,11 +3,14 @@
 mod error;
 pub use error::{ParsingError, ParsingResult};
 
+use crate::add_context;
 use cargo_metadata::camino::Utf8PathBuf;
 use proc_macro2::TokenStream;
+use quote::ToTokens;
+use std::fmt::Write;
 use std::fs;
 use syn::{
-    fold::Fold, visit::Visit, Attribute, File, Ident, Item, ItemUse, Meta, UseName, UseTree,
+    fold::Fold, visit::Visit, Attribute, File, Ident, Item, ItemUse, Meta, Type, UseName, UseTree,
     Visibility,
 };
 
@@ -20,9 +23,24 @@ pub fn load_syntax(path: &Utf8PathBuf) -> ParsingResult<File> {
     // remove doc comments
     let mut remove_doc_comments = FoldRemoveAttrDocComments;
     let syntax = remove_doc_comments.fold_file(syntax);
+    // check for verbatim parsed elements
+    let mut check_verbatim = VisitVerbatim {
+        verbatim_tokens: String::new(),
+    };
+    check_verbatim.visit_file(&syntax);
+    if !check_verbatim.verbatim_tokens.is_empty() {
+        return Err(ParsingError::VerbatimError(check_verbatim.verbatim_tokens));
+    }
     // remove mod tests
     let mut remove_mod_tests = FoldRemoveItemModTests;
-    let syntax = remove_mod_tests.fold_file(syntax);
+    let mut syntax = remove_mod_tests.fold_file(syntax);
+    // remove verbatim item resulting von folding
+    if let Some(verbatim_index) = syntax.items.iter().position(|i| match i {
+        Item::Verbatim(_) => true,
+        _ => false,
+    }) {
+        syntax.items.remove(verbatim_index);
+    }
     Ok(syntax)
 }
 
@@ -44,6 +62,104 @@ impl Fold for FoldRemoveAttrDocComments {
             .map(|a| a.to_owned())
             .collect();
         attributes
+    }
+}
+
+// helper to search for verbatim parsed code
+struct VisitVerbatim {
+    verbatim_tokens: String,
+}
+
+impl<'ast> Visit<'ast> for VisitVerbatim {
+    fn visit_expr(&mut self, i: &'ast syn::Expr) {
+        match i {
+            syn::Expr::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_item(&mut self, i: &'ast syn::Item) {
+        match i {
+            syn::Item::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_foreign_item(&mut self, i: &'ast syn::ForeignItem) {
+        match i {
+            syn::ForeignItem::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_trait_item(&mut self, i: &'ast syn::TraitItem) {
+        match i {
+            syn::TraitItem::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_impl_item(&mut self, i: &'ast syn::ImplItem) {
+        match i {
+            syn::ImplItem::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_lit(&mut self, i: &'ast syn::Lit) {
+        match i {
+            syn::Lit::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_pat(&mut self, i: &'ast syn::Pat) {
+        match i {
+            syn::Pat::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_type(&mut self, i: &'ast syn::Type) {
+        match i {
+            syn::Type::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
+    }
+    fn visit_type_param_bound(&mut self, i: &'ast syn::TypeParamBound) {
+        match i {
+            syn::TypeParamBound::Verbatim(ts) => {
+                write!(&mut self.verbatim_tokens, "{}\n", ts.to_token_stream()).expect(
+                    &add_context!("Unexpected error when writing verbatim tokens."),
+                );
+            }
+            _ => (),
+        }
     }
 }
 
@@ -221,12 +337,13 @@ pub fn get_name_of_visible_item(item: &Item) -> Option<Ident> {
                 None
             }
         }
-        _ => None,
+        Item::ForeignMod(_) | Item::Impl(_) | Item::Macro(_) | Item::Verbatim(_) => None,
+        _ => None, // Item is #[non_exhaustive]
     }
 }
 
 // replace glob with name
-pub fn replace_glob_with_name(mut use_item: ItemUse, ident: Ident) -> Option<ItemUse> {
+pub fn replace_glob_with_ident(mut use_item: ItemUse, ident: Ident) -> Option<ItemUse> {
     let mut use_tree = &mut use_item.tree;
     loop {
         match use_tree {
@@ -237,6 +354,53 @@ pub fn replace_glob_with_name(mut use_item: ItemUse, ident: Ident) -> Option<Ite
                 return Some(use_item);
             }
         }
+    }
+}
+
+// get name of item
+pub fn get_name_of_item(item: &Item) -> Option<String> {
+    match item {
+        Item::Const(item_const) => Some(item_const.ident.to_string()),
+        Item::Enum(item_enum) => Some(item_enum.ident.to_string()),
+        Item::ExternCrate(item_extern_crate) => Some(item_extern_crate.ident.to_string()),
+        Item::Fn(item_fn) => Some(item_fn.sig.ident.to_string()),
+        Item::Macro(item_macro) => item_macro.ident.as_ref().map(|i| i.to_string()),
+        Item::Mod(item_mod) => Some(item_mod.ident.to_string()),
+        Item::Static(item_static) => Some(item_static.ident.to_string()),
+        Item::Struct(item_struct) => Some(item_struct.ident.to_string()),
+        Item::Trait(item_trait) => Some(item_trait.ident.to_string()),
+        Item::TraitAlias(item_trait_alias) => Some(item_trait_alias.ident.to_string()),
+        Item::Type(item_type) => Some(item_type.ident.to_string()),
+        Item::Union(item_union) => Some(item_union.ident.to_string()),
+        Item::Use(item_use) => {
+            // expect expanded use tree (no group, no glob)
+            let mut use_tree = &item_use.tree;
+            'use_loop: loop {
+                match use_tree {
+                    UseTree::Path(use_path) => use_tree = &use_path.tree,
+                    UseTree::Group(_) | UseTree::Glob(_) => break 'use_loop None,
+                    UseTree::Name(use_name) => break 'use_loop Some(use_name.ident.to_string()),
+                    UseTree::Rename(use_rename) => {
+                        break 'use_loop Some(use_rename.rename.to_string())
+                    }
+                }
+            }
+        }
+        Item::ForeignMod(_) | Item::Impl(_) | Item::Verbatim(_) => None,
+        _ => None, // Item is #[non_exhaustive]
+    }
+}
+
+// struct to visit types
+#[derive(Default)]
+pub struct TypeVisitor {
+    pub types: Vec<Type>,
+}
+
+impl<'ast> Visit<'ast> for TypeVisitor {
+    fn visit_type(&mut self, i: &'ast syn::Type) {
+        self.types.push(i.to_owned());
+        syn::visit::visit_type(self, i);
     }
 }
 

@@ -100,7 +100,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     if self.options.force() {
                         self.add_external_supported_package(node, dep_name);
                     } else {
-                        return Err(AnalyzeError::CodingameUnsupportedDependencyOfLocalLibrary(
+                        return Err(AnalyzeError::DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(
                             dep_name,
                         ));
                     }
@@ -119,7 +119,9 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                             }
                         }
                     } else {
-                        return Err(AnalyzeError::DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(dep_name));
+                        return Err(AnalyzeError::CodingameUnsupportedDependencyOfLocalLibrary(
+                            dep_name,
+                        ));
                     }
                 }
             }

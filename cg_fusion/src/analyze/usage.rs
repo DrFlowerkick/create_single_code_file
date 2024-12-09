@@ -7,59 +7,14 @@ use crate::{
     error::CgResult,
     parsing::{
         contains_use_group, get_name_of_visible_item, get_start_of_use_path, get_use_items,
-        is_use_glob, replace_glob_with_name,
+        is_use_glob, replace_glob_with_ident,
     },
-    utilities::{is_pascal_case, is_shouty_snake_case, is_snake_case},
     CgData,
 };
 use anyhow::{anyhow, Context};
 use petgraph::graph::NodeIndex;
 use quote::ToTokens;
-use syn::{Ident, Item, ItemUse, UseName, UseRename, UseTree};
-
-#[derive(Debug, Hash, PartialOrd, Ord, PartialEq, Eq)]
-enum UseItemTypes {
-    PascalCase(Ident),
-    SnakeCase(Ident),
-    ShoutySnakeCase(Ident),
-    PascalCaseRename(Ident, Ident),
-    SnakeCaseRename(Ident, Ident),
-    ShoutySnakeCaseRename(Ident, Ident),
-    _Asterisk,
-    Unknown,
-}
-
-impl From<UseName> for UseItemTypes {
-    fn from(value: UseName) -> Self {
-        let name = value.ident.to_string();
-        match (
-            is_pascal_case(&name),
-            is_snake_case(&name),
-            is_shouty_snake_case(&name),
-        ) {
-            (true, _, _) => UseItemTypes::PascalCase(value.ident),
-            (_, true, _) => UseItemTypes::SnakeCase(value.ident),
-            (_, _, true) => UseItemTypes::ShoutySnakeCase(value.ident),
-            _ => UseItemTypes::Unknown,
-        }
-    }
-}
-
-impl From<UseRename> for UseItemTypes {
-    fn from(value: UseRename) -> Self {
-        let name = value.ident.to_string();
-        match (
-            is_pascal_case(&name),
-            is_snake_case(&name),
-            is_shouty_snake_case(&name),
-        ) {
-            (true, _, _) => UseItemTypes::PascalCaseRename(value.ident, value.rename),
-            (_, true, _) => UseItemTypes::SnakeCaseRename(value.ident, value.rename),
-            (_, _, true) => UseItemTypes::ShoutySnakeCaseRename(value.ident, value.rename),
-            _ => UseItemTypes::Unknown,
-        }
-    }
-}
+use syn::{Item, ItemUse, UseTree};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn expand_use_groups(&mut self) -> CgResult<()> {
@@ -155,8 +110,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         // reverse order to start with glob use statements farthest down the tree
         for syn_use_glob_index in syn_use_glob_indices.iter().rev() {
             // get module index the glob import points to and get index of new crate, which contains the glob import
-            let (glob_module_index, _) =
-                self.get_use_item_and_module_node_index(*syn_use_glob_index, crate_index)?;
+            let glob_module_index =
+                self.get_module_node_index_of_glob_use(*syn_use_glob_index, crate_index)?;
 
             // get source (parent) of syn use item
             let source_index = self
@@ -184,7 +139,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             let new_use_items: Vec<ItemUse> = self
                 .iter_syn_neighbors(glob_module_index)
                 .filter_map(|(_, item)| get_name_of_visible_item(item))
-                .filter_map(|name| replace_glob_with_name(old_use_item.clone(), name))
+                .filter_map(|name| replace_glob_with_ident(old_use_item.clone(), name))
                 .collect();
             // add new use items to tree
             for new_use_item in new_use_items {
@@ -194,11 +149,11 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         Ok(())
     }
 
-    fn get_use_item_and_module_node_index(
+    fn get_module_node_index_of_glob_use(
         &self,
         use_item_node_index: NodeIndex,
         crate_index: NodeIndex,
-    ) -> CgResult<(NodeIndex, UseTree)> {
+    ) -> CgResult<NodeIndex> {
         let mut use_tree = &self
             .tree
             .node_weight(use_item_node_index)
@@ -231,7 +186,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         _ => {
                             // some module, could be module of current module or local package dependency
                             if let Some((module_index, _)) = self
-                                .iter_syn_items(current_index)
+                                .iter_syn_neighbors(current_index)
                                 .filter_map(|(n, i)| match i {
                                     Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
                                     _ => None,
@@ -256,14 +211,18 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 UseTree::Group(_) => {
                     Err(anyhow!(add_context!("Expected expanded use group.")))?;
                 }
-                UseTree::Glob(use_glob) => {
-                    return Ok((current_index, UseTree::Glob(use_glob.to_owned())));
+                UseTree::Glob(_) => {
+                    return Ok(current_index);
                 }
-                UseTree::Name(use_name) => {
-                    return Ok((current_index, UseTree::Name(use_name.to_owned())));
+                UseTree::Name(_) => {
+                    Err(anyhow!(add_context!(
+                        "Expected UseTree::Glob, not UseTree::Name"
+                    )))?;
                 }
-                UseTree::Rename(use_rename) => {
-                    return Ok((current_index, UseTree::Rename(use_rename.to_owned())));
+                UseTree::Rename(_) => {
+                    Err(anyhow!(add_context!(
+                        "Expected UseTree::Glob, not UseTree::Rename"
+                    )))?;
                 }
             }
         }
