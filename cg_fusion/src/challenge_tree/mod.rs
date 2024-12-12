@@ -55,6 +55,7 @@ pub enum EdgeType {
     Dependency,
     Crate,
     Syn,
+    ImplementedBy,
     Semantic,
 }
 

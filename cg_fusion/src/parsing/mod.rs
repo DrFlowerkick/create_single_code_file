@@ -5,13 +5,12 @@ pub use error::{ParsingError, ParsingResult};
 
 use crate::add_context;
 use cargo_metadata::camino::Utf8PathBuf;
-use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::Write;
 use std::fs;
 use syn::{
-    fold::Fold, visit::Visit, Attribute, File, Ident, Item, ItemUse, Meta, Type, UseName, UseTree,
-    Visibility,
+    fold::Fold, visit::Visit, Attribute, File, Ident, ImplItem, Item, ItemUse, Meta, Type, UseName,
+    UseTree, Visibility,
 };
 
 // load syntax from given file
@@ -22,7 +21,7 @@ pub fn load_syntax(path: &Utf8PathBuf) -> ParsingResult<File> {
     let syntax: File = syn::parse_file(&code)?;
     // remove doc comments
     let mut remove_doc_comments = FoldRemoveAttrDocComments;
-    let syntax = remove_doc_comments.fold_file(syntax);
+    let mut syntax = remove_doc_comments.fold_file(syntax);
     // check for verbatim parsed elements
     let mut check_verbatim = VisitVerbatim {
         verbatim_tokens: String::new(),
@@ -31,16 +30,12 @@ pub fn load_syntax(path: &Utf8PathBuf) -> ParsingResult<File> {
     if !check_verbatim.verbatim_tokens.is_empty() {
         return Err(ParsingError::VerbatimError(check_verbatim.verbatim_tokens));
     }
-    // remove mod tests
-    let mut remove_mod_tests = FoldRemoveItemModTests;
-    let mut syntax = remove_mod_tests.fold_file(syntax);
-    // remove verbatim item resulting von folding
-    if let Some(verbatim_index) = syntax.items.iter().position(|i| match i {
-        Item::Verbatim(_) => true,
-        _ => false,
-    }) {
-        syntax.items.remove(verbatim_index);
-    }
+    // remove mod tests and macros without a name
+    syntax.items.retain(|item| match item {
+        Item::Macro(item_macro) => item_macro.ident.is_some(),
+        Item::Mod(item_mod) => item_mod.ident != "tests",
+        _ => true,
+    });
     Ok(syntax)
 }
 
@@ -159,25 +154,6 @@ impl<'ast> Visit<'ast> for VisitVerbatim {
                 );
             }
             _ => (),
-        }
-    }
-}
-
-// helper to remove test modules from src files
-struct FoldRemoveItemModTests;
-
-impl Fold for FoldRemoveItemModTests {
-    fn fold_item(&mut self, i: syn::Item) -> syn::Item {
-        match &i {
-            syn::Item::Mod(mod_item) => {
-                // remove tests module by replacing it with empty TokenStream
-                if mod_item.ident == "tests" {
-                    syn::Item::Verbatim(TokenStream::new())
-                } else {
-                    i
-                }
-            }
-            _ => i,
         }
     }
 }
@@ -357,21 +333,44 @@ pub fn replace_glob_with_ident(mut use_item: ItemUse, ident: Ident) -> Option<It
     }
 }
 
+// check impl name with single path element
+pub fn first_item_impl_is_ident<I>(item: &Item, ident: &I) -> bool
+where
+    I: ?Sized + std::fmt::Debug,
+    Ident: PartialEq<I>,
+{
+    if let Item::Impl(item_impl) = item {
+        if let Type::Path(type_path) = item_impl.self_ty.as_ref() {
+            if let Some(first_ident) = type_path.path.segments.first() {
+                return first_ident.ident == *ident;
+            }
+        }
+    }
+    false
+}
+
 // get name of item
-pub fn get_name_of_item(item: &Item) -> Option<String> {
+pub fn get_name_of_item(item: &Item) -> Option<(String, String)> {
     match item {
-        Item::Const(item_const) => Some(item_const.ident.to_string()),
-        Item::Enum(item_enum) => Some(item_enum.ident.to_string()),
-        Item::ExternCrate(item_extern_crate) => Some(item_extern_crate.ident.to_string()),
-        Item::Fn(item_fn) => Some(item_fn.sig.ident.to_string()),
-        Item::Macro(item_macro) => item_macro.ident.as_ref().map(|i| i.to_string()),
-        Item::Mod(item_mod) => Some(item_mod.ident.to_string()),
-        Item::Static(item_static) => Some(item_static.ident.to_string()),
-        Item::Struct(item_struct) => Some(item_struct.ident.to_string()),
-        Item::Trait(item_trait) => Some(item_trait.ident.to_string()),
-        Item::TraitAlias(item_trait_alias) => Some(item_trait_alias.ident.to_string()),
-        Item::Type(item_type) => Some(item_type.ident.to_string()),
-        Item::Union(item_union) => Some(item_union.ident.to_string()),
+        Item::Const(item_const) => Some(("Const".into(), item_const.ident.to_string())),
+        Item::Enum(item_enum) => Some(("Enum".into(), item_enum.ident.to_string())),
+        Item::ExternCrate(item_extern_crate) => {
+            Some(("ExternCrate".into(), item_extern_crate.ident.to_string()))
+        }
+        Item::Fn(item_fn) => Some(("Fn".into(), item_fn.sig.ident.to_string())),
+        Item::Macro(item_macro) => item_macro
+            .ident
+            .as_ref()
+            .map(|i| ("Macro".into(), i.to_string())),
+        Item::Mod(item_mod) => Some(("Mod".into(), item_mod.ident.to_string())),
+        Item::Static(item_static) => Some(("Static".into(), item_static.ident.to_string())),
+        Item::Struct(item_struct) => Some(("Struct".into(), item_struct.ident.to_string())),
+        Item::Trait(item_trait) => Some(("Trait".into(), item_trait.ident.to_string())),
+        Item::TraitAlias(item_trait_alias) => {
+            Some(("TraitAlias".into(), item_trait_alias.ident.to_string()))
+        }
+        Item::Type(item_type) => Some(("Type".into(), item_type.ident.to_string())),
+        Item::Union(item_union) => Some(("Union".into(), item_union.ident.to_string())),
         Item::Use(item_use) => {
             // expect expanded use tree (no group, no glob)
             let mut use_tree = &item_use.tree;
@@ -379,15 +378,40 @@ pub fn get_name_of_item(item: &Item) -> Option<String> {
                 match use_tree {
                     UseTree::Path(use_path) => use_tree = &use_path.tree,
                     UseTree::Group(_) | UseTree::Glob(_) => break 'use_loop None,
-                    UseTree::Name(use_name) => break 'use_loop Some(use_name.ident.to_string()),
+                    UseTree::Name(use_name) => {
+                        break 'use_loop Some(("Use".into(), use_name.ident.to_string()))
+                    }
                     UseTree::Rename(use_rename) => {
-                        break 'use_loop Some(use_rename.rename.to_string())
+                        break 'use_loop Some(("Use".into(), use_rename.rename.to_string()))
                     }
                 }
             }
         }
-        Item::ForeignMod(_) | Item::Impl(_) | Item::Verbatim(_) => None,
+        Item::ForeignMod(_) => Some(("ForeignMod".into(), "NAMELESS".into())),
+        Item::Impl(item_impl) => if let Some((_, ref trait_, _)) = item_impl.trait_ {
+            Some(("Impl".into(), trait_.to_token_stream().to_string()))
+        } else {
+            Some(("Impl".into(), "".into()))
+        },
+        Item::Verbatim(_) => Some(("Verbatim".into(), "NAMELESS".into())),
         _ => None, // Item is #[non_exhaustive]
+    }
+}
+
+// get name of impl item
+pub fn get_name_of_impl_item(impl_item: &ImplItem) -> Option<(String, String)> {
+    match impl_item {
+        ImplItem::Const(impl_item_const) => {
+            Some(("Const".into(), impl_item_const.ident.to_string()))
+        }
+        ImplItem::Fn(impl_item_fn) => Some(("Fn".into(), impl_item_fn.sig.ident.to_string())),
+        ImplItem::Macro(impl_item_macro) => Some((
+            "Macro".into(),
+            impl_item_macro.mac.path.to_token_stream().to_string(),
+        )),
+        ImplItem::Type(impl_item_type) => Some(("Type".into(), impl_item_type.ident.to_string())),
+        ImplItem::Verbatim(_) => Some(("Verbatim".into(), "NAMELESS".into())),
+        _ => None,
     }
 }
 

@@ -1,11 +1,10 @@
-// Linking all items, which are need by challenge
+// Linking all items, which are required by challenge
 
 use super::AnalyzeState;
 use crate::{
     add_context, configuration::CliInput, error::CgResult, parsing::get_name_of_item, CgData,
 };
-use anyhow::anyhow;
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use petgraph::graph::NodeIndex;
 use syn::{Item, UseTree};
 
@@ -141,7 +140,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     let import_item_name = use_name.ident.to_string();
                     let (use_name_index, _) = self
                         .iter_syn_neighbors(current_index)
-                        .filter_map(|(n, i)| get_name_of_item(i).map(|name| (n, name)))
+                        .filter_map(|(n, i)| get_name_of_item(i).map(|(_, name)| (n, name)))
                         .find(|(_, name)| *name == import_item_name)
                         .context(add_context!(format!(
                             "Expected {import_item_name} at child of syn node {:?}.",
@@ -154,7 +153,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     let import_item_name = use_rename.rename.to_string();
                     let (use_name_index, _) = self
                         .iter_syn_neighbors(current_index)
-                        .filter_map(|(n, i)| get_name_of_item(i).map(|name| (n, name)))
+                        .filter_map(|(n, i)| get_name_of_item(i).map(|(_, name)| (n, name)))
                         .find(|(_, name)| *name == import_item_name)
                         .context(add_context!(format!(
                             "Expected {import_item_name} at child of syn node {:?}.",

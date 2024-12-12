@@ -3,6 +3,7 @@
 mod crate_src_files;
 mod dependencies;
 mod error;
+mod impl_linking;
 mod semantic_linking;
 mod usage;
 pub use error::AnalyzeError;

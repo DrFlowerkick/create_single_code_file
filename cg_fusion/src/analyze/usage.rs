@@ -18,12 +18,7 @@ use syn::{Item, ItemUse, UseTree};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn expand_use_groups(&mut self) -> CgResult<()> {
-        // get challenge bin and all lib crate indices
-        let (bin_crate_index, _) = self
-            .get_challenge_bin_crate()
-            .context(add_context!("Expected challenge bin."))?;
-        let mut crate_indices: Vec<NodeIndex> = self.iter_lib_crates().map(|(n, _)| n).collect();
-        crate_indices.push(bin_crate_index);
+        let crate_indices = self.get_crate_indices(false)?;
         for crate_index in crate_indices {
             // get indices of SynItem Nodes, which contain UseItems with use groups
             let syn_use_indices: Vec<NodeIndex> = self
@@ -58,7 +53,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         .get_name_of_crate_or_module(source_index)
                         .context(add_context!("Expected crate or module name."))?;
                     println!(
-                        "Expanding use statement of module {}:\n{}",
+                        "Expanding use group statement of module {}:\n{}",
                         module,
                         old_use_item.to_token_stream()
                     );
@@ -75,13 +70,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     }
 
     pub fn expand_use_globs(&mut self) -> CgResult<()> {
-        // get challenge bin and all lib crate indices
-        let (bin_crate_index, _) = self
-            .get_challenge_bin_crate()
-            .context(add_context!("expected challenge bin."))?;
-        let mut crate_indices: Vec<NodeIndex> = self.iter_lib_crates().map(|(n, _)| n).collect();
-        crate_indices.reverse();
-        crate_indices.push(bin_crate_index);
+        // get challenge bin and all lib crate indices in reverse order
+        let crate_indices: Vec<NodeIndex> = self.get_crate_indices(true)?;
         for crate_index in crate_indices {
             self.expand_use_globs_of_crates(crate_index)?;
         }
@@ -130,7 +120,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     .get_name_of_crate_or_module(source_index)
                     .context(add_context!("Expected crate or module name."))?;
                 println!(
-                    "Expanding use glob of module {}:\n{}",
+                    "Expanding use glob statement of module {}:\n{}",
                     module,
                     old_use_item.to_token_stream()
                 );
