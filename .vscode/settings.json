@@ -5,6 +5,7 @@
         "canonicalize",
         "chrono",
         "codingame",
+        "Deque",
         "fixedbitset",
         "itertools",
         "libc",

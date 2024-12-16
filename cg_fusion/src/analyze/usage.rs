@@ -1,20 +1,22 @@
 // functions to analyze use statements in src files
 
-use super::AnalyzeState;
+use super::{AnalyzeError, AnalyzeState};
 use crate::{
     add_context,
+    challenge_tree::PathTarget,
     configuration::CliInput,
     error::CgResult,
     parsing::{
-        contains_use_group, get_name_of_visible_item, get_start_of_use_path, get_use_items,
-        is_use_glob, replace_glob_with_ident,
+        contains_use_group, extract_visibility, get_use_items, is_use_glob,
+        replace_glob_with_name_or_rename_use_tree,
     },
     CgData,
 };
 use anyhow::{anyhow, Context};
 use petgraph::graph::NodeIndex;
 use quote::ToTokens;
-use syn::{Item, ItemUse, UseTree};
+use std::collections::{HashMap, VecDeque};
+use syn::{Item, ItemUse, UseTree, Visibility};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn expand_use_groups(&mut self) -> CgResult<()> {
@@ -36,9 +38,9 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 })
                 .collect();
             for syn_use_index in syn_use_indices {
-                // get source (parent) of syn use item
-                let source_index = self
-                    .get_syn_item_source_index(syn_use_index)
+                // get index of module of syn use item
+                let module_index = self
+                    .get_syn_item_module_index(syn_use_index)
                     .context(add_context!("Expected source index of syn item."))?;
                 // remove old use item from tree
                 let old_use_item = self
@@ -50,7 +52,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     .to_owned();
                 if self.options.verbose() {
                     let module = self
-                        .get_name_of_crate_or_module(source_index)
+                        .get_name_of_crate_or_module(module_index)
                         .context(add_context!("Expected crate or module name."))?;
                     println!(
                         "Expanding use group statement of module {}:\n{}",
@@ -62,160 +64,185 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 for new_use_tree in get_use_items(&old_use_item.tree) {
                     let mut new_use_item = old_use_item.to_owned();
                     new_use_item.tree = new_use_tree;
-                    self.add_syn_item(&Item::Use(new_use_item), &"".into(), source_index)?;
+                    self.add_syn_item(&Item::Use(new_use_item), &"".into(), module_index)?;
                 }
             }
         }
         Ok(())
     }
 
-    pub fn expand_use_globs(&mut self) -> CgResult<()> {
-        // get challenge bin and all lib crate indices in reverse order
-        let crate_indices: Vec<NodeIndex> = self.get_crate_indices(true)?;
-        for crate_index in crate_indices {
-            self.expand_use_globs_of_crates(crate_index)?;
-        }
-        Ok(())
-    }
-
-    fn expand_use_globs_of_crates(&mut self, crate_index: NodeIndex) -> CgResult<()> {
-        // get indices of SynItem Nodes, which contain UseItems which end on globs
-        // and which do not import items from external dependencies
-        let syn_use_glob_indices: Vec<NodeIndex> = self
-            .iter_syn_items(crate_index)
-            .filter_map(|(n, i)| {
-                if let Item::Use(use_item) = i {
-                    is_use_glob(&use_item.tree)
-                        .and_then(|is_glob| is_glob.then_some((n, &use_item.tree)))
-                } else {
-                    None
-                }
-            })
-            .filter_map(|(n, t)| {
-                get_start_of_use_path(t).and_then(|name| {
-                    (!self.iter_external_dependencies().any(|n| n == name)).then_some(n)
+    pub fn expand_use_globs_and_link_use_items(&mut self) -> CgResult<()> {
+        // ToDo: move max_attempts to options
+        let max_attempts: u8 = 5;
+        let mut use_glob_indices: VecDeque<(NodeIndex, UseTree)> = self
+            .iter_crates()
+            .flat_map(|(crate_index, ..)| {
+                self.iter_syn_items(crate_index).filter_map(|(n, i)| {
+                    if let Item::Use(item_use) = i {
+                        is_use_glob(i)
+                            .and_then(|is_glob| is_glob.then_some((n, item_use.tree.to_owned())))
+                    } else {
+                        None
+                    }
                 })
             })
             .collect();
-        // reverse order to start with glob use statements farthest down the tree
-        for syn_use_glob_index in syn_use_glob_indices.iter().rev() {
-            // get module index the glob import points to and get index of new crate, which contains the glob import
-            let glob_module_index =
-                self.get_module_node_index_of_glob_use(*syn_use_glob_index, crate_index)?;
+        let mut use_glob_attempts: HashMap<NodeIndex, u8> = HashMap::new();
+        dbg!(use_glob_indices.len());
+        // expand use globs and use link local non glob items
+        while let Some((use_glob_index, use_tree)) = use_glob_indices.pop_front() {
+            // get index and name of module, which owns the use glob
+            let use_glob_owning_module_index = self
+                .get_syn_item_module_index(use_glob_index)
+                .context(add_context!("Expected index of owning module of use glob."))?;
+            let module = self
+                .get_name_of_crate_or_module(use_glob_owning_module_index)
+                .context(add_context!("Expected crate or module name."))?;
 
-            // get source (parent) of syn use item
-            let source_index = self
-                .get_syn_item_source_index(*syn_use_glob_index)
-                .context(add_context!("Expected source index of syn item."))?;
+            // get module index the glob import points to and get index of new crate, which contains the glob import
+            let use_glob_target_module_index =
+                match self.get_path_target(use_glob_index, &use_tree)? {
+                    PathTarget::ExternalPackage => continue,
+                    PathTarget::Glob(gmi) => gmi,
+                    PathTarget::Item(item_index) | PathTarget::ItemRenamed(item_index, _) => {
+                        // Link use item
+                        self.add_usage_link(use_glob_index, item_index)?;
+                        continue;
+                    }
+                    PathTarget::PathCouldNotBeParsed => {
+                        // path could not be parsed, probably because of use glob in path -> move use item to end of queue
+                        if *use_glob_attempts
+                            .entry(use_glob_index)
+                            .and_modify(|attempts| *attempts += 1)
+                            .or_insert(1)
+                            >= max_attempts
+                        {
+                            Err(AnalyzeError::MaxAttemptsExpandingUseGlob(
+                                use_tree.to_token_stream().to_string(),
+                                module,
+                            ))?;
+                        }
+                        use_glob_indices.push_back((use_glob_index, use_tree));
+                        continue;
+                    }
+                };
+
+            // check if module of use glob contains visible use globs
+            if self
+                .iter_syn_neighbors(use_glob_target_module_index)
+                .any(|(n, i)| {
+                    self.is_visible_for_module(n, i, use_glob_owning_module_index)
+                        .is_ok_and(|vis| vis)
+                        && is_use_glob(i).unwrap_or(false)
+                })
+            {
+                // found visible use glob -> move use item to end of queue
+                if *use_glob_attempts
+                    .entry(use_glob_index)
+                    .and_modify(|attempts| *attempts += 1)
+                    .or_insert(1)
+                    >= max_attempts
+                {
+                    Err(AnalyzeError::MaxAttemptsExpandingUseGlob(
+                        use_tree.to_token_stream().to_string(),
+                        module,
+                    ))?;
+                }
+                use_glob_indices.push_back((use_glob_index, use_tree));
+                continue;
+            }
             // remove old use item from tree
             let old_use_item = self
                 .tree
-                .remove_node(*syn_use_glob_index)
+                .remove_node(use_glob_index)
                 .context(add_context!("Expected syn node to remove"))?
                 .get_use_item_from_syn_item_node()
                 .context(add_context!("Expected syn ItemUse."))?
                 .to_owned();
             if self.options.verbose() {
-                let module = self
-                    .get_name_of_crate_or_module(source_index)
-                    .context(add_context!("Expected crate or module name."))?;
                 println!(
                     "Expanding use glob statement of module {}:\n{}",
                     module,
                     old_use_item.to_token_stream()
                 );
             }
-            // get visible items of glob import module and create new use items
+            // get visible items of glob import module, which are not already in scope of module
+            // owning the use glob, and create new use items
             let new_use_items: Vec<ItemUse> = self
-                .iter_syn_neighbors(glob_module_index)
-                .filter_map(|(_, item)| get_name_of_visible_item(item))
-                .filter_map(|name| replace_glob_with_ident(old_use_item.clone(), name))
+                .iter_syn_neighbors(use_glob_target_module_index)
+                .filter(|(n, i)| {
+                    self.is_visible_for_module(*n, i, use_glob_owning_module_index)
+                        .is_ok_and(|vis| vis)
+                })
+                .filter(|(n, _)| {
+                    !self
+                        .iter_syn_neighbors(use_glob_owning_module_index)
+                        .any(|(m, _)| *n == m)
+                })
+                .filter_map(|(_, item)| match item {
+                    Item::Use(use_tree) => replace_glob_with_name_or_rename_use_tree(
+                        old_use_item.clone(),
+                        use_tree.tree.to_owned(),
+                    ),
+                    _ => None,
+                })
                 .collect();
             // add new use items to tree
             for new_use_item in new_use_items {
-                self.add_syn_item(&Item::Use(new_use_item), &"".into(), source_index)?;
+                let use_tree = new_use_item.tree.to_owned();
+                let new_use_item_index = self.add_syn_item(
+                    &Item::Use(new_use_item),
+                    &"".into(),
+                    use_glob_target_module_index,
+                )?;
+                use_glob_indices.push_back((new_use_item_index, use_tree));
             }
         }
         Ok(())
     }
 
-    fn get_module_node_index_of_glob_use(
+    fn is_visible_for_module(
         &self,
-        use_item_node_index: NodeIndex,
-        crate_index: NodeIndex,
-    ) -> CgResult<NodeIndex> {
-        let mut use_tree = &self
-            .tree
-            .node_weight(use_item_node_index)
-            .context(add_context!("Expected syn item"))?
-            .get_use_item_from_syn_item_node()
-            .context(add_context!("Expected syn ItemUse."))?
-            .tree;
-        let mut current_index = self
-            .get_syn_item_source_index(use_item_node_index)
-            .context(add_context!("Expected source index of syn item."))?;
-        // walk trough the use path
-        loop {
-            match use_tree {
-                UseTree::Path(use_path) => {
-                    let module = use_path.ident.to_string();
-                    match module.as_str() {
-                        "crate" => {
-                            // module of current crate
-                            current_index = crate_index;
+        item_index: NodeIndex,
+        item: &Item,
+        module_index: NodeIndex,
+    ) -> CgResult<bool> {
+        // Check module_index
+        if !self.is_crate_or_module(module_index) {
+            Err(anyhow!(add_context!(format!(
+                "Expected crate or module at index '{:?}'.",
+                module_index
+            ))))?;
+        }
+        // check if item is descendant of module
+        if self.is_item_descendant_of_or_same_module(item_index, module_index) {
+            return Ok(true);
+        }
+        if let Some(visibility) = extract_visibility(item) {
+            match visibility {
+                Visibility::Inherited => return Ok(false),
+                Visibility::Public(_) => return Ok(true),
+                Visibility::Restricted(vis_restricted) => {
+                    match self.get_path_target(item_index, vis_restricted.path.as_ref())? {
+                        PathTarget::ExternalPackage => return Ok(false), // only local syn items have NodeIndex to link to
+                        PathTarget::Glob(_) => unreachable!("No glob in visibility path."),
+                        PathTarget::ItemRenamed(_, _) => {
+                            unreachable!("No rename in visibility path.")
                         }
-                        "self" => {
-                            // current module, do nothing
-                        }
-                        "super" => {
-                            // super module
-                            current_index = self
-                                .get_syn_item_source_index(current_index)
-                                .context(add_context!("Expected source index of syn item."))?;
-                        }
-                        _ => {
-                            // some module, could be module of current module or local package dependency
-                            if let Some((module_index, _)) = self
-                                .iter_syn_neighbors(current_index)
-                                .filter_map(|(n, i)| match i {
-                                    Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
-                                    _ => None,
-                                })
-                                .find(|(_, m)| *m == module)
-                            {
-                                current_index = module_index;
-                            } else if let Some((lib_crate_index, _)) =
-                                self.iter_lib_crates().find(|(_, cf)| cf.name == module)
-                            {
-                                current_index = lib_crate_index;
-                            } else {
-                                Err(anyhow!(add_context!(format!(
-                                    "Could not identify {}",
-                                    module,
-                                ))))?;
+                        PathTarget::Item(vis_path_module_index) => {
+                            if self.is_item_descendant_of_or_same_module(
+                                item_index,
+                                vis_path_module_index,
+                            ) {
+                                return Ok(true);
                             }
                         }
+                        PathTarget::PathCouldNotBeParsed => return Ok(false),
                     }
-                    use_tree = &use_path.tree;
-                }
-                UseTree::Group(_) => {
-                    Err(anyhow!(add_context!("Expected expanded use group.")))?;
-                }
-                UseTree::Glob(_) => {
-                    return Ok(current_index);
-                }
-                UseTree::Name(_) => {
-                    Err(anyhow!(add_context!(
-                        "Expected UseTree::Glob, not UseTree::Name"
-                    )))?;
-                }
-                UseTree::Rename(_) => {
-                    Err(anyhow!(add_context!(
-                        "Expected UseTree::Glob, not UseTree::Rename"
-                    )))?;
                 }
             }
         }
+        Ok(false)
     }
 }
 
@@ -299,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_use_globs() {
+    fn test_expand_use_globs_and_link_use_items() {
         // preparation
         let mut cg_data = setup_analyze_test();
         cg_data.add_challenge_dependencies().unwrap();
@@ -308,7 +335,7 @@ mod tests {
         cg_data.expand_use_groups().unwrap();
 
         // action to test
-        cg_data.expand_use_globs().unwrap();
+        cg_data.expand_use_globs_and_link_use_items().unwrap();
 
         // assert use statements after expansion of globs in challenge bin crate
         let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();

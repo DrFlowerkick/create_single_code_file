@@ -6,6 +6,7 @@ mod navigate;
 mod visit;
 
 pub use error::{ChallengeTreeError, TreeResult};
+pub use navigate::PathTarget;
 pub use visit::BfsByEdgeType;
 
 use crate::metadata::MetaWrapper;
@@ -55,7 +56,8 @@ pub enum EdgeType {
     Dependency,
     Crate,
     Syn,
-    ImplementedBy,
+    Usage,
+    Implementation,
     Semantic,
 }
 

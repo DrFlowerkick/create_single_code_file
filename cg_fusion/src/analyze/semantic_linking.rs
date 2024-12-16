@@ -21,7 +21,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             .iter_syn_neighbors(index)
             .filter_map(|(n, i)| match i {
                 Item::Fn(fn_item) => {
-                    if fn_item.sig.ident.to_string() == "main" {
+                    if fn_item.sig.ident == "main" {
                         Some((n, fn_item))
                     } else {
                         None
@@ -50,8 +50,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         node: NodeIndex,
         crate_index: NodeIndex,
     ) -> CgResult<Vec<ItemsCheckSemantic>> {
-        Ok(self
-            .iter_syn_neighbors_without_semantic_link(node)
+        self.iter_syn_neighbors_without_semantic_link(node)
             .map(|(index, item)| match item {
                 Item::Use(_) => {
                     self.get_use_item_target_node(index, crate_index)
@@ -67,9 +66,10 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     use_target_node: None,
                 }),
             })
-            .collect::<Result<Vec<_>, _>>()?)
+            .collect::<Result<Vec<_>, _>>()
     }
 
+    // ToDo: combine this function with usage::get_module_node_index_of_glob_use in one navigate function in challenge_tree
     fn get_use_item_target_node(
         &self,
         use_item_node_index: NodeIndex,
@@ -82,8 +82,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             .get_use_item_from_syn_item_node()
             .context(add_context!("Expected syn ItemUse."))?
             .tree;
-        let mut current_index = self
-            .get_syn_item_source_index(use_item_node_index)
+        let mut module_index = self
+            .get_syn_item_module_index(use_item_node_index)
             .context(add_context!("Expected source index of syn item."))?;
         // walk trough the use path
         loop {
@@ -92,33 +92,43 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     let module = use_path.ident.to_string();
                     match module.as_str() {
                         "crate" => {
-                            // module of current crate
-                            current_index = crate_index;
+                            // module is current crate
+                            module_index = crate_index;
                         }
                         "self" => {
                             // current module, do nothing
                         }
                         "super" => {
                             // super module
-                            current_index = self
-                                .get_syn_item_source_index(current_index)
+                            module_index = self
+                                .get_syn_item_module_index(module_index)
                                 .context(add_context!("Expected source index of syn item."))?;
                         }
                         _ => {
-                            // some module, could be module of current module or local package dependency
-                            if let Some((module_index, _)) = self
-                                .iter_syn_neighbors(current_index)
+                            // some module, could be
+                            // 1. sub module of current module
+                            // 2. reimported module in current module
+                            // 3. local package dependency
+                            // 4. reimported external module (e.g. std::collections or rand::prelude)
+                            if let Some((sub_module_index, _)) = self
+                                .iter_syn_neighbors(module_index)
                                 .filter_map(|(n, i)| match i {
-                                    Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
+                                    // 1. sub module of current module
+                                    Item::Mod(item_mod) => Some((n, &item_mod.ident)),
+                                    // 2. reimported module in current module
+                                    // ToDo: how to handle reimports?
+                                    /*Item::Use(item_use) => {
+                                        let item_import_index
+                                    }*/
                                     _ => None,
                                 })
-                                .find(|(_, m)| *m == module)
+                                .find(|(_, m)| **m == module)
                             {
-                                current_index = module_index;
+                                module_index = sub_module_index;
                             } else if let Some((lib_crate_index, _)) =
                                 self.iter_lib_crates().find(|(_, cf)| cf.name == module)
                             {
-                                current_index = lib_crate_index;
+                                module_index = lib_crate_index;
                             } else {
                                 Err(anyhow!(add_context!(format!(
                                     "Could not identify {}",
@@ -136,28 +146,30 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     Err(anyhow!(add_context!("Expected expanded use globs.")))?;
                 }
                 UseTree::Name(use_name) => {
-                    // search for syn neighbors of current index with name of use_name
-                    let import_item_name = use_name.ident.to_string();
+                    // search for syn neighbors of module index with name of use_name
                     let (use_name_index, _) = self
-                        .iter_syn_neighbors(current_index)
-                        .filter_map(|(n, i)| get_name_of_item(i).map(|(_, name)| (n, name)))
-                        .find(|(_, name)| *name == import_item_name)
+                        .iter_syn_neighbors(module_index)
+                        .filter_map(|(n, i)| {
+                            get_name_of_item(i).extract_ident().map(|ident| (n, ident))
+                        })
+                        .find(|(_, name)| *name == use_name.ident)
                         .context(add_context!(format!(
-                            "Expected {import_item_name} at child of syn node {:?}.",
-                            current_index
+                            "Expected {:?} at child of syn node {:?}.",
+                            use_name.ident, module_index
                         )))?;
                     return Ok(use_name_index);
                 }
                 UseTree::Rename(use_rename) => {
-                    // search for syn neighbors of current index with name of use_rename
-                    let import_item_name = use_rename.rename.to_string();
+                    // search for syn neighbors of module index with name of use_rename
                     let (use_name_index, _) = self
-                        .iter_syn_neighbors(current_index)
-                        .filter_map(|(n, i)| get_name_of_item(i).map(|(_, name)| (n, name)))
-                        .find(|(_, name)| *name == import_item_name)
+                        .iter_syn_neighbors(module_index)
+                        .filter_map(|(n, i)| {
+                            get_name_of_item(i).extract_ident().map(|ident| (n, ident))
+                        })
+                        .find(|(_, name)| *name == use_rename.rename)
                         .context(add_context!(format!(
-                            "Expected {import_item_name} at child of syn node {:?}.",
-                            current_index
+                            "Expected {:?} at child of syn node {:?}.",
+                            use_rename.rename, module_index
                         )))?;
                     return Ok(use_name_index);
                 }

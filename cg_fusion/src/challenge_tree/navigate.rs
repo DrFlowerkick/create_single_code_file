@@ -4,11 +4,17 @@ use super::{
     visit::BfsByEdgeType, ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeTyp,
     TreeResult,
 };
-use crate::{add_context, configuration::CliInput, CgData};
+use crate::{
+    add_context,
+    configuration::CliInput,
+    error::CgResult,
+    parsing::{get_name_of_item, PathAnalysis},
+    CgData,
+};
 
 use anyhow::Context;
 use petgraph::{graph::NodeIndex, visit::EdgeRef, Direction};
-use syn::Item;
+use syn::{Ident, Item};
 
 impl<O, S> CgData<O, S> {
     pub fn challenge_package(&self) -> &LocalPackage {
@@ -73,7 +79,7 @@ impl<O, S> CgData<O, S> {
         })
     }
 
-    fn iter_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &NodeTyp)> {
+    pub fn iter_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &NodeTyp)> {
         // skip first element, which is root of tree and therefore not a dependency
         self.iter_packages().skip(1)
     }
@@ -128,6 +134,11 @@ impl<O, S> CgData<O, S> {
             .next()
     }
 
+    pub fn iter_crates(&self) -> impl Iterator<Item = (NodeIndex, bool, &CrateFile)> {
+        self.iter_local_packages()
+            .flat_map(|(pi, _)| self.iter_package_crates(pi))
+    }
+
     pub fn iter_lib_crates(&self) -> impl Iterator<Item = (NodeIndex, &CrateFile)> {
         self.iter_local_packages().filter_map(|(n, _)| {
             self.iter_package_crates(n)
@@ -159,12 +170,25 @@ impl<O, S> CgData<O, S> {
             .fuse()
     }
 
-    pub fn get_syn_item_source_index(&self, node: NodeIndex) -> Option<NodeIndex> {
+    fn get_parent_index_by_edge_type(
+        &self,
+        node: NodeIndex,
+        edge_type: EdgeType,
+    ) -> Option<NodeIndex> {
         self.tree
             .edges_directed(node, Direction::Incoming)
-            .filter(|e| *e.weight() == EdgeType::Syn)
+            .find(|e| *e.weight() == edge_type)
             .map(|e| e.source())
-            .next()
+    }
+
+    pub fn get_syn_item_module_index(&self, node: NodeIndex) -> Option<NodeIndex> {
+        let module_index = self.get_parent_index_by_edge_type(node, EdgeType::Syn);
+        if let Some(NodeTyp::SynImplItem(_)) = self.tree.node_weight(node) {
+            if let Some(mi) = module_index {
+                return self.get_syn_item_module_index(mi);
+            }
+        }
+        module_index
     }
 
     pub fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {
@@ -189,6 +213,48 @@ impl<O, S> CgData<O, S> {
             _ => None,
         })
     }
+
+    pub fn get_crate_index(&self, node: NodeIndex) -> Option<NodeIndex> {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            match node_weight {
+                NodeTyp::BinCrate(_) | NodeTyp::LibCrate(_) => return Some(node),
+                NodeTyp::SynItem(_) | NodeTyp::SynImplItem(_) => {
+                    if let Some(parent) = self.get_parent_index_by_edge_type(node, EdgeType::Syn) {
+                        return self.get_crate_index(parent);
+                    }
+                }
+                _ => (),
+            }
+        }
+        None
+    }
+
+    pub fn is_crate_or_module(&self, node: NodeIndex) -> bool {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            return match node_weight {
+                NodeTyp::BinCrate(_) | NodeTyp::LibCrate(_) | NodeTyp::SynItem(Item::Mod(_)) => {
+                    true
+                }
+                _ => false,
+            };
+        }
+        false
+    }
+
+    pub fn is_item_descendant_of_or_same_module(
+        &self,
+        item_index: NodeIndex,
+        module_index: NodeIndex,
+    ) -> bool {
+        if item_index == module_index {
+            return true;
+        }
+        if let Some(parent_index) = self.get_parent_index_by_edge_type(item_index, EdgeType::Syn) {
+            return self.is_item_descendant_of_or_same_module(parent_index, module_index);
+        }
+        false
+    }
+
     pub fn iter_syn_neighbors_without_semantic_link(
         &self,
         node: NodeIndex,
@@ -199,6 +265,137 @@ impl<O, S> CgData<O, S> {
                 .edges_connecting(node, *target)
                 .any(|e| *e.weight() == EdgeType::Semantic)
         })
+    }
+
+    pub fn get_path_target(
+        &self,
+        path_item_index: NodeIndex,
+        path: &impl PathAnalysis,
+    ) -> CgResult<PathTarget> {
+        if let Some(extracted_path) = path.extract_path() {
+            let mut module_index = self
+                .get_syn_item_module_index(path_item_index)
+                .context(add_context!("Expected source index of syn item."))?;
+            // walk trough the path
+            for (seg_index, segment) in extracted_path.segments.iter().enumerate() {
+                match segment.to_string().as_str() {
+                    "crate" => {
+                        // module of current crate
+                        let crate_index =
+                            self.get_crate_index(module_index)
+                                .context(add_context!(format!(
+                                    "Expected crate index of module index {:?}",
+                                    module_index
+                                )))?;
+                        module_index = crate_index;
+                    }
+                    "self" => {
+                        // current module, do nothing
+                    }
+                    "super" => {
+                        // super module
+                        module_index = self
+                            .get_syn_item_module_index(module_index)
+                            .context(add_context!("Expected source index of syn item."))?;
+                    }
+                    _ => {
+                        if seg_index == 0 {
+                            // check if module points to external or local package dependency
+                            if self
+                                .iter_external_dependencies()
+                                .any(|dep_name| segment == dep_name)
+                            {
+                                return Ok(PathTarget::ExternalPackage);
+                            }
+                            if let Some((lib_crate_index, _)) =
+                                self.iter_lib_crates().find(|(_, cf)| *segment == cf.name)
+                            {
+                                module_index = lib_crate_index;
+                                continue;
+                            }
+                        }
+                        if seg_index < extracted_path.segments.len() - 1 {
+                            // segments of path before target item
+                            if let Some((sub_module_index, _)) = self
+                                .iter_syn_neighbors(module_index)
+                                .filter_map(|(n, i)| match i {
+                                    Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
+                                    _ => None,
+                                })
+                                .find(|(_, m)| segment == m)
+                            {
+                                // found local module
+                                module_index = sub_module_index;
+                            } else if let Some((use_module_index, _, use_tree)) = self
+                                .iter_syn_neighbors(module_index)
+                                .filter_map(|(n, i)| match i {
+                                    Item::Use(item_use) => get_name_of_item(i)
+                                        .extract_ident()
+                                        .map(|ident| (n, ident, &item_use.tree)),
+                                    _ => None,
+                                })
+                                .find(|(_, m, _)| segment == m)
+                            {
+                                // found reimported module
+                                match self.get_path_target(use_module_index, use_tree)? {
+                                    PathTarget::ExternalPackage => {
+                                        return Ok(PathTarget::ExternalPackage)
+                                    }
+                                    PathTarget::Glob(_) => {
+                                        unreachable!(
+                                            "filter_map use statements which end on name or rename"
+                                        );
+                                    }
+                                    PathTarget::Item(item_index) => {
+                                        // Item must be module
+                                        assert!(matches!(
+                                            self.get_syn_item(item_index),
+                                            Some(Item::Mod(_))
+                                        ));
+                                        module_index = item_index;
+                                    }
+                                    PathTarget::ItemRenamed(item_index, _) => {
+                                        // Renamed item must be module
+                                        assert!(matches!(
+                                            self.get_syn_item(item_index),
+                                            Some(Item::Mod(_))
+                                        ));
+                                        module_index = item_index;
+                                    }
+                                    PathTarget::PathCouldNotBeParsed => {
+                                        return Ok(PathTarget::PathCouldNotBeParsed)
+                                    }
+                                }
+                            } else {
+                                // could not find module of segment
+                                return Ok(PathTarget::PathCouldNotBeParsed);
+                            }
+                        } else {
+                            // get target index of path
+                            if extracted_path.glob {
+                                return Ok(PathTarget::Glob(module_index));
+                            }
+                            // search for item in tree und fetch it's Index
+                            let (item_index, _) = self
+                                .iter_syn_neighbors(module_index)
+                                .filter_map(|(n, i)| {
+                                    get_name_of_item(i).extract_ident().map(|ident| (n, ident))
+                                })
+                                .find(|(_, n)| segment == n)
+                                .context(add_context!(format!(
+                                    "Expected item_index of '{:?}'",
+                                    segment
+                                )))?;
+                            if let Some(rename) = extracted_path.rename {
+                                return Ok(PathTarget::ItemRenamed(item_index, rename));
+                            }
+                            return Ok(PathTarget::Item(item_index));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(PathTarget::PathCouldNotBeParsed)
     }
 }
 
@@ -235,4 +432,13 @@ impl<O: CliInput, S> CgData<O, S> {
         }
         Ok(crate_indices)
     }
+}
+
+#[derive(Debug)]
+pub enum PathTarget {
+    ExternalPackage,
+    Glob(NodeIndex),
+    Item(NodeIndex),
+    ItemRenamed(NodeIndex, Ident),
+    PathCouldNotBeParsed,
 }

@@ -2,7 +2,10 @@
 
 use super::AnalyzeState;
 use crate::{
-    add_context, configuration::CliInput, error::CgResult, parsing::first_item_impl_is_ident,
+    add_context,
+    configuration::CliInput,
+    error::CgResult,
+    parsing::{first_item_impl_is_ident, first_trait_impl_is_ident},
     CgData,
 };
 use anyhow::Context;
@@ -22,39 +25,48 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             for syn_impl_index in syn_impl_indices {
                 // get source (parent) of syn impl item
                 let source_index = self
-                    .get_syn_item_source_index(syn_impl_index)
+                    .get_syn_item_module_index(syn_impl_index)
                     .context(add_context!("Expected source index of syn item."))?;
 
-                if self.link_impl_block_enum_or_struct(syn_impl_index, source_index)? {
+                if self.link_impl_block_enum_struct_trait_of_module(syn_impl_index, source_index)? {
                     // linked to enum or struct of same module as impl statement
                     continue;
                 }
+                // ToDo:
+                // add implementation links for enums, structs and traits imported via use statement
             }
         }
         Ok(())
     }
 
-    fn link_impl_block_enum_or_struct(
+    fn link_impl_block_enum_struct_trait_of_module(
         &mut self,
         syn_impl_index: NodeIndex,
         source_index: NodeIndex,
     ) -> CgResult<bool> {
-        // get indices and names of SynItem enum or struct Nodes
-        let syn_enum_structs: Vec<(NodeIndex, Ident)> = self
+        // get indices and names of SynItem enum, struct and trait Nodes
+        let syn_est_items: Vec<(NodeIndex, Ident)> = self
             .iter_syn_neighbors(source_index)
             .filter_map(|(n, i)| match i {
                 Item::Enum(item_enum) => Some((n, item_enum.ident.to_owned())),
                 Item::Struct(item_struct) => Some((n, item_struct.ident.to_owned())),
+                Item::Trait(item_trait) => Some((n, item_trait.ident.to_owned())),
                 _ => None,
             })
             .collect();
 
-        for (syn_enum_struct_index, name) in syn_enum_structs {
+        for (syn_est_index, name) in syn_est_items {
             if let Some(true) = self
                 .get_syn_item(syn_impl_index)
                 .map(|i| first_item_impl_is_ident(i, &name))
             {
-                self.add_implemented_by_link(syn_enum_struct_index, syn_impl_index)?;
+                self.add_implementation_by_link(syn_est_index, syn_impl_index)?;
+                return Ok(true);
+            } else if let Some(true) = self
+                .get_syn_item(syn_impl_index)
+                .map(|i| first_trait_impl_is_ident(i, &name))
+            {
+                self.add_implementation_by_link(syn_est_index, syn_impl_index)?;
                 return Ok(true);
             }
         }
@@ -78,7 +90,7 @@ mod tests {
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();
         cg_data.expand_use_groups().unwrap();
-        cg_data.expand_use_globs().unwrap();
+        cg_data.expand_use_globs_and_link_use_items().unwrap();
 
         // action to test
         cg_data.link_impl_blocks_with_corresponding_item().unwrap();
@@ -90,27 +102,27 @@ mod tests {
             .unwrap();
         let (enum_value_index, _) = cg_data
             .iter_syn_neighbors(cg_fusion_binary_test_index)
-            .filter_map(|(n, i)| get_name_of_item(i).map(|(_, name)| (n, name)))
+            .filter_map(|(n, i)| get_name_of_item(i).extract_name().map(|name| (n, name)))
             .find(|(_, name)| name == "Value")
             .unwrap();
         assert_eq!(
             cg_data
                 .tree
                 .edges_directed(enum_value_index, Direction::Outgoing)
-                .filter(|e| *e.weight() == EdgeType::ImplementedBy)
+                .filter(|e| *e.weight() == EdgeType::Implementation)
                 .count(),
             1
         );
         let (struct_go_index, _) = cg_data
             .iter_syn_neighbors(cg_fusion_binary_test_index)
-            .filter_map(|(n, i)| get_name_of_item(i).map(|(_, name)| (n, name)))
+            .filter_map(|(n, i)| get_name_of_item(i).extract_name().map(|name| (n, name)))
             .find(|(_, name)| name == "Go")
             .unwrap();
         assert_eq!(
             cg_data
                 .tree
                 .edges_directed(struct_go_index, Direction::Outgoing)
-                .filter(|e| *e.weight() == EdgeType::ImplementedBy)
+                .filter(|e| *e.weight() == EdgeType::Implementation)
                 .count(),
             2
         );
@@ -122,14 +134,14 @@ mod tests {
 
         let (struct_my_map_2d_index, _) = cg_data
             .iter_syn_neighbors(my_map_two_dim_index)
-            .filter_map(|(n, i)| get_name_of_item(i).map(|(_, name)| (n, name)))
+            .filter_map(|(n, i)| get_name_of_item(i).extract_name().map(|name| (n, name)))
             .find(|(_, name)| name == "MyMap2D")
             .unwrap();
         assert_eq!(
             cg_data
                 .tree
                 .edges_directed(struct_my_map_2d_index, Direction::Outgoing)
-                .filter(|e| *e.weight() == EdgeType::ImplementedBy)
+                .filter(|e| *e.weight() == EdgeType::Implementation)
                 .count(),
             2
         );

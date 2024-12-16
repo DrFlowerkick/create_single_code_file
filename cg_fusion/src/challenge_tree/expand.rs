@@ -8,7 +8,7 @@ use crate::{
     CgData,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::graph::NodeIndex;
 use quote::ToTokens;
@@ -159,9 +159,7 @@ impl<O: CliInput, S> CgData<O, S> {
             }
             _ => {
                 if self.options.verbose() {
-                    let (item_type, name) = get_name_of_item(item)
-                        .context(add_context!("Expect type and name of item."))?;
-                    println!("Adding syn item '{name}' of type '{item_type}' to tree.");
+                    println!("Adding syn item '{}' to tree.", get_name_of_item(item));
                 }
             }
         }
@@ -246,9 +244,10 @@ impl<O: CliInput, S> CgData<O, S> {
         }
         for impl_item in item_impl.items.iter() {
             if self.options.verbose() {
-                let (item_type, name) = get_name_of_impl_item(impl_item)
-                    .context(add_context!("Expect type and name of item."))?;
-                println!("Adding syn impl item '{name}' of type '{item_type}' to tree.");
+                println!(
+                    "Adding syn impl item '{}' to tree.",
+                    get_name_of_impl_item(impl_item)
+                );
             }
             let impl_item_index = self
                 .tree
@@ -259,29 +258,49 @@ impl<O: CliInput, S> CgData<O, S> {
         Ok(())
     }
 
-    pub fn add_implemented_by_link(
+    pub fn add_usage_link(&mut self, source: NodeIndex, target: NodeIndex) -> TreeResult<()> {
+        // test for existing nodes
+        let source_syn = self
+            .get_syn_item(source)
+            .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
+        let target_syn = self
+            .get_syn_item(target)
+            .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
+        if self.options.verbose() {
+            let source = get_name_of_item(source_syn);
+            let target = get_name_of_item(target_syn);
+            println!("Adding usage link from '{source}' to '{target}'.");
+        }
+        self.tree.add_edge(source, target, EdgeType::Usage);
+        Ok(())
+    }
+
+    pub fn add_implementation_by_link(
         &mut self,
         source: NodeIndex,
         target: NodeIndex,
     ) -> TreeResult<()> {
         // test for existing nodes
-        let source_syn = self.get_syn_item(source).ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
-        let target_syn = self.get_syn_item(target).ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
+        let source_syn = self
+            .get_syn_item(source)
+            .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
+        let target_syn = self
+            .get_syn_item(target)
+            .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
         if self.options.verbose() {
-            let (source_type, source_name) = get_name_of_item(source_syn).context(add_context!("Expect type and name of item."))?;
-            let (_, trait_name) = get_name_of_item(target_syn).context(add_context!("Expect type and name of item."))?;
-            if trait_name.is_empty() {
-                println!("Adding implemented by link for '{source_name}' of type '{source_type}'.");
+            let source = get_name_of_item(source_syn);
+            let trait_name = get_name_of_item(target_syn);
+            if trait_name.is_none() {
+                println!("Adding implemented by link for '{source}'.");
             } else {
-                println!("Adding implemented by link of trait '{trait_name}' for '{source_name}' of type '{source_type}'.");
+                println!("Adding implemented by link of '{trait_name}' for '{source}'.");
             }
         }
-        self.tree.add_edge(source, target, EdgeType::ImplementedBy);
+        self.tree.add_edge(source, target, EdgeType::Implementation);
         Ok(())
     }
 
     pub fn add_semantic_link(&mut self, source: NodeIndex, target: NodeIndex) -> TreeResult<()> {
-
         self.tree
             .node_weight(source)
             .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;

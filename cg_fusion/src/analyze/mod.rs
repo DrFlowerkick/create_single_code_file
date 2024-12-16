@@ -53,7 +53,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         self.add_lib_src_files()?;
         // expand use statements
         self.expand_use_groups()?;
-        self.expand_use_globs()?;
+        self.expand_use_globs_and_link_use_items()?;
         // link items, which are required for challenge
         self.link_challenge_semantic()?;
 
