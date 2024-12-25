@@ -8,6 +8,7 @@ use anyhow::{anyhow, Context};
 use petgraph::graph::NodeIndex;
 use syn::{Item, UseTree};
 
+#[derive(Debug)]
 struct ItemsCheckSemantic {
     item: Item,
     node: NodeIndex,
@@ -42,6 +43,12 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         // are used by challenge. Do not link to items in Trait impl. Instead link to trait impl itself.
         // For this to work next step is to create nodes for ImplItems!
         let neighbors_to_check = self.collect_neighbors_to_check(index, index)?;
+        for neighbor in neighbors_to_check.iter() {
+            println!(
+                "item: {:?}\nnode: {:?}\nuse_target_node: {:?}",
+                neighbor.item, neighbor.node, neighbor.use_target_node
+            );
+        }
         Ok(())
     }
 
@@ -116,7 +123,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                                     // 1. sub module of current module
                                     Item::Mod(item_mod) => Some((n, &item_mod.ident)),
                                     // 2. reimported module in current module
-                                    // ToDo: how to handle reimports?
+                                    // ToDo: how to handle re-imports?
                                     /*Item::Use(item_use) => {
                                         let item_import_index
                                     }*/

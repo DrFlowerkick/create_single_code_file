@@ -224,14 +224,10 @@ impl PathAnalysis for Path {
 // check if UseTree ends in glob; returns None if use statement contains groups
 pub fn is_use_glob(item: &Item) -> Option<bool> {
     if let Item::Use(use_item) = item {
-        let mut use_tree = &use_item.tree;
-        loop {
-            match use_tree {
-                UseTree::Path(use_path) => use_tree = &use_path.tree,
-                UseTree::Group(_) => return None,
-                UseTree::Glob(_) => return Some(true),
-                UseTree::Name(_) | UseTree::Rename(_) => return Some(false),
-            }
+        return if let Some(path) = use_item.tree.extract_path() {
+            Some(path.glob)
+        } else {
+            None
         }
     }
     None
@@ -315,6 +311,7 @@ pub enum ItemName {
     TypeStringAndRenamed(String, Ident, Ident),
     TypeStringAndNameString(String, String),
     TypeString(String),
+    Glob,
     None,
 }
 
@@ -325,6 +322,7 @@ impl Display for ItemName {
             Self::TypeStringAndRenamed(ts, i, r) => write!(f, "{:?} as {:?} ({ts})", i, r),
             Self::TypeStringAndNameString(ts, ns) => write!(f, "{ns} ({ts})"),
             Self::TypeString(ts) => write!(f, "({ts})"),
+            Self::Glob => write!(f, "(glob *)"),
             Self::None => write!(f, "(UNKNOWN)"),
         }
     }
@@ -335,6 +333,13 @@ impl ItemName {
         match self {
             Self::TypeStringAndIdent(_, ident) => Some(ident.to_owned()),
             Self::TypeStringAndRenamed(_, ident, _) => Some(ident.to_owned()),
+            _ => None,
+        }
+    }
+    pub fn extract_imported_ident(&self) -> Option<Ident> {
+        match self {
+            Self::TypeStringAndIdent(_, ident) => Some(ident.to_owned()),
+            Self::TypeStringAndRenamed(_, _, rename) => Some(rename.to_owned()),
             _ => None,
         }
     }
@@ -399,25 +404,23 @@ pub fn get_name_of_item(item: &Item) -> ItemName {
         }
         Item::Use(item_use) => {
             // expect expanded use tree (no group, no glob)
-            let mut use_tree = &item_use.tree;
-            'use_loop: loop {
-                match use_tree {
-                    UseTree::Path(use_path) => use_tree = &use_path.tree,
-                    UseTree::Group(_) | UseTree::Glob(_) => break 'use_loop ItemName::None,
-                    UseTree::Name(use_name) => {
-                        break 'use_loop ItemName::TypeStringAndIdent(
-                            "Use".into(),
-                            use_name.ident.to_owned(),
-                        )
-                    }
-                    UseTree::Rename(use_rename) => {
-                        break 'use_loop ItemName::TypeStringAndRenamed(
-                            "Use".into(),
-                            use_rename.ident.to_owned(),
-                            use_rename.rename.to_owned(),
-                        )
-                    }
+            if let Some(path) = item_use.tree.extract_path() {
+                if path.glob {
+                    ItemName::Glob
+                } else if let Some(rename) = path.rename {
+                    ItemName::TypeStringAndRenamed(
+                        "Use".into(),
+                        path.segments.last().unwrap().to_owned(),
+                        rename.to_owned(),
+                    )
+                } else {
+                    ItemName::TypeStringAndIdent(
+                        "Use".into(),
+                        path.segments.last().unwrap().to_owned(),
+                    )
                 }
+            } else {
+                ItemName::None
             }
         }
         Item::ForeignMod(_) => ItemName::TypeString("ForeignMod".into()),

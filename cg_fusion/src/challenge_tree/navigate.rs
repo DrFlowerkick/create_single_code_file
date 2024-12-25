@@ -246,11 +246,15 @@ impl<O, S> CgData<O, S> {
         item_index: NodeIndex,
         module_index: NodeIndex,
     ) -> bool {
-        if item_index == module_index {
-            return true;
-        }
-        if let Some(parent_index) = self.get_parent_index_by_edge_type(item_index, EdgeType::Syn) {
-            return self.is_item_descendant_of_or_same_module(parent_index, module_index);
+        if let Some(item_module_index) = self.get_syn_item_module_index(item_index) {
+            if item_module_index == module_index {
+                return true;
+            }
+            while let Some(module_index) = self.get_syn_item_module_index(module_index) {
+                if item_module_index == module_index {
+                    return true;
+                }
+            }
         }
         false
     }
@@ -299,21 +303,6 @@ impl<O, S> CgData<O, S> {
                             .context(add_context!("Expected source index of syn item."))?;
                     }
                     _ => {
-                        if seg_index == 0 {
-                            // check if module points to external or local package dependency
-                            if self
-                                .iter_external_dependencies()
-                                .any(|dep_name| segment == dep_name)
-                            {
-                                return Ok(PathTarget::ExternalPackage);
-                            }
-                            if let Some((lib_crate_index, _)) =
-                                self.iter_lib_crates().find(|(_, cf)| *segment == cf.name)
-                            {
-                                module_index = lib_crate_index;
-                                continue;
-                            }
-                        }
                         if seg_index < extracted_path.segments.len() - 1 {
                             // segments of path before target item
                             if let Some((sub_module_index, _)) = self
@@ -330,7 +319,7 @@ impl<O, S> CgData<O, S> {
                                 .iter_syn_neighbors(module_index)
                                 .filter_map(|(n, i)| match i {
                                     Item::Use(item_use) => get_name_of_item(i)
-                                        .extract_ident()
+                                        .extract_imported_ident()
                                         .map(|ident| (n, ident, &item_use.tree)),
                                     _ => None,
                                 })
@@ -366,6 +355,19 @@ impl<O, S> CgData<O, S> {
                                         return Ok(PathTarget::PathCouldNotBeParsed)
                                     }
                                 }
+                            } else if seg_index == 0 {
+                                // check if module points to external or local package dependency
+                                if self
+                                    .iter_external_dependencies()
+                                    .any(|dep_name| segment == dep_name)
+                                {
+                                    return Ok(PathTarget::ExternalPackage);
+                                }
+                                if let Some((lib_crate_index, _)) =
+                                    self.iter_lib_crates().find(|(_, cf)| *segment == cf.name)
+                                {
+                                    module_index = lib_crate_index;
+                                }
                             } else {
                                 // could not find module of segment
                                 return Ok(PathTarget::PathCouldNotBeParsed);
@@ -379,7 +381,7 @@ impl<O, S> CgData<O, S> {
                             let (item_index, _) = self
                                 .iter_syn_neighbors(module_index)
                                 .filter_map(|(n, i)| {
-                                    get_name_of_item(i).extract_ident().map(|ident| (n, ident))
+                                    get_name_of_item(i).extract_imported_ident().map(|ident| (n, ident))
                                 })
                                 .find(|(_, n)| segment == n)
                                 .context(add_context!(format!(
@@ -392,6 +394,10 @@ impl<O, S> CgData<O, S> {
                             return Ok(PathTarget::Item(item_index));
                         }
                     }
+                }
+                // this can happen with 'crate', 'super' or 'self' as visibility path
+                if seg_index == extracted_path.segments.len() - 1 {
+                    return Ok(PathTarget::Item(module_index));      
                 }
             }
         }

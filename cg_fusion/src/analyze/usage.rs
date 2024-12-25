@@ -207,6 +207,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         item: &Item,
         module_index: NodeIndex,
     ) -> CgResult<bool> {
+        /*
+        https://doc.rust-lang.org/reference/visibility-and-privacy.html
+        With the notion of an item being either public or private, Rust allows item accesses in two cases:
+        1. If an item is public, then it can be accessed externally from some module m if you can access all
+        the item’s ancestor modules from m. You can also potentially be able to name the item through re-exports.
+        2. If an item is private, it may be accessed by the current module and its descendants.
+        */
         // Check module_index
         if !self.is_crate_or_module(module_index) {
             Err(anyhow!(add_context!(format!(
@@ -214,10 +221,11 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 module_index
             ))))?;
         }
-        // check if item is descendant of module
+        // check if item is descendant of module; if yes, it is visible because of rule 2 (see above)
         if self.is_item_descendant_of_or_same_module(item_index, module_index) {
             return Ok(true);
         }
+        // item is not a descendant, therefore we have to analyze visibility
         if let Some(visibility) = extract_visibility(item) {
             match visibility {
                 Visibility::Inherited => return Ok(false),
@@ -231,8 +239,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         }
                         PathTarget::Item(vis_path_module_index) => {
                             if self.is_item_descendant_of_or_same_module(
-                                item_index,
                                 vis_path_module_index,
+                                module_index,
                             ) {
                                 return Ok(true);
                             }
