@@ -166,6 +166,7 @@ pub trait PathAnalysis {
     fn extract_path(&self) -> Option<SourcePath>;
 }
 
+#[derive(Debug)]
 pub struct SourcePath {
     pub segments: Vec<Ident>,
     pub glob: bool,
@@ -228,7 +229,7 @@ pub fn is_use_glob(item: &Item) -> Option<bool> {
             Some(path.glob)
         } else {
             None
-        }
+        };
     }
     None
 }
@@ -357,106 +358,112 @@ impl ItemName {
             _ => None,
         }
     }
+    pub fn is_glob(&self) -> bool {
+        matches!(self, Self::Glob)
+    }
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
 }
 
-// get name of item
-pub fn get_name_of_item(item: &Item) -> ItemName {
-    match item {
-        Item::Const(item_const) => {
-            ItemName::TypeStringAndIdent("Const".into(), item_const.ident.to_owned())
-        }
-        Item::Enum(item_enum) => {
-            ItemName::TypeStringAndIdent("Enum".into(), item_enum.ident.to_owned())
-        }
-        Item::ExternCrate(item_extern_crate) => {
-            ItemName::TypeStringAndIdent("ExternCrate".into(), item_extern_crate.ident.to_owned())
-        }
-        Item::Fn(item_fn) => {
-            ItemName::TypeStringAndIdent("Fn".into(), item_fn.sig.ident.to_owned())
-        }
-        Item::Macro(item_macro) => match item_macro.ident {
-            Some(ref ident) => ItemName::TypeStringAndIdent("Macro".into(), ident.to_owned()),
-            None => ItemName::None,
-        },
-        Item::Mod(item_mod) => {
-            ItemName::TypeStringAndIdent("Mod".into(), item_mod.ident.to_owned())
-        }
-        Item::Static(item_static) => {
-            ItemName::TypeStringAndIdent("Static".into(), item_static.ident.to_owned())
-        }
-        Item::Struct(item_struct) => {
-            ItemName::TypeStringAndIdent("Struct".into(), item_struct.ident.to_owned())
-        }
-        Item::Trait(item_trait) => {
-            ItemName::TypeStringAndIdent("Trait".into(), item_trait.ident.to_owned())
-        }
-        Item::TraitAlias(item_trait_alias) => {
-            ItemName::TypeStringAndIdent("TraitAlias".into(), item_trait_alias.ident.to_owned())
-        }
-        Item::Type(item_type) => {
-            ItemName::TypeStringAndIdent("Type".into(), item_type.ident.to_owned())
-        }
-        Item::Union(item_union) => {
-            ItemName::TypeStringAndIdent("Union".into(), item_union.ident.to_owned())
-        }
-        Item::Use(item_use) => {
-            // expect expanded use tree (no group, no glob)
-            if let Some(path) = item_use.tree.extract_path() {
-                if path.glob {
-                    ItemName::Glob
-                } else if let Some(rename) = path.rename {
-                    ItemName::TypeStringAndRenamed(
-                        "Use".into(),
-                        path.segments.last().unwrap().to_owned(),
-                        rename.to_owned(),
+impl From<&Item> for ItemName {
+    fn from(item: &Item) -> Self {
+        match item {
+            Item::Const(item_const) => {
+                ItemName::TypeStringAndIdent("Const".into(), item_const.ident.to_owned())
+            }
+            Item::Enum(item_enum) => {
+                ItemName::TypeStringAndIdent("Enum".into(), item_enum.ident.to_owned())
+            }
+            Item::ExternCrate(item_extern_crate) => ItemName::TypeStringAndIdent(
+                "ExternCrate".into(),
+                item_extern_crate.ident.to_owned(),
+            ),
+            Item::Fn(item_fn) => {
+                ItemName::TypeStringAndIdent("Fn".into(), item_fn.sig.ident.to_owned())
+            }
+            Item::Macro(item_macro) => match item_macro.ident {
+                Some(ref ident) => ItemName::TypeStringAndIdent("Macro".into(), ident.to_owned()),
+                None => ItemName::None,
+            },
+            Item::Mod(item_mod) => {
+                ItemName::TypeStringAndIdent("Mod".into(), item_mod.ident.to_owned())
+            }
+            Item::Static(item_static) => {
+                ItemName::TypeStringAndIdent("Static".into(), item_static.ident.to_owned())
+            }
+            Item::Struct(item_struct) => {
+                ItemName::TypeStringAndIdent("Struct".into(), item_struct.ident.to_owned())
+            }
+            Item::Trait(item_trait) => {
+                ItemName::TypeStringAndIdent("Trait".into(), item_trait.ident.to_owned())
+            }
+            Item::TraitAlias(item_trait_alias) => {
+                ItemName::TypeStringAndIdent("TraitAlias".into(), item_trait_alias.ident.to_owned())
+            }
+            Item::Type(item_type) => {
+                ItemName::TypeStringAndIdent("Type".into(), item_type.ident.to_owned())
+            }
+            Item::Union(item_union) => {
+                ItemName::TypeStringAndIdent("Union".into(), item_union.ident.to_owned())
+            }
+            Item::Use(item_use) => {
+                // expect expanded use tree (no group, no glob)
+                if let Some(path) = item_use.tree.extract_path() {
+                    if path.glob {
+                        ItemName::Glob
+                    } else if let Some(rename) = path.rename {
+                        ItemName::TypeStringAndRenamed(
+                            "Use".into(),
+                            path.segments.last().unwrap().to_owned(),
+                            rename.to_owned(),
+                        )
+                    } else {
+                        ItemName::TypeStringAndIdent(
+                            "Use".into(),
+                            path.segments.last().unwrap().to_owned(),
+                        )
+                    }
+                } else {
+                    ItemName::None
+                }
+            }
+            Item::ForeignMod(_) => ItemName::TypeString("ForeignMod".into()),
+            Item::Impl(item_impl) => {
+                if let Some((_, ref trait_, _)) = item_impl.trait_ {
+                    ItemName::TypeStringAndNameString(
+                        "Impl".into(),
+                        trait_.to_token_stream().to_string(),
                     )
                 } else {
-                    ItemName::TypeStringAndIdent(
-                        "Use".into(),
-                        path.segments.last().unwrap().to_owned(),
-                    )
+                    ItemName::TypeString("Impl".into())
                 }
-            } else {
-                ItemName::None
             }
+            Item::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
+            _ => ItemName::None, // Item is #[non_exhaustive]
         }
-        Item::ForeignMod(_) => ItemName::TypeString("ForeignMod".into()),
-        Item::Impl(item_impl) => {
-            if let Some((_, ref trait_, _)) = item_impl.trait_ {
-                ItemName::TypeStringAndNameString(
-                    "Impl".into(),
-                    trait_.to_token_stream().to_string(),
-                )
-            } else {
-                ItemName::TypeString("Impl".into())
-            }
-        }
-        Item::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
-        _ => ItemName::None, // Item is #[non_exhaustive]
     }
 }
 
-// get name of impl item
-pub fn get_name_of_impl_item(impl_item: &ImplItem) -> ItemName {
-    match impl_item {
-        ImplItem::Const(impl_item_const) => {
-            ItemName::TypeStringAndIdent("Const".into(), impl_item_const.ident.to_owned())
+impl From<&ImplItem> for ItemName {
+    fn from(impl_item: &ImplItem) -> Self {
+        match impl_item {
+            ImplItem::Const(impl_item_const) => {
+                ItemName::TypeStringAndIdent("Const".into(), impl_item_const.ident.to_owned())
+            }
+            ImplItem::Fn(impl_item_fn) => {
+                ItemName::TypeStringAndIdent("Fn".into(), impl_item_fn.sig.ident.to_owned())
+            }
+            ImplItem::Macro(impl_item_macro) => ItemName::TypeStringAndNameString(
+                "Macro".into(),
+                impl_item_macro.mac.path.to_token_stream().to_string(),
+            ),
+            ImplItem::Type(impl_item_type) => {
+                ItemName::TypeStringAndIdent("Type".into(), impl_item_type.ident.to_owned())
+            }
+            ImplItem::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
+            _ => ItemName::None,
         }
-        ImplItem::Fn(impl_item_fn) => {
-            ItemName::TypeStringAndIdent("Fn".into(), impl_item_fn.sig.ident.to_owned())
-        }
-        ImplItem::Macro(impl_item_macro) => ItemName::TypeStringAndNameString(
-            "Macro".into(),
-            impl_item_macro.mac.path.to_token_stream().to_string(),
-        ),
-        ImplItem::Type(impl_item_type) => {
-            ItemName::TypeStringAndIdent("Type".into(), impl_item_type.ident.to_owned())
-        }
-        ImplItem::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
-        _ => ItemName::None,
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
     add_context,
     configuration::CliInput,
     error::CgResult,
-    parsing::{get_name_of_item, PathAnalysis},
+    parsing::{ItemName, PathAnalysis},
     CgData,
 };
 
@@ -22,10 +22,6 @@ impl<O, S> CgData<O, S> {
             return package;
         }
         unreachable!("Challenge package is created at instantiation of CgDate and should always be at index 0.");
-    }
-
-    pub fn link_to_package(&mut self, source: NodeIndex, target: NodeIndex) {
-        self.tree.add_edge(source, target, EdgeType::Dependency);
     }
 
     pub fn get_local_package(&self, node: NodeIndex) -> TreeResult<&LocalPackage> {
@@ -277,129 +273,132 @@ impl<O, S> CgData<O, S> {
         path: &impl PathAnalysis,
     ) -> CgResult<PathTarget> {
         if let Some(extracted_path) = path.extract_path() {
-            let mut module_index = self
+            let mut current_index = self
                 .get_syn_item_module_index(path_item_index)
-                .context(add_context!("Expected source index of syn item."))?;
-            // walk trough the path
+                .context(add_context!("Expected module index of syn item."))?;
+            // walk trough the path, setting current index to module, crate or item to be imported
             for (seg_index, segment) in extracted_path.segments.iter().enumerate() {
                 match segment.to_string().as_str() {
                     "crate" => {
                         // module of current crate
                         let crate_index =
-                            self.get_crate_index(module_index)
+                            self.get_crate_index(current_index)
                                 .context(add_context!(format!(
                                     "Expected crate index of module index {:?}",
-                                    module_index
+                                    current_index
                                 )))?;
-                        module_index = crate_index;
+                        current_index = crate_index;
                     }
                     "self" => {
                         // current module, do nothing
                     }
                     "super" => {
                         // super module
-                        module_index = self
-                            .get_syn_item_module_index(module_index)
+                        current_index = self
+                            .get_syn_item_module_index(current_index)
                             .context(add_context!("Expected source index of syn item."))?;
                     }
                     _ => {
-                        if seg_index < extracted_path.segments.len() - 1 {
-                            // segments of path before target item
-                            if let Some((sub_module_index, _)) = self
-                                .iter_syn_neighbors(module_index)
-                                .filter_map(|(n, i)| match i {
-                                    Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
-                                    _ => None,
-                                })
-                                .find(|(_, m)| segment == m)
+                        if seg_index == 0 {
+                            // check if module points to external or local package dependency
+                            if self
+                                .iter_external_dependencies()
+                                .any(|dep_name| segment == dep_name)
                             {
-                                // found local module
-                                module_index = sub_module_index;
-                            } else if let Some((use_module_index, _, use_tree)) = self
-                                .iter_syn_neighbors(module_index)
-                                .filter_map(|(n, i)| match i {
-                                    Item::Use(item_use) => get_name_of_item(i)
-                                        .extract_imported_ident()
-                                        .map(|ident| (n, ident, &item_use.tree)),
-                                    _ => None,
-                                })
-                                .find(|(_, m, _)| segment == m)
+                                return Ok(PathTarget::ExternalPackage);
+                            }
+                            if let Some((lib_crate_index, _)) =
+                                self.iter_lib_crates().find(|(_, cf)| *segment == cf.name)
                             {
-                                // found reimported module
-                                match self.get_path_target(use_module_index, use_tree)? {
-                                    PathTarget::ExternalPackage => {
-                                        return Ok(PathTarget::ExternalPackage)
-                                    }
-                                    PathTarget::Glob(_) => {
-                                        unreachable!(
-                                            "filter_map use statements which end on name or rename"
-                                        );
-                                    }
-                                    PathTarget::Item(item_index) => {
-                                        // Item must be module
-                                        assert!(matches!(
-                                            self.get_syn_item(item_index),
-                                            Some(Item::Mod(_))
-                                        ));
-                                        module_index = item_index;
-                                    }
-                                    PathTarget::ItemRenamed(item_index, _) => {
-                                        // Renamed item must be module
-                                        assert!(matches!(
-                                            self.get_syn_item(item_index),
-                                            Some(Item::Mod(_))
-                                        ));
-                                        module_index = item_index;
-                                    }
-                                    PathTarget::PathCouldNotBeParsed => {
-                                        return Ok(PathTarget::PathCouldNotBeParsed)
-                                    }
-                                }
-                            } else if seg_index == 0 {
-                                // check if module points to external or local package dependency
-                                if self
-                                    .iter_external_dependencies()
-                                    .any(|dep_name| segment == dep_name)
-                                {
-                                    return Ok(PathTarget::ExternalPackage);
-                                }
-                                if let Some((lib_crate_index, _)) =
-                                    self.iter_lib_crates().find(|(_, cf)| *segment == cf.name)
-                                {
-                                    module_index = lib_crate_index;
-                                }
-                            } else {
-                                // could not find module of segment
-                                return Ok(PathTarget::PathCouldNotBeParsed);
+                                current_index = lib_crate_index;
+                                continue;
                             }
-                        } else {
-                            // get target index of path
-                            if extracted_path.glob {
-                                return Ok(PathTarget::Glob(module_index));
-                            }
-                            // search for item in tree und fetch it's Index
-                            let (item_index, _) = self
-                                .iter_syn_neighbors(module_index)
+                        }
+                        if seg_index == extracted_path.segments.len() - 1 && !extracted_path.glob {
+                            // search for item in tree und fetch it's Index, if it is not a glob
+                            if let Some((item_index, _)) = self
+                                .iter_syn_neighbors(current_index)
                                 .filter_map(|(n, i)| {
-                                    get_name_of_item(i).extract_imported_ident().map(|ident| (n, ident))
+                                    ItemName::from(i).extract_ident().map(|name| (n, name))
                                 })
                                 .find(|(_, n)| segment == n)
-                                .context(add_context!(format!(
-                                    "Expected item_index of '{:?}'",
-                                    segment
-                                )))?;
-                            if let Some(rename) = extracted_path.rename {
-                                return Ok(PathTarget::ItemRenamed(item_index, rename));
+                            {
+                                current_index = item_index;
+                                continue;
                             }
-                            return Ok(PathTarget::Item(item_index));
                         }
+                        // search for locale module at current index
+                        if let Some((sub_module_index, _)) = self
+                            .iter_syn_neighbors(current_index)
+                            .filter_map(|(n, i)| match i {
+                                Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
+                                _ => None,
+                            })
+                            .find(|(_, m)| segment == m)
+                        {
+                            // found local module
+                            current_index = sub_module_index;
+                            continue;
+                        }
+                        // search for reimported module at current index
+                        if let Some((use_module_index, _, use_tree)) = self
+                            .iter_syn_neighbors(current_index)
+                            .filter_map(|(n, i)| match i {
+                                Item::Use(item_use) => ItemName::from(i)
+                                    .extract_imported_ident()
+                                    .map(|ident| (n, ident, &item_use.tree)),
+                                _ => None,
+                            })
+                            .find(|(_, m, _)| segment == m)
+                        {
+                            // found reimported module -> get index of it
+                            match self.get_path_target(use_module_index, use_tree)? {
+                                PathTarget::ExternalPackage => {
+                                    return Ok(PathTarget::ExternalPackage)
+                                }
+                                PathTarget::Glob(_) => {
+                                    unreachable!(
+                                        "filter_map use statements which end on name or rename"
+                                    );
+                                }
+                                PathTarget::Item(item_index) => {
+                                    // Item must be module or crate
+                                    let name =
+                                        self.get_name_of_crate_or_module(item_index).context(
+                                            add_context!("Expected name of crate or module."),
+                                        )?;
+                                    assert_eq!(*segment, name);
+                                    current_index = item_index;
+                                }
+                                PathTarget::ItemRenamed(item_index, _) => {
+                                    // Renamed item must be module or crate
+                                    let name =
+                                        self.get_name_of_crate_or_module(item_index).context(
+                                            add_context!("Expected name of crate or module."),
+                                        )?;
+                                    assert_eq!(*segment, name);
+                                    current_index = item_index;
+                                }
+                                PathTarget::PathCouldNotBeParsed => {
+                                    // could not find module of use statement
+                                    return Ok(PathTarget::PathCouldNotBeParsed);
+                                }
+                            }
+                            continue;
+                        }
+                        // could not identify segment
+                        return Ok(PathTarget::PathCouldNotBeParsed);
                     }
                 }
-                // this can happen with 'crate', 'super' or 'self' as visibility path
-                if seg_index == extracted_path.segments.len() - 1 {
-                    return Ok(PathTarget::Item(module_index));      
-                }
             }
+            // get target index of path
+            if extracted_path.glob {
+                return Ok(PathTarget::Glob(current_index));
+            }
+            if let Some(rename) = extracted_path.rename {
+                return Ok(PathTarget::ItemRenamed(current_index, rename));
+            }
+            return Ok(PathTarget::Item(current_index));
         }
         Ok(PathTarget::PathCouldNotBeParsed)
     }
@@ -440,7 +439,7 @@ impl<O: CliInput, S> CgData<O, S> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PathTarget {
     ExternalPackage,
     Glob(NodeIndex),

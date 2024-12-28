@@ -4,7 +4,7 @@ use super::{ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeTyp, Tree
 use crate::{
     add_context,
     configuration::CliInput,
-    parsing::{get_name_of_impl_item, get_name_of_item, load_syntax},
+    parsing::{load_syntax, ItemName},
     CgData,
 };
 
@@ -26,6 +26,10 @@ impl<O: CliInput, S> CgData<O, S> {
         self.tree
             .add_edge(source, package_index, EdgeType::Dependency);
         package_index
+    }
+
+    pub fn link_to_package(&mut self, source: NodeIndex, target: NodeIndex) {
+        self.tree.add_edge(source, target, EdgeType::Dependency);
     }
 
     pub fn add_external_supported_package(
@@ -159,7 +163,7 @@ impl<O: CliInput, S> CgData<O, S> {
             }
             _ => {
                 if self.options.verbose() {
-                    println!("Adding syn item '{}' to tree.", get_name_of_item(item));
+                    println!("Adding syn item '{}' to tree.", ItemName::from(item));
                 }
             }
         }
@@ -246,7 +250,7 @@ impl<O: CliInput, S> CgData<O, S> {
             if self.options.verbose() {
                 println!(
                     "Adding syn impl item '{}' to tree.",
-                    get_name_of_impl_item(impl_item)
+                    ItemName::from(impl_item)
                 );
             }
             let impl_item_index = self
@@ -267,8 +271,8 @@ impl<O: CliInput, S> CgData<O, S> {
             .get_syn_item(target)
             .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
         if self.options.verbose() {
-            let source = get_name_of_item(source_syn);
-            let target = get_name_of_item(target_syn);
+            let source = ItemName::from(source_syn);
+            let target = ItemName::from(target_syn);
             println!("Adding usage link from '{source}' to '{target}'.");
         }
         self.tree.add_edge(source, target, EdgeType::Usage);
@@ -288,8 +292,8 @@ impl<O: CliInput, S> CgData<O, S> {
             .get_syn_item(target)
             .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
         if self.options.verbose() {
-            let source = get_name_of_item(source_syn);
-            let trait_name = get_name_of_item(target_syn);
+            let source = ItemName::from(source_syn);
+            let trait_name = ItemName::from(target_syn);
             if trait_name.is_none() {
                 println!("Adding implemented by link for '{source}'.");
             } else {

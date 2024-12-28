@@ -1,9 +1,7 @@
 // Linking all items, which are required by challenge
 
 use super::AnalyzeState;
-use crate::{
-    add_context, configuration::CliInput, error::CgResult, parsing::get_name_of_item, CgData,
-};
+use crate::{add_context, configuration::CliInput, error::CgResult, parsing::ItemName, CgData};
 use anyhow::{anyhow, Context};
 use petgraph::graph::NodeIndex;
 use syn::{Item, UseTree};
@@ -157,7 +155,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     let (use_name_index, _) = self
                         .iter_syn_neighbors(module_index)
                         .filter_map(|(n, i)| {
-                            get_name_of_item(i).extract_ident().map(|ident| (n, ident))
+                            ItemName::from(i).extract_ident().map(|ident| (n, ident))
                         })
                         .find(|(_, name)| *name == use_name.ident)
                         .context(add_context!(format!(
@@ -171,7 +169,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     let (use_name_index, _) = self
                         .iter_syn_neighbors(module_index)
                         .filter_map(|(n, i)| {
-                            get_name_of_item(i).extract_ident().map(|ident| (n, ident))
+                            ItemName::from(i).extract_ident().map(|ident| (n, ident))
                         })
                         .find(|(_, name)| *name == use_rename.rename)
                         .context(add_context!(format!(
