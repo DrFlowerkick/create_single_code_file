@@ -28,6 +28,14 @@ pub enum NodeTyp {
 }
 
 impl NodeTyp {
+    pub fn get_item_from_syn_item_node(&self) -> Option<&Item> {
+        if let NodeTyp::SynItem(item) = self {
+            Some(item)
+        } else {
+            None
+        }
+    }
+    // ToDo: delete this function
     pub fn get_use_item_from_syn_item_node(&self) -> Option<&ItemUse> {
         if let NodeTyp::SynItem(Item::Use(use_item)) = self {
             Some(use_item)

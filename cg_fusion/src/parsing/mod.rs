@@ -127,40 +127,6 @@ impl<'ast> Visit<'ast> for VisitVerbatim {
     }
 }
 
-// test for Group element in use tree
-pub fn contains_use_group(use_tree: &UseTree) -> bool {
-    match use_tree {
-        UseTree::Path(use_path) => contains_use_group(&use_path.tree),
-        UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => false,
-        UseTree::Group(_) => true,
-    }
-}
-
-// expand and collect use tree items from UseTree
-pub fn get_use_items(use_tree: &UseTree) -> Vec<UseTree> {
-    let mut use_trees: Vec<UseTree> = Vec::new();
-    match use_tree {
-        UseTree::Path(use_path) => {
-            for sub_use_tree in get_use_items(&use_path.tree) {
-                let mut new_path = use_path.to_owned();
-                new_path.tree = Box::new(sub_use_tree);
-                use_trees.push(UseTree::Path(new_path));
-            }
-        }
-        UseTree::Group(use_group) => {
-            for group_tree in use_group.items.iter() {
-                for sub_use_tree in get_use_items(group_tree) {
-                    use_trees.push(sub_use_tree);
-                }
-            }
-        }
-        UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => {
-            use_trees.push(use_tree.to_owned());
-        }
-    }
-    use_trees
-}
-
 // path analysis
 pub trait PathAnalysis {
     fn extract_path(&self) -> Option<SourcePath>;
@@ -222,88 +188,149 @@ impl PathAnalysis for Path {
     }
 }
 
-// check if UseTree ends in glob; returns None if use statement contains groups
-pub fn is_use_glob(item: &Item) -> Option<bool> {
-    if let Item::Use(use_item) = item {
-        return if let Some(path) = use_item.tree.extract_path() {
-            Some(path.glob)
-        } else {
-            None
-        };
-    }
-    None
+trait UseTreeExtras {
+    fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
 }
 
-// extract visibility
-pub fn extract_visibility(item: &Item) -> Option<&Visibility> {
-    match item {
-        Item::Const(item_const) => Some(&item_const.vis),
-        Item::Enum(item_enum) => Some(&item_enum.vis),
-        Item::ExternCrate(item_extern_crate) => Some(&item_extern_crate.vis),
-        Item::Fn(item_fn) => Some(&item_fn.vis),
-        Item::Mod(item_mod) => Some(&item_mod.vis),
-        Item::Static(item_static) => Some(&item_static.vis),
-        Item::Struct(item_struct) => Some(&item_struct.vis),
-        Item::Trait(item_trait) => Some(&item_trait.vis),
-        Item::TraitAlias(item_trait_alias) => Some(&item_trait_alias.vis),
-        Item::Type(item_type) => Some(&item_type.vis),
-        Item::Union(item_union) => Some(&item_union.vis),
-        Item::Use(item_use) => Some(&item_use.vis),
-        _ => None, // all other items don't have a visibility attribute
-    }
-}
-
-// replace glob with last path element of visible use tree
-pub fn replace_glob_with_name_or_rename_use_tree(
-    mut use_item: ItemUse,
-    replace: UseTree,
-) -> Option<ItemUse> {
-    match replace {
-        UseTree::Glob(_) | UseTree::Path(_) | UseTree::Group(_) => return None,
-        UseTree::Name(_) | UseTree::Rename(_) => (),
-    }
-    let mut use_tree = &mut use_item.tree;
-    loop {
-        match use_tree {
-            UseTree::Path(use_path) => use_tree = &mut use_path.tree,
-            UseTree::Group(_) | UseTree::Name(_) | UseTree::Rename(_) => return None,
-            UseTree::Glob(_) => {
-                *use_tree = replace;
-                return Some(use_item);
+impl UseTreeExtras for UseTree {
+    fn get_use_items_of_use_group(&self) -> Vec<UseTree> {
+        let mut use_trees: Vec<UseTree> = Vec::new();
+        match self {
+            UseTree::Path(use_path) => {
+                for sub_use_tree in use_path.tree.get_use_items_of_use_group() {
+                    let mut new_path = use_path.to_owned();
+                    new_path.tree = Box::new(sub_use_tree);
+                    use_trees.push(UseTree::Path(new_path));
+                }
+            }
+            UseTree::Group(use_group) => {
+                for group_tree in use_group.items.iter() {
+                    for sub_use_tree in group_tree.get_use_items_of_use_group() {
+                        use_trees.push(sub_use_tree);
+                    }
+                }
+            }
+            UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => {
+                use_trees.push(self.to_owned());
             }
         }
+        use_trees
     }
 }
 
-// check impl name with first path element
-pub fn first_item_impl_is_ident<I>(item: &Item, ident: &I) -> bool
-where
-    I: ?Sized + std::fmt::Debug,
-    Ident: PartialEq<I>,
-{
-    if let Item::Impl(item_impl) = item {
-        if let Type::Path(type_path) = item_impl.self_ty.as_ref() {
-            if let Some(first_ident) = type_path.path.segments.first() {
-                return first_ident.ident == *ident;
-            }
-        }
-    }
-    false
+pub trait ItemExtras {
+    fn contains_use_group(&self) -> bool;
+    fn get_use_items_of_use_group(&self) -> Vec<Item>;
+    fn is_use_glob(&self) -> Option<&UseTree>;
+    fn extract_visibility(&self) -> Option<&Visibility>;
+    fn replace_glob_with_name_or_rename_use_tree(self, replace: UseTree) -> Option<Item>;
+    fn first_item_impl_is_ident(&self, ident: &Ident) -> bool;
+    fn first_trait_impl_is_ident(&self, ident: &Ident) -> bool;
 }
-// check impl trait with first path element
-pub fn first_trait_impl_is_ident<I>(item: &Item, ident: &I) -> bool
-where
-    I: ?Sized + std::fmt::Debug,
-    Ident: PartialEq<I>,
-{
-    if let Item::Impl(item_impl) = item {
-        if let Some((_, ref trait_path, _)) = item_impl.trait_ {
-            if let Some(first_ident) = trait_path.segments.first() {
-                return first_ident.ident == *ident;
+
+impl ItemExtras for Item {
+    fn contains_use_group(&self) -> bool {
+        if let Item::Use(item_use) = self {
+            let mut tree = &item_use.tree;
+            loop {
+                match tree {
+                    UseTree::Path(use_path) => tree = use_path.tree.as_ref(),
+                    UseTree::Group(_) => return true,
+                    UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => return false,
+                }
             }
         }
+        false
     }
-    false
+
+    fn get_use_items_of_use_group(&self) -> Vec<Item> {
+        if let Item::Use(item_use) = self {
+            let new_items: Vec<Item> = item_use
+                .tree
+                .get_use_items_of_use_group()
+                .iter()
+                .map(|u| {
+                    let mut new_item_use = item_use.clone();
+                    new_item_use.tree = u.to_owned();
+                    Item::Use(new_item_use)
+                })
+                .collect();
+            return new_items;
+        }
+        Vec::new()
+    }
+
+    fn is_use_glob(&self) -> Option<&UseTree> {
+        if let Item::Use(item_use) = self {
+            return if let Some(path) = item_use.tree.extract_path() {
+                path.glob.then_some(&item_use.tree)
+            } else {
+                None
+            };
+        }
+        None
+    }
+
+    fn extract_visibility(&self) -> Option<&Visibility> {
+        match self {
+            Item::Const(item_const) => Some(&item_const.vis),
+            Item::Enum(item_enum) => Some(&item_enum.vis),
+            Item::ExternCrate(item_extern_crate) => Some(&item_extern_crate.vis),
+            Item::Fn(item_fn) => Some(&item_fn.vis),
+            Item::Mod(item_mod) => Some(&item_mod.vis),
+            Item::Static(item_static) => Some(&item_static.vis),
+            Item::Struct(item_struct) => Some(&item_struct.vis),
+            Item::Trait(item_trait) => Some(&item_trait.vis),
+            Item::TraitAlias(item_trait_alias) => Some(&item_trait_alias.vis),
+            Item::Type(item_type) => Some(&item_type.vis),
+            Item::Union(item_union) => Some(&item_union.vis),
+            Item::Use(item_use) => Some(&item_use.vis),
+            _ => None, // all other items don't have a visibility attribute
+        }
+    }
+
+    fn replace_glob_with_name_or_rename_use_tree(mut self, replace: UseTree) -> Option<Item> {
+        if let Item::Use(ref mut item_use) = self {
+            match replace {
+                UseTree::Glob(_) | UseTree::Path(_) | UseTree::Group(_) => return None,
+                UseTree::Name(_) | UseTree::Rename(_) => (),
+            }
+            let mut use_tree = &mut item_use.tree;
+            loop {
+                match use_tree {
+                    UseTree::Path(use_path) => use_tree = &mut use_path.tree,
+                    UseTree::Group(_) | UseTree::Name(_) | UseTree::Rename(_) => return None,
+                    UseTree::Glob(_) => {
+                        *use_tree = replace;
+                        return Some(self);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn first_item_impl_is_ident(&self, ident: &Ident) -> bool {
+        if let Item::Impl(item_impl) = self {
+            if let Type::Path(type_path) = item_impl.self_ty.as_ref() {
+                if let Some(first_ident) = type_path.path.segments.first() {
+                    return first_ident.ident == *ident;
+                }
+            }
+        }
+        false
+    }
+
+    fn first_trait_impl_is_ident(&self, ident: &Ident) -> bool {
+        if let Item::Impl(item_impl) = self {
+            if let Some((_, ref trait_path, _)) = item_impl.trait_ {
+                if let Some(first_ident) = trait_path.segments.first() {
+                    return first_ident.ident == *ident;
+                }
+            }
+        }
+        false
+    }
 }
 
 #[derive(Debug)]

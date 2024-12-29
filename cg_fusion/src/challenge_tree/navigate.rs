@@ -421,23 +421,6 @@ impl<O: CliInput, S> CgData<O, S> {
             .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
             .find(|(_, cf)| cf.name == bin_name)
     }
-
-    pub fn get_crate_indices(&self, reverse: bool) -> TreeResult<Vec<NodeIndex>> {
-        // get challenge bin and all lib crate indices
-        let (bin_crate_index, _) = self
-            .get_challenge_bin_crate()
-            .context(add_context!("Expected challenge bin."))?;
-        let mut crate_indices: Vec<NodeIndex> = self.iter_lib_crates().map(|(n, _)| n).collect();
-        if reverse {
-            // indices from end of dependency tree to challenge bin crate
-            crate_indices.reverse();
-            crate_indices.push(bin_crate_index);
-        } else {
-            // indices from challenge bin crate to end of dependency tree
-            crate_indices.insert(0, bin_crate_index);
-        }
-        Ok(crate_indices)
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
