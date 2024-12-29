@@ -240,16 +240,17 @@ impl<O, S> CgData<O, S> {
     pub fn is_item_descendant_of_or_same_module(
         &self,
         item_index: NodeIndex,
-        module_index: NodeIndex,
+        mut module_index: NodeIndex,
     ) -> bool {
         if let Some(item_module_index) = self.get_syn_item_module_index(item_index) {
             if item_module_index == module_index {
                 return true;
             }
-            while let Some(module_index) = self.get_syn_item_module_index(module_index) {
-                if item_module_index == module_index {
+            while let Some(mi) = self.get_syn_item_module_index(module_index) {
+                if item_module_index == mi {
                     return true;
                 }
+                module_index = mi;
             }
         }
         false

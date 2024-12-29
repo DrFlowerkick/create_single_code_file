@@ -131,7 +131,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             if self
                 .iter_syn_neighbors(use_glob_target_module_index)
                 .any(|(n, i)| {
-                    self.is_visible_for_module(n, i, use_glob_owning_module_index)
+                    self.is_visible_for_module(n, use_glob_owning_module_index)
                         .is_ok_and(|vis| vis)
                         && is_use_glob(i).unwrap_or(false)
                 })
@@ -170,8 +170,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             // owning the use glob, and create new use items
             let new_use_items: Vec<ItemUse> = self
                 .iter_syn_neighbors(use_glob_target_module_index)
-                .filter(|(n, i)| {
-                    self.is_visible_for_module(*n, i, use_glob_owning_module_index)
+                .filter(|(n, _)| {
+                    self.is_visible_for_module(*n, use_glob_owning_module_index)
                         .is_ok_and(|vis| vis)
                 })
                 .filter(|(n, _)| {
@@ -204,7 +204,6 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     fn is_visible_for_module(
         &self,
         item_index: NodeIndex,
-        item: &Item,
         module_index: NodeIndex,
     ) -> CgResult<bool> {
         /*
@@ -213,6 +212,10 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         1. If an item is public, then it can be accessed externally from some module m if you can access all
         the item’s ancestor modules from m. You can also potentially be able to name the item through re-exports.
         2. If an item is private, it may be accessed by the current module and its descendants.
+
+        We do not check if access from m to all ancestor modules is granted, because we use this function for use glob
+        statements, which are checked with "cargo check" and "cargo clippy" at start of program. Therefore only legitimate
+        path of use glob statements are possible. We only want to check, which items are visible for use glob expansion.
         */
         // Check module_index
         if !self.is_crate_or_module(module_index) {
@@ -225,6 +228,9 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         if self.is_item_descendant_of_or_same_module(item_index, module_index) {
             return Ok(true);
         }
+        let item = self
+            .get_syn_item(item_index)
+            .context(add_context!("Expected syn item."))?;
         // item is not a descendant, therefore we have to analyze visibility
         if let Some(visibility) = extract_visibility(item) {
             match visibility {
@@ -560,6 +566,168 @@ mod tests {
                 .get_path_target(*use_glob_index_my_compass, *use_glob_tree_my_compass)
                 .unwrap(),
             PathTarget::Glob(my_compass_mod_index)
+        );
+    }
+
+    #[test]
+    fn test_is_visible_for_module() {
+        // preparation
+        let mut cg_data = setup_analyze_test();
+        cg_data.add_challenge_dependencies().unwrap();
+        cg_data.add_bin_src_files_of_challenge().unwrap();
+        cg_data.add_lib_src_files().unwrap();
+        cg_data.expand_use_groups().unwrap();
+
+        // get module index of my_compass and my_map_point
+        let (my_map_two_dim_mod_index, _) = cg_data
+            .iter_lib_crates()
+            .find(|(_, c)| c.name == "my_map_two_dim")
+            .unwrap();
+        let my_compass_mod_index = cg_data
+            .iter_syn_items(my_map_two_dim_mod_index)
+            .filter_map(|(n, i)| {
+                if let Item::Mod(_) = i {
+                    ItemName::from(i).extract_ident().map(|id| (n, id))
+                } else {
+                    None
+                }
+            })
+            .find(|(_, id)| id == "my_compass")
+            .unwrap()
+            .0;
+        let my_map_point_mod_index = cg_data
+            .iter_syn_items(my_map_two_dim_mod_index)
+            .filter_map(|(n, i)| {
+                if let Item::Mod(_) = i {
+                    ItemName::from(i).extract_ident().map(|id| (n, id))
+                } else {
+                    None
+                }
+            })
+            .find(|(_, id)| id == "my_map_point")
+            .unwrap()
+            .0;
+        // get visible items in my_map_point for my_compass
+        let visible_items_with_ident_of_my_map_point_for_my_compass: Vec<Ident> = cg_data
+            .iter_syn_neighbors(my_map_point_mod_index)
+            .filter_map(|(n, i)| {
+                ItemName::from(i)
+                    .extract_ident()
+                    .map(|id| {
+                        cg_data
+                            .is_visible_for_module(n, my_compass_mod_index)
+                            .ok()
+                            .map(|vis| vis.then_some(id))
+                            .flatten()
+                    })
+                    .flatten()
+            })
+            .collect();
+        // test visibility of items in my_map_point for my_compass
+        assert_eq!(
+            visible_items_with_ident_of_my_map_point_for_my_compass,
+            vec![
+                "OrientationIter",
+                "NeighborIter",
+                "MapPoint",
+                "Ordering",
+                "my_compass"
+            ]
+        );
+        // test single use glob is visible
+        assert_eq!(
+            cg_data
+                .iter_syn_neighbors(my_map_point_mod_index)
+                .filter_map(|(n, i)| {
+                    ItemName::from(i)
+                        .is_glob()
+                        .then_some(cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
+                        .flatten()
+                })
+                .count(),
+            1
+        );
+        // get visible items in my_map_two_dim for my_compass
+        let visible_items_with_ident_of_my_map_two_dim_for_my_compass: Vec<Ident> = cg_data
+            .iter_syn_neighbors(my_map_two_dim_mod_index)
+            .filter_map(|(n, i)| {
+                ItemName::from(i)
+                    .extract_ident()
+                    .map(|id| {
+                        cg_data
+                            .is_visible_for_module(n, my_compass_mod_index)
+                            .ok()
+                            .map(|vis| vis.then_some(id))
+                            .flatten()
+                    })
+                    .flatten()
+            })
+            .collect();
+        // test visibility of items in my_map_two_dim for my_compass
+        assert_eq!(
+            visible_items_with_ident_of_my_map_two_dim_for_my_compass,
+            vec![
+                "DistanceIter",
+                "FilterFn",
+                "MyMap2D",
+                "IsCellFreeFn",
+                "my_map_point"
+            ]
+        );
+        // test use globs are visible
+        assert_eq!(
+            cg_data
+                .iter_syn_neighbors(my_map_two_dim_mod_index)
+                .filter_map(|(n, i)| {
+                    ItemName::from(i)
+                        .is_glob()
+                        .then_some(cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
+                        .flatten()
+                })
+                .count(),
+            3
+        );
+        // get visible items in my_map_point for my_map_two_dim
+        let visible_items_with_ident_of_my_map_point_for_my_map_two_dim: Vec<Ident> = cg_data
+            .iter_syn_neighbors(my_map_point_mod_index)
+            .filter_map(|(n, i)| {
+                ItemName::from(i)
+                    .extract_ident()
+                    .map(|id| {
+                        cg_data
+                            .is_visible_for_module(n, my_map_two_dim_mod_index)
+                            .ok()
+                            .map(|vis| vis.then_some(id))
+                            .flatten()
+                    })
+                    .flatten()
+            })
+            .collect();
+        // test visibility of items in my_map_point for my_map_two_dim
+        assert_eq!(
+            visible_items_with_ident_of_my_map_point_for_my_map_two_dim,
+            vec!["MapPoint", "my_compass"]
+        );
+        // get visible items in my_compass for my_map_two_dim
+        let visible_items_with_ident_of_my_compass_for_my_map_two_dim: Vec<Ident> = cg_data
+            .iter_syn_neighbors(my_compass_mod_index)
+            .filter_map(|(n, i)| {
+                ItemName::from(i)
+                    .extract_ident()
+                    .map(|id| {
+                        cg_data
+                            .is_visible_for_module(n, my_map_two_dim_mod_index)
+                            .ok()
+                            .map(|vis| vis.then_some(id))
+                            .flatten()
+                    })
+                    .flatten()
+            })
+            .collect();
+        // test visibility of items in my_map_point for my_map_two_dim
+        assert_eq!(
+            visible_items_with_ident_of_my_compass_for_my_map_two_dim,
+            vec!["Compass"]
         );
     }
 
