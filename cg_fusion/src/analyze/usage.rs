@@ -43,6 +43,11 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 }
                 continue;
             }
+            if let Some(glob_use_tree) = item.is_use_glob() {
+                // expand use glob
+                use_indices_and_trees.push_back((use_index, item, use_tree));
+                continue;
+            }
         }
 
         self.expand_use_globs_and_link_use_items()?;
@@ -149,6 +154,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             let use_glob_target_module_index =
                 match self.get_path_target(use_glob_index, &use_tree)? {
                     PathTarget::ExternalPackage => continue,
+                    PathTarget::Group => todo!("Rewrite to analyze groups."),
                     PathTarget::Glob(gmi) => gmi,
                     PathTarget::Item(item_index) | PathTarget::ItemRenamed(item_index, _) => {
                         // Link use item
@@ -282,6 +288,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 Visibility::Restricted(vis_restricted) => {
                     match self.get_path_target(item_index, vis_restricted.path.as_ref())? {
                         PathTarget::ExternalPackage => return Ok(false), // only local syn items have NodeIndex to link to
+                        PathTarget::Group => unreachable!("No group in visibility path."),
                         PathTarget::Glob(_) => unreachable!("No glob in visibility path."),
                         PathTarget::ItemRenamed(_, _) => {
                             unreachable!("No rename in visibility path.")

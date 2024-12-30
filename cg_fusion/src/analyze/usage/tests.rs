@@ -2,11 +2,96 @@
 
 use syn::Ident;
 
-use crate::parsing::ItemName;
-use crate::parsing::PathAnalysis;
+use crate::parsing::{ItemName, PathAnalysis, SourcePath};
 
 use super::super::tests::setup_analyze_test;
 use super::*;
+
+#[test]
+fn test_expand_use_group() {
+    // preparation
+    let mut cg_data = setup_analyze_test();
+    cg_data.add_challenge_dependencies().unwrap();
+    cg_data.add_bin_src_files_of_challenge().unwrap();
+    cg_data.add_lib_src_files().unwrap();
+
+    // number of use statements before expansion in challenge bin crate
+    let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
+    assert_eq!(
+        cg_data
+            .iter_syn_neighbors(challenge_bin_crate_index)
+            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
+            .count(),
+        3
+    );
+    let (challenge_bin_crate_use_group_index, _) = cg_data
+        .iter_syn_neighbors(challenge_bin_crate_index)
+        .find(|(_, i)| i.contains_use_group())
+        .unwrap();
+    // number of use statements before expansion in cg_fusion_lib_test lib crate
+    let (cg_fusion_lib_test_index, _) = cg_data
+        .iter_lib_crates()
+        .find(|(_, c)| c.name == "cg_fusion_lib_test")
+        .unwrap();
+    assert_eq!(
+        cg_data
+            .iter_syn_neighbors(cg_fusion_lib_test_index)
+            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
+            .count(),
+        5
+    );
+    let (cg_fusion_lib_test_use_group_index, _) = cg_data
+        .iter_syn_neighbors(cg_fusion_lib_test_index)
+        .find(|(_, i)| i.contains_use_group())
+        .unwrap();
+
+    // action to test: expand use groups
+    cg_data
+        .expand_use_group(challenge_bin_crate_use_group_index)
+        .unwrap();
+    cg_data
+        .expand_use_group(cg_fusion_lib_test_use_group_index)
+        .unwrap();
+
+    // number of use statements after expansion in challenge bin crate
+    let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
+    assert_eq!(
+        cg_data
+            .iter_syn_neighbors(challenge_bin_crate_index)
+            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
+            .count(),
+        5
+    );
+    let use_statements: Vec<String> = cg_data
+        .iter_syn_neighbors(challenge_bin_crate_index)
+        .filter_map(|(_, i)| match i {
+            Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        use_statements,
+        vec![
+            "use cg_fusion_binary_test :: Y ;",
+            "use cg_fusion_binary_test :: X ;",
+            "use cg_fusion_binary_test :: Go ;",
+            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: * ;",
+            "use cg_fusion_binary_test :: action :: Action ;",
+        ]
+    );
+    // number of use statements after expansion in cg_fusion_lib_test lib crate
+    let (cg_fusion_lib_test_index, _) = cg_data
+        .iter_lib_crates()
+        .find(|(_, c)| c.name == "cg_fusion_lib_test")
+        .unwrap();
+    assert_eq!(
+        cg_data
+            .iter_syn_neighbors(cg_fusion_lib_test_index)
+            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
+            .count(),
+        6
+    );
+}
 
 #[test]
 fn test_get_path_target() {
@@ -148,12 +233,11 @@ fn test_get_path_target() {
         .iter_syn_neighbors(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
-                let path = item_use.tree.extract_path().unwrap();
-                ItemName::from(i).is_glob().then_some((
-                    n,
-                    path.segments.last().unwrap().to_owned(),
-                    &item_use.tree,
-                ))
+                if let SourcePath::Glob(segments) = item_use.tree.extract_path() {
+                    Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -211,8 +295,12 @@ fn test_get_path_target() {
         .iter_syn_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
-                let path = item_use.tree.extract_path().unwrap();
-                Some((n, path.segments.last().unwrap().to_owned(), &item_use.tree))
+                match item_use.tree.extract_path() {
+                    SourcePath::Name(segments) | SourcePath::Glob(segments) => {
+                        Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
+                    }
+                    _ => None,
+                }
             } else {
                 None
             }
@@ -398,80 +486,6 @@ fn test_is_visible_for_module() {
     assert_eq!(
         visible_items_with_ident_of_my_compass_for_my_map_two_dim,
         vec!["Compass"]
-    );
-}
-
-
-#[test]
-fn test_expand_use_groups() {
-    // preparation
-    let mut cg_data = setup_analyze_test();
-    cg_data.add_challenge_dependencies().unwrap();
-    cg_data.add_bin_src_files_of_challenge().unwrap();
-    cg_data.add_lib_src_files().unwrap();
-
-    // number of use statements before expansion in challenge bin crate
-    let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
-    assert_eq!(
-        cg_data
-            .iter_syn_neighbors(challenge_bin_crate_index)
-            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
-            .count(),
-        3
-    );
-    // number of use statements before expansion in cg_fusion_lib_test lib crate
-    let (cg_fusion_lib_test_index, _) = cg_data
-        .iter_lib_crates()
-        .find(|(_, c)| c.name == "cg_fusion_lib_test")
-        .unwrap();
-    assert_eq!(
-        cg_data
-            .iter_syn_neighbors(cg_fusion_lib_test_index)
-            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
-            .count(),
-        5
-    );
-
-    // action to test
-    cg_data.expand_use_groups().unwrap();
-
-    // number of use statements after expansion in challenge bin crate
-    let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
-    assert_eq!(
-        cg_data
-            .iter_syn_neighbors(challenge_bin_crate_index)
-            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
-            .count(),
-        5
-    );
-    let use_statements: Vec<String> = cg_data
-        .iter_syn_neighbors(challenge_bin_crate_index)
-        .filter_map(|(_, i)| match i {
-            Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(
-        use_statements,
-        vec![
-            "use cg_fusion_binary_test :: Y ;",
-            "use cg_fusion_binary_test :: X ;",
-            "use cg_fusion_binary_test :: Go ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: * ;",
-            "use cg_fusion_binary_test :: action :: Action ;",
-        ]
-    );
-    // number of use statements after expansion in cg_fusion_lib_test lib crate
-    let (cg_fusion_lib_test_index, _) = cg_data
-        .iter_lib_crates()
-        .find(|(_, c)| c.name == "cg_fusion_lib_test")
-        .unwrap();
-    assert_eq!(
-        cg_data
-            .iter_syn_neighbors(cg_fusion_lib_test_index)
-            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
-            .count(),
-        6
     );
 }
 
