@@ -13,7 +13,7 @@ use crate::{
 };
 
 use anyhow::Context;
-use petgraph::{graph::NodeIndex, visit::EdgeRef, Direction};
+use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use syn::{Ident, Item, UseTree};
 
 impl<O, S> CgData<O, S> {

@@ -11,10 +11,10 @@ pub use visit::BfsByEdgeType;
 
 use crate::metadata::MetaWrapper;
 use cargo_metadata::camino::Utf8PathBuf;
-use petgraph::{graph::Graph, Directed};
+use petgraph::stable_graph::StableDiGraph;
 use syn::{File, ImplItem, Item, ItemUse};
 
-pub type ChallengeTree = Graph<NodeTyp, EdgeType, Directed>;
+pub type ChallengeTree = StableDiGraph<NodeTyp, EdgeType>;
 
 #[derive(Debug)]
 pub enum NodeTyp {

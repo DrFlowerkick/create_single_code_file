@@ -10,7 +10,7 @@ use crate::{
 
 use anyhow::anyhow;
 use cargo_metadata::camino::Utf8PathBuf;
-use petgraph::graph::NodeIndex;
+use petgraph::stable_graph::NodeIndex;
 use quote::ToTokens;
 use syn::{token::Brace, Item, ItemImpl, ItemMod, Type};
 
@@ -264,13 +264,20 @@ impl<O: CliInput, S> CgData<O, S> {
         let source_syn = self
             .get_syn_item(source)
             .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
-        let target_syn = self
-            .get_syn_item(target)
-            .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
+        let target_name = match self.tree.node_weight(target) {
+            Some(NodeTyp::SynItem(item)) => {
+                format!("{}", ItemName::from(item))
+            },
+            Some(NodeTyp::LibCrate(crate_file)) => {
+                crate_file.name.to_owned()
+            },
+            _ => {
+                return Err(ChallengeTreeError::NotCrateOrSyn(target));
+            }
+        };
         if self.options.verbose() {
             let source = ItemName::from(source_syn);
-            let target = ItemName::from(target_syn);
-            println!("Adding usage link from '{source}' to '{target}'.");
+            println!("Adding usage link from '{source}' to '{target_name}'.");
         }
         self.tree.add_edge(source, target, EdgeType::Usage);
         Ok(())

@@ -1,7 +1,7 @@
 // functions to visit the challenge tree
 
 use petgraph::{
-    graph::NodeIndex,
+    stable_graph::NodeIndex,
     visit::{Bfs, EdgeRef},
 };
 // petgraph uses FixedBitSet as VisitMap for Bfs

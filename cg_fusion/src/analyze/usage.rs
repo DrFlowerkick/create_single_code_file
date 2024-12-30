@@ -10,7 +10,7 @@ use crate::{
     CgData,
 };
 use anyhow::{anyhow, Context};
-use petgraph::graph::NodeIndex;
+use petgraph::stable_graph::NodeIndex;
 use quote::ToTokens;
 use std::collections::{HashMap, VecDeque};
 use syn::{Ident, Item, Visibility};
@@ -206,11 +206,19 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             let use_statement_owning_module_name = self
                 .get_name_of_crate_or_module(use_statement_owning_module_index)
                 .context(add_context!("Expected crate or module name."))?;
-            println!(
-                "Expanding use glob statement of module {}:\n{}",
-                use_statement_owning_module_name,
-                old_use_item.get_item_use().unwrap().to_token_stream()
-            );
+            if visible_items.is_empty() {
+                println!(
+                    "No visible items for use glob statement of module {}:\n{}",
+                    use_statement_owning_module_name,
+                    old_use_item.get_item_use().unwrap().to_token_stream()
+                );
+            } else {
+                println!(
+                    "Expanding use glob statement of module {}:\n{}",
+                    use_statement_owning_module_name,
+                    old_use_item.get_item_use().unwrap().to_token_stream()
+                );
+            }
         }
         // expand and collect use items of use glob and add them to tree
         let mut new_use_items: Vec<(NodeIndex, PathTarget)> = Vec::new();

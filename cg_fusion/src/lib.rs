@@ -18,7 +18,7 @@ use configuration::{AnalyzeCli, CargoCli, FusionCli, MergeCli, PurgeCli};
 use error::{CgError, CgResult};
 use metadata::MetadataError;
 
-use petgraph::graph::Graph;
+use petgraph::stable_graph::StableDiGraph;
 
 pub enum CgMode {
     Fusion(CgData<FusionCli, AnalyzeState>),
@@ -73,7 +73,7 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
         let metadata = self.metadata_command.exec().map_err(MetadataError::from)?;
         // initialize root node with challenge metadata
         let root_node_value = NodeTyp::LocalPackage(LocalPackage::try_from(metadata)?);
-        let mut tree: ChallengeTree = Graph::new();
+        let mut tree: ChallengeTree = StableDiGraph::new();
         // root node should have index 0
         assert_eq!(tree.add_node(root_node_value), 0.into());
         match self.options {

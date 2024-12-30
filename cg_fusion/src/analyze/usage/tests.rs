@@ -648,11 +648,11 @@ fn test_expand_and_link_use_statements() {
     assert_eq!(
         use_statements,
         vec![
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: my_compass ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: MapPoint ;",
             "use cg_fusion_binary_test :: Y ;",
             "use cg_fusion_binary_test :: X ;",
             "use cg_fusion_binary_test :: Go ;",
+            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: my_compass ;",
+            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: MapPoint ;",
             "use cg_fusion_binary_test :: action :: Action ;",
         ]
     );
@@ -672,10 +672,10 @@ fn test_expand_and_link_use_statements() {
     assert_eq!(
         use_statements,
         vec![
-            "use my_map_point :: my_compass :: Compass ;",
-            "use my_array :: MyArray ;",
             "use self :: my_map_point :: my_compass ;",
             "use self :: my_map_point :: MapPoint ;",
+            "use my_array :: MyArray ;",
+            "use my_map_point :: my_compass :: Compass ;",
             "use crate :: my_map_point :: my_compass :: Compass ;",
             "use std :: cmp :: Ordering ;",
         ]
@@ -696,17 +696,23 @@ fn test_expand_and_link_use_statements() {
     assert_eq!(
         use_statements,
         vec![
+            "use crate :: action :: Action ;",
             "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point ;",
             "use cg_fusion_lib_test :: my_map_two_dim :: IsCellFreeFn ;",
             "use cg_fusion_lib_test :: my_map_two_dim :: MyMap2D ;",
             "use cg_fusion_lib_test :: my_map_two_dim :: FilterFn ;",
-            "use crate :: action :: Action ;",
             "use std :: fmt ;",
             "use super :: action ;",
+            "use super :: fmt ;",
             "use super :: X ;",
             "use super :: Y ;",
+            "use super :: N ;",
             "use super :: Value ;",
             "use super :: Go ;",
+            "use super :: FilterFn ;",
+            "use super :: MyMap2D ;",
+            "use super :: IsCellFreeFn ;",
+            "use super :: my_map_point ;",
             "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: MapPoint ;",
         ]
     );

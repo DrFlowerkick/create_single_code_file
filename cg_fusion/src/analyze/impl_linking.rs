@@ -3,7 +3,7 @@
 use super::AnalyzeState;
 use crate::{add_context, configuration::CliInput, error::CgResult, parsing::ItemExtras, CgData};
 use anyhow::Context;
-use petgraph::graph::NodeIndex;
+use petgraph::stable_graph::NodeIndex;
 use syn::{Ident, Item};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
