@@ -87,8 +87,7 @@ mod tests {
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();
-        cg_data.expand_use_groups().unwrap();
-        cg_data.expand_use_globs_and_link_use_items().unwrap();
+        cg_data.expand_and_link_use_statements().unwrap();
 
         // action to test
         cg_data.link_impl_blocks_with_corresponding_item().unwrap();

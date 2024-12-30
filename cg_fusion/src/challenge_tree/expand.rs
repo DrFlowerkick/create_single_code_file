@@ -155,10 +155,7 @@ impl<O: CliInput, S> CgData<O, S> {
             // therefore just print use statement if verbose option
             Item::Use(item_use) => {
                 if self.options.verbose() {
-                    println!(
-                        "Added following syn use statement to tree:\n{}",
-                        item_use.to_token_stream()
-                    );
+                    println!("Adding syn item '{}' to tree.", item_use.to_token_stream());
                 }
             }
             _ => {

@@ -13,9 +13,8 @@ use crate::{
 };
 
 use anyhow::Context;
-use cargo_metadata::semver;
 use petgraph::{graph::NodeIndex, visit::EdgeRef, Direction};
-use syn::{Ident, Item};
+use syn::{Ident, Item, UseTree};
 
 impl<O, S> CgData<O, S> {
     pub fn challenge_package(&self) -> &LocalPackage {
@@ -193,6 +192,13 @@ impl<O, S> CgData<O, S> {
             NodeTyp::SynItem(item) => Some(item),
             _ => None,
         })
+    }
+
+    pub fn get_syn_use_tree(&self, node: NodeIndex) -> Option<&UseTree> {
+        if let Some(Item::Use(item_use)) = self.get_syn_item(node) {
+            return Some(&item_use.tree);
+        }
+        None
     }
 
     pub fn get_name_of_crate_or_module(&self, node: NodeIndex) -> Option<String> {

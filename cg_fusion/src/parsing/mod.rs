@@ -2,6 +2,7 @@
 
 mod error;
 pub use error::{ParsingError, ParsingResult};
+use syn::UseName;
 
 use crate::add_context;
 use cargo_metadata::camino::Utf8PathBuf;
@@ -204,9 +205,10 @@ impl UseTreeExtras for UseTree {
 pub trait ItemExtras {
     fn contains_use_group(&self) -> bool;
     fn get_use_items_of_use_group(&self) -> Vec<Item>;
+    fn get_item_use(&self) -> Option<&ItemUse>;
     fn is_use_glob(&self) -> Option<&UseTree>;
     fn extract_visibility(&self) -> Option<&Visibility>;
-    fn replace_glob_with_name_or_rename_use_tree(self, replace: UseTree) -> Option<Item>;
+    fn replace_glob_with_name_ident(self, ident: Ident) -> Option<Item>;
     fn first_item_impl_is_ident(&self, ident: &Ident) -> bool;
     fn first_trait_impl_is_ident(&self, ident: &Ident) -> bool;
 }
@@ -243,6 +245,13 @@ impl ItemExtras for Item {
         Vec::new()
     }
 
+    fn get_item_use(&self) -> Option<&ItemUse> {
+        if let Item::Use(item_use) = self {
+            return Some(&item_use);
+        }
+        None
+    }
+
     fn is_use_glob(&self) -> Option<&UseTree> {
         if let Item::Use(item_use) = self {
             return if let SourcePath::Glob(_) = item_use.tree.extract_path() {
@@ -272,19 +281,16 @@ impl ItemExtras for Item {
         }
     }
 
-    fn replace_glob_with_name_or_rename_use_tree(mut self, replace: UseTree) -> Option<Item> {
+    fn replace_glob_with_name_ident(mut self, ident: Ident) -> Option<Item> {
         if let Item::Use(ref mut item_use) = self {
-            match replace {
-                UseTree::Glob(_) | UseTree::Path(_) | UseTree::Group(_) => return None,
-                UseTree::Name(_) | UseTree::Rename(_) => (),
-            }
             let mut use_tree = &mut item_use.tree;
             loop {
                 match use_tree {
                     UseTree::Path(use_path) => use_tree = &mut use_path.tree,
                     UseTree::Group(_) | UseTree::Name(_) | UseTree::Rename(_) => return None,
                     UseTree::Glob(_) => {
-                        *use_tree = replace;
+                        let name = UseTree::Name(UseName { ident });
+                        *use_tree = name;
                         return Some(self);
                     }
                 }

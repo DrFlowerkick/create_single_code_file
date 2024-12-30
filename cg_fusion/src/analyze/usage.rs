@@ -2,61 +2,105 @@
 
 use super::{AnalyzeError, AnalyzeState};
 use crate::{
-    add_context, challenge_tree::PathTarget, configuration::CliInput, error::CgResult,
-    parsing::ItemExtras, CgData,
+    add_context,
+    challenge_tree::PathTarget,
+    configuration::CliInput,
+    error::CgResult,
+    parsing::{ItemExtras, ItemName},
+    CgData,
 };
 use anyhow::{anyhow, Context};
 use petgraph::graph::NodeIndex;
 use quote::ToTokens;
 use std::collections::{HashMap, VecDeque};
-use syn::{Item, UseTree, Visibility};
+use syn::{Ident, Item, Visibility};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn expand_and_link_use_statements(&mut self) -> CgResult<()> {
-        // ToDo: move max_attempts to options
-        let max_attempts: u8 = 5;
-        let mut use_indices_and_trees: VecDeque<(NodeIndex, Item, UseTree)> = self
+        let mut use_indices_and_path_targets: VecDeque<(NodeIndex, PathTarget)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
                 self.iter_syn_items(crate_index).filter_map(|(n, i)| {
                     if let Item::Use(item_use) = i {
-                        Some((n, i.to_owned(), item_use.tree.to_owned()))
+                        self.get_path_target(n, &item_use.tree)
+                            .ok()
+                            .map(|pt| (n, pt))
                     } else {
                         None
                     }
                 })
             })
             .collect();
+        // ToDo: move max_attempts to options
+        let max_attempts: u8 = 5;
         let mut use_attempts: HashMap<NodeIndex, u8> = HashMap::new();
         // expand use statements and link to target
-        while let Some((use_index, item, use_tree)) = use_indices_and_trees.pop_front() {
-            if item.contains_use_group() {
-                // expand use group
-                for (new_use_item_index, new_use_item, new_use_tree) in
-                    self.expand_use_group(use_index)?.into_iter()
-                {
-                    use_indices_and_trees.push_back((
-                        new_use_item_index,
-                        new_use_item,
-                        new_use_tree,
-                    ));
+        while let Some((use_index, use_path_target)) = use_indices_and_path_targets.pop_front() {
+            match use_path_target {
+                PathTarget::Group => {
+                    // expand use group
+                    for (new_use_item_index, new_source_path) in
+                        self.expand_use_group(use_index)?.into_iter()
+                    {
+                        use_indices_and_path_targets
+                            .push_back((new_use_item_index, new_source_path));
+                    }
+                    continue;
                 }
-                continue;
+                PathTarget::Glob(use_glob_target_module_index) => {
+                    if let Some(new_use_items) =
+                        self.expand_use_glob(use_index, use_glob_target_module_index)?
+                    {
+                        for (new_use_item_index, new_source_path) in new_use_items.into_iter() {
+                            use_indices_and_path_targets
+                                .push_back((new_use_item_index, new_source_path));
+                        }
+                        continue;
+                    }
+                }
+                PathTarget::ExternalPackage => continue, // external package, no need to expand or link
+                PathTarget::Item(target_index) | PathTarget::ItemRenamed(target_index, _) => {
+                    // Link use item
+                    self.add_usage_link(use_index, target_index)?;
+                    continue;
+                }
+                PathTarget::PathCouldNotBeParsed => (), // path could not be parsed, probably because of use glob in path
             }
-            if let Some(glob_use_tree) = item.is_use_glob() {
-                // expand use glob
-                use_indices_and_trees.push_back((use_index, item, use_tree));
-                continue;
+            // use statement could not be expanded or linked to target, try again after expanding other use statements
+            // reasons for not expanding or linking are:
+            // - use group, which will be expanded later
+            // - use glob, which does not point to the owning module of the use glob
+            if *use_attempts
+                .entry(use_index)
+                .and_modify(|attempts| *attempts += 1)
+                .or_insert(1)
+                >= max_attempts
+            {
+                // too many attempts to expand use statement
+                // get index and name of module, which owns the use statement
+                let use_statement_owning_module_index =
+                    self.get_syn_item_module_index(use_index)
+                        .context(add_context!("Expected index of owning module of use glob."))?;
+                let module = self
+                    .get_name_of_crate_or_module(use_statement_owning_module_index)
+                    .context(add_context!("Expected crate or module name."))?;
+                Err(AnalyzeError::MaxAttemptsExpandingUseStatement(
+                    self.get_syn_use_tree(use_index)
+                        .context(add_context!("Expected syn use tree."))?
+                        .to_token_stream()
+                        .to_string(),
+                    module,
+                ))?;
             }
+            use_indices_and_path_targets.push_back((use_index, use_path_target));
         }
-
-        self.expand_use_globs_and_link_use_items()?;
         Ok(())
     }
+
     fn expand_use_group(
         &mut self,
         syn_use_group_index: NodeIndex,
-    ) -> CgResult<Vec<(NodeIndex, Item, UseTree)>> {
+    ) -> CgResult<Vec<(NodeIndex, PathTarget)>> {
         // get index of module of syn use item
         let module_index = self
             .get_syn_item_module_index(syn_use_group_index)
@@ -76,178 +120,113 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             println!(
                 "Expanding use group statement of module {}:\n{}",
                 module,
-                old_use_item.to_token_stream()
+                old_use_item.get_item_use().unwrap().to_token_stream()
             );
         }
         // expand and collect use items and add them to tree
-        let mut new_use_items: Vec<(NodeIndex, Item, UseTree)> = Vec::new();
+        let mut new_use_items: Vec<(NodeIndex, PathTarget)> = Vec::new();
         for new_use_item in old_use_item.get_use_items_of_use_group() {
             let new_index = self.add_syn_item(&new_use_item, &"".into(), module_index)?;
             if let Item::Use(item_use) = &new_use_item {
-                new_use_items.push((new_index, new_use_item.clone(), item_use.tree.to_owned()));
+                let new_path_target = self.get_path_target(new_index, &item_use.tree)?;
+                new_use_items.push((new_index, new_path_target));
             }
         }
         Ok(new_use_items)
     }
 
-    pub fn expand_use_groups(&mut self) -> CgResult<()> {
-        let syn_use_group_indices: Vec<NodeIndex> = self
-            .iter_crates()
-            .flat_map(|(n, _, _)| {
-                self.iter_syn_items(n)
-                    .filter_map(|(n, i)| i.contains_use_group().then_some(n))
-            })
-            .collect();
-        for syn_use_group_index in syn_use_group_indices {
-            // get index of module of syn use item
-            let module_index = self
-                .get_syn_item_module_index(syn_use_group_index)
-                .context(add_context!("Expected source index of syn item."))?;
-            // remove old use item from tree
-            let old_use_item = self
-                .tree
-                .remove_node(syn_use_group_index)
-                .context(add_context!("Expected syn node to remove"))?
-                .get_item_from_syn_item_node()
-                .context(add_context!("Expected syn Item."))?
-                .to_owned();
-            if self.options.verbose() {
-                let module = self
-                    .get_name_of_crate_or_module(module_index)
-                    .context(add_context!("Expected crate or module name."))?;
-                println!(
-                    "Expanding use group statement of module {}:\n{}",
-                    module,
-                    old_use_item.to_token_stream()
-                );
-            }
-            // expand and collect use items and add them to tree
-            for new_use_item in old_use_item.get_use_items_of_use_group() {
-                self.add_syn_item(&new_use_item, &"".into(), module_index)?;
-            }
-        }
-        Ok(())
-    }
+    fn expand_use_glob(
+        &mut self,
+        use_glob_index: NodeIndex,
+        use_glob_target_module_index: NodeIndex,
+    ) -> CgResult<Option<Vec<(NodeIndex, PathTarget)>>> {
+        // get index and name of module, which owns the use statement
+        let use_statement_owning_module_index = self
+            .get_syn_item_module_index(use_glob_index)
+            .context(add_context!("Expected index of owning module of use glob."))?;
 
-    pub fn expand_use_globs_and_link_use_items(&mut self) -> CgResult<()> {
-        // ToDo: move max_attempts to options
-        let max_attempts: u8 = 5;
-        let mut use_glob_indices: VecDeque<(NodeIndex, UseTree)> = self
-            .iter_crates()
-            .flat_map(|(crate_index, ..)| {
-                self.iter_syn_items(crate_index)
-                    .filter_map(|(n, i)| i.is_use_glob().map(|t| (n, t.to_owned())))
+        // collect visible items of target module
+        let mut visible_items: Vec<Ident> = Vec::new();
+        for (n, i) in self
+            .iter_syn_neighbors(use_glob_target_module_index)
+            .filter(|(n, _)| {
+                self.is_visible_for_module(*n, use_statement_owning_module_index)
+                    .is_ok_and(|vis| vis)
             })
-            .collect();
-        let mut use_glob_attempts: HashMap<NodeIndex, u8> = HashMap::new();
-        // expand use globs and use link local non glob items
-        while let Some((use_glob_index, use_tree)) = use_glob_indices.pop_front() {
-            // get index and name of module, which owns the use glob
-            let use_glob_owning_module_index = self
-                .get_syn_item_module_index(use_glob_index)
-                .context(add_context!("Expected index of owning module of use glob."))?;
-            let module = self
-                .get_name_of_crate_or_module(use_glob_owning_module_index)
-                .context(add_context!("Expected crate or module name."))?;
-
-            // get module index the glob import points to and get index of new crate, which contains the glob import
-            let use_glob_target_module_index =
-                match self.get_path_target(use_glob_index, &use_tree)? {
-                    PathTarget::ExternalPackage => continue,
-                    PathTarget::Group => todo!("Rewrite to analyze groups."),
-                    PathTarget::Glob(gmi) => gmi,
-                    PathTarget::Item(item_index) | PathTarget::ItemRenamed(item_index, _) => {
-                        // Link use item
-                        self.add_usage_link(use_glob_index, item_index)?;
-                        continue;
-                    }
-                    PathTarget::PathCouldNotBeParsed => {
-                        // path could not be parsed, probably because of use glob in path -> move use item to end of queue
-                        if *use_glob_attempts
-                            .entry(use_glob_index)
-                            .and_modify(|attempts| *attempts += 1)
-                            .or_insert(1)
-                            >= max_attempts
-                        {
-                            Err(AnalyzeError::MaxAttemptsExpandingUseGlob(
-                                use_tree.to_token_stream().to_string(),
-                                module,
-                            ))?;
+        {
+            // catch all use statements, which we will not expand or prevent expansion
+            if let Item::Use(item_use) = i {
+                match self.get_path_target(n, &item_use.tree)? {
+                    PathTarget::Group => return Ok(None), // first expand all use groups
+                    PathTarget::Glob(glob_target_index) => {
+                        // check if glob target module is equal to owning module of use glob
+                        if glob_target_index == use_statement_owning_module_index {
+                            // ignore use glob, which points to the owning module of the use glob
+                            continue;
                         }
-                        use_glob_indices.push_back((use_glob_index, use_tree));
-                        continue;
+                        // first expand all use globs, which do not point to the owning module of the use glob
+                        return Ok(None);
                     }
-                };
-
-            // check if module of use glob contains visible use globs
-            if self
-                .iter_syn_neighbors(use_glob_target_module_index)
-                .any(|(n, i)| {
-                    self.is_visible_for_module(n, use_glob_owning_module_index)
-                        .is_ok_and(|vis| vis)
-                        && i.is_use_glob().is_some()
-                })
-            {
-                // found visible use glob -> move use item to end of queue
-                if *use_glob_attempts
-                    .entry(use_glob_index)
-                    .and_modify(|attempts| *attempts += 1)
-                    .or_insert(1)
-                    >= max_attempts
-                {
-                    Err(AnalyzeError::MaxAttemptsExpandingUseGlob(
-                        use_tree.to_token_stream().to_string(),
-                        module,
-                    ))?;
+                    PathTarget::PathCouldNotBeParsed => return Ok(None), // If path could not be parsed, it probably contains a use glob
+                    PathTarget::ExternalPackage => (),
+                    PathTarget::Item(item_index)
+                    | PathTarget::ItemRenamed(item_index, _) => {
+                        let use_item_owning_module_index = self
+                            .get_syn_item_module_index(item_index)
+                            .context(add_context!("Expected index of owning module of use item."))?;
+                        if use_item_owning_module_index == use_statement_owning_module_index {
+                            // ignore use item, which points to item inside the owning module of the use glob
+                            continue;
+                        }
+                    },
                 }
-                use_glob_indices.push_back((use_glob_index, use_tree));
-                continue;
             }
-            // remove old use item from tree
-            let old_use_item = self
-                .tree
-                .remove_node(use_glob_index)
-                .context(add_context!("Expected syn node to remove"))?
-                .get_item_from_syn_item_node()
-                .context(add_context!("Expected syn ItemUse."))?
-                .to_owned();
-            if self.options.verbose() {
-                println!(
-                    "Expanding use glob statement of module {}:\n{}",
-                    module,
-                    old_use_item.to_token_stream()
-                );
-            }
-            // get visible items of glob import module, which are not already in scope of module
-            // owning the use glob, and create new use items
-            let new_use_items: Vec<Item> = self
-                .iter_syn_neighbors(use_glob_target_module_index)
-                .filter(|(n, _)| {
-                    self.is_visible_for_module(*n, use_glob_owning_module_index)
-                        .is_ok_and(|vis| vis)
-                })
-                .filter(|(n, _)| {
-                    !self
-                        .iter_syn_neighbors(use_glob_owning_module_index)
-                        .any(|(m, _)| *n == m)
-                })
-                .filter_map(|(_, item)| match item {
-                    Item::Use(use_tree) => old_use_item
-                        .clone()
-                        .replace_glob_with_name_or_rename_use_tree(use_tree.tree.to_owned()),
-                    _ => None,
-                })
-                .collect();
-            // add new use items to tree
-            for new_use_item in new_use_items {
-                let new_use_item_index =
-                    self.add_syn_item(&new_use_item, &"".into(), use_glob_target_module_index)?;
-                if let Item::Use(item_use) = new_use_item {
-                    use_glob_indices.push_back((new_use_item_index, item_use.tree.to_owned()));
+            let ident: Ident = match ItemName::from(i) {
+                ItemName::Glob | ItemName::Group => {
+                    unreachable!("Glob and Group has been evaluated with PathTarget")
                 }
+                ItemName::TypeStringAndIdent(_, id) => id,
+                ItemName::TypeStringAndRenamed(_, _, rename) => rename,
+                ItemName::None
+                | ItemName::TypeString(_)
+                | ItemName::TypeStringAndNameString(_, _) => continue, // No ident, no use import
+            };
+            visible_items.push(ident);
+        }
+        // remove old use glob item from tree
+        let old_use_item = self
+            .tree
+            .remove_node(use_glob_index)
+            .context(add_context!("Expected syn node to remove"))?
+            .get_item_from_syn_item_node()
+            .context(add_context!("Expected syn ItemUse."))?
+            .to_owned();
+        if self.options.verbose() {
+            // get name of module, which owns the use glob
+            let use_statement_owning_module_name = self
+                .get_name_of_crate_or_module(use_statement_owning_module_index)
+                .context(add_context!("Expected crate or module name."))?;
+            println!(
+                "Expanding use glob statement of module {}:\n{}",
+                use_statement_owning_module_name,
+                old_use_item.get_item_use().unwrap().to_token_stream()
+            );
+        }
+        // expand and collect use items of use glob and add them to tree
+        let mut new_use_items: Vec<(NodeIndex, PathTarget)> = Vec::new();
+        for new_use_ident in visible_items {
+            let new_use_item = old_use_item
+                .clone()
+                .replace_glob_with_name_ident(new_use_ident)
+                .context(add_context!("Expected syn use glob to be replaced."))?;
+            let new_index =
+                self.add_syn_item(&new_use_item, &"".into(), use_statement_owning_module_index)?;
+            if let Item::Use(item_use) = &new_use_item {
+                let new_path_target = self.get_path_target(new_index, &item_use.tree)?;
+                new_use_items.push((new_index, new_path_target));
             }
         }
-        Ok(())
+        Ok(Some(new_use_items))
     }
 
     fn is_visible_for_module(

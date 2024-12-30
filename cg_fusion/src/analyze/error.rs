@@ -19,8 +19,8 @@ pub enum AnalyzeError {
          use '--force' to ignore or add '{0}' as dependency to challenge."
     )]
     DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(String),
-    #[error("Maximum number of attempts to expand use glob '{0}' in module '{1}'.")]
-    MaxAttemptsExpandingUseGlob(String, String),
+    #[error("Maximum number of attempts to expand use statement '{0}' in module '{1}'.")]
+    MaxAttemptsExpandingUseStatement(String, String),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }
