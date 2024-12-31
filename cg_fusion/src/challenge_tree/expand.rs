@@ -80,7 +80,12 @@ impl<O: CliInput, S> CgData<O, S> {
         // get syntax of src file
         let syntax = load_syntax(&path)?;
         // generate node value
-        let crate_file = CrateFile { name, path, syntax };
+        let crate_file = CrateFile {
+            name,
+            path,
+            shebang: syntax.shebang,
+            attrs: syntax.attrs,
+        };
 
         if self.options.verbose() {
             println!(
@@ -112,7 +117,8 @@ impl<O: CliInput, S> CgData<O, S> {
             let crate_file = CrateFile {
                 name: target.name.to_owned(),
                 path: target.src_path.to_owned(),
-                syntax,
+                shebang: syntax.shebang,
+                attrs: syntax.attrs,
             };
 
             if self.options.verbose() {
@@ -267,10 +273,8 @@ impl<O: CliInput, S> CgData<O, S> {
         let target_name = match self.tree.node_weight(target) {
             Some(NodeTyp::SynItem(item)) => {
                 format!("{}", ItemName::from(item))
-            },
-            Some(NodeTyp::LibCrate(crate_file)) => {
-                crate_file.name.to_owned()
-            },
+            }
+            Some(NodeTyp::LibCrate(crate_file)) => crate_file.name.to_owned(),
             _ => {
                 return Err(ChallengeTreeError::NotCrateOrSyn(target));
             }
@@ -286,25 +290,25 @@ impl<O: CliInput, S> CgData<O, S> {
     pub fn add_implementation_by_link(
         &mut self,
         source: NodeIndex,
-        target: NodeIndex,
+        syn_impl_item_index: NodeIndex,
     ) -> TreeResult<()> {
         // test for existing nodes
         let source_syn = self
             .get_syn_item(source)
             .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
-        let target_syn = self
-            .get_syn_item(target)
-            .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
+        let syn_impl_item = self
+            .get_syn_item(syn_impl_item_index)
+            .ok_or(ChallengeTreeError::NotCrateOrSyn(syn_impl_item_index))?;
         if self.options.verbose() {
             let source = ItemName::from(source_syn);
-            let trait_name = ItemName::from(target_syn);
-            if trait_name.is_none() {
+            let trait_name = ItemName::from(syn_impl_item);
+            if trait_name.extract_name().is_none() {
                 println!("Adding implemented by link for '{source}'.");
             } else {
                 println!("Adding implemented by link of '{trait_name}' for '{source}'.");
             }
         }
-        self.tree.add_edge(source, target, EdgeType::Implementation);
+        self.tree.add_edge(source, syn_impl_item_index, EdgeType::Implementation);
         Ok(())
     }
 

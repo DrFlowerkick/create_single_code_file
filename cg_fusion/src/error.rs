@@ -1,6 +1,9 @@
 // error and result definitions
 
-use crate::{analyze::AnalyzeError, challenge_tree::ChallengeTreeError, metadata::MetadataError};
+use crate::{
+    analyze::AnalyzeError, challenge_tree::ChallengeTreeError, metadata::MetadataError,
+    parsing::ParsingError,
+};
 
 use std::path::PathBuf;
 
@@ -27,6 +30,8 @@ pub enum CgError {
     MetadataError(#[from] MetadataError),
     #[error("Something went wrong with the Challenge Tree.")]
     ChallengeTreeError(#[from] ChallengeTreeError),
+    #[error("Something went wrong with parsing.")]
+    ParsingError(#[from] ParsingError),
     #[error("Not existing input file '{}' or filename is not ./src/main.rs .", .0.display())]
     MustProvideValidInputFilePath(PathBuf),
     #[error("Invalid output file name '{0}': file does not exist or is identical to input or does not end on '.rs'.")]

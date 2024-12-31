@@ -1,7 +1,7 @@
 // functions to to add src files of bin and lib crates to tree
 
 use super::AnalyzeState;
-use crate::{add_context, configuration::CliInput, error::CgResult, CgData};
+use crate::{add_context, configuration::CliInput, error::CgResult, parsing::load_syntax, CgData};
 use anyhow::Context;
 use petgraph::graph::NodeIndex;
 
@@ -21,7 +21,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             ))?
             .to_path_buf();
         // add syn items of bin crate to tree
-        for item in binary_crate.syntax.items.to_owned().iter() {
+        let syntax = load_syntax(&binary_crate.path)?;
+        for item in syntax.items.to_owned().iter() {
             self.add_syn_item(item, &crate_dir, bin_crate_index)?;
         }
         Ok(())
@@ -42,7 +43,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     ))?
                     .to_path_buf();
                 // add syn items of lib crate to tree
-                for item in library_crate.syntax.items.to_owned().iter() {
+                let syntax = load_syntax(&library_crate.path)?;
+                for item in syntax.items.to_owned().iter() {
                     self.add_syn_item(item, &crate_dir, lib_crate_index)?;
                 }
             }

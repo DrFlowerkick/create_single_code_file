@@ -1,74 +1,74 @@
 // Tools to link Impl Items to their corresponding struct or enum
 
 use super::AnalyzeState;
-use crate::{add_context, configuration::CliInput, error::CgResult, parsing::ItemExtras, CgData};
-use anyhow::Context;
+use crate::{
+    challenge_tree::{PathRoot, PathTarget},
+    configuration::CliInput,
+    error::CgResult,
+    CgData,
+};
 use petgraph::stable_graph::NodeIndex;
-use syn::{Ident, Item};
+use syn::{Item, Path, Type};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn link_impl_blocks_with_corresponding_item(&mut self) -> CgResult<()> {
         // get indices of SynItem Nodes, which contain Impl Items
-        let syn_impl_indices: Vec<NodeIndex> = self
+        let syn_impl_indices: Vec<(NodeIndex, Option<Path>, Path)> = self
             .iter_crates()
             .flat_map(|(n, _, _)| {
                 self.iter_syn_items(n).filter_map(|(n, i)| {
-                    if let Item::Impl(_) = i {
-                        Some(n)
+                    if let Item::Impl(item_impl) = i {
+                        let trait_path = if let Some((_, trait_path, _)) = item_impl.trait_.as_ref()
+                        {
+                            Some(trait_path.clone())
+                        } else {
+                            None
+                        };
+                        let self_ty_path = match item_impl.self_ty.as_ref() {
+                            // at current state of code, we only support Path and Reference
+                            Type::Path(type_path) => Some(type_path.path.clone()),
+                            Type::Reference(type_ref) => {
+                                if let Type::Path(type_path) = type_ref.elem.as_ref() {
+                                    Some(type_path.path.clone())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        };
+                        self_ty_path.map(|self_ty_path| (n, trait_path, self_ty_path))
                     } else {
                         None
                     }
                 })
             })
             .collect();
-        for syn_impl_index in syn_impl_indices {
-            // get source (parent) of syn impl item
-            let source_index = self
-                .get_syn_item_module_index(syn_impl_index)
-                .context(add_context!("Expected source index of syn item."))?;
-
-            if self.link_impl_block_enum_struct_trait_of_module(syn_impl_index, source_index)? {
-                // linked to enum or struct of same module as impl statement
-                continue;
+        for (syn_impl_index, trait_path, impl_path) in syn_impl_indices {
+            if let Some(ref tp) = trait_path {
+                self.link_impl_block_by_path(syn_impl_index, tp)?;
             }
-            // ToDo:
-            // add implementation links for enums, structs and traits imported via use statement
+            self.link_impl_block_by_path(syn_impl_index, &impl_path)?;
         }
         Ok(())
     }
 
-    fn link_impl_block_enum_struct_trait_of_module(
-        &mut self,
-        syn_impl_index: NodeIndex,
-        source_index: NodeIndex,
-    ) -> CgResult<bool> {
-        // get indices and names of SynItem enum, struct and trait Nodes
-        let syn_est_items: Vec<(NodeIndex, Ident)> = self
-            .iter_syn_neighbors(source_index)
-            .filter_map(|(n, i)| match i {
-                Item::Enum(item_enum) => Some((n, item_enum.ident.to_owned())),
-                Item::Struct(item_struct) => Some((n, item_struct.ident.to_owned())),
-                Item::Trait(item_trait) => Some((n, item_trait.ident.to_owned())),
-                _ => None,
-            })
-            .collect();
-
-        for (syn_est_index, name) in syn_est_items {
-            if let Some(true) = self
-                .get_syn_item(syn_impl_index)
-                .map(|i| i.first_item_impl_is_ident(&name))
-            {
-                self.add_implementation_by_link(syn_est_index, syn_impl_index)?;
-                return Ok(true);
-            } else if let Some(true) = self
-                .get_syn_item(syn_impl_index)
-                .map(|i| i.first_trait_impl_is_ident(&name))
-            {
-                self.add_implementation_by_link(syn_est_index, syn_impl_index)?;
-                return Ok(true);
+    fn link_impl_block_by_path(&mut self, syn_impl_index: NodeIndex, path: &Path) -> CgResult<()> {
+        let path_target = self.get_path_target(syn_impl_index, path)?;
+        match path_target {
+            PathTarget::ExternalPackage => {
+                if let PathRoot::Item(item_index) = self.get_path_root(syn_impl_index, path)? {
+                    self.add_implementation_by_link(item_index, syn_impl_index)?;
+                }
             }
+            PathTarget::Item(item_index) => {
+                self.add_implementation_by_link(item_index, syn_impl_index)?;
+            }
+            PathTarget::Glob(_) | PathTarget::Group | PathTarget::ItemRenamed(_, _) => {
+                unreachable!("Impl path cannot be glob or group or renamed item.")
+            }
+            PathTarget::PathCouldNotBeParsed => (), // could be traits like 'Default'
         }
-        Ok(false)
+        Ok(())
     }
 }
 

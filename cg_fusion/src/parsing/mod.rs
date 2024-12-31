@@ -131,6 +131,7 @@ impl<'ast> Visit<'ast> for VisitVerbatim {
 // path analysis
 pub trait PathAnalysis {
     fn extract_path(&self) -> SourcePath;
+    fn extract_path_root(&self) -> Ident;
 }
 
 #[derive(Debug)]
@@ -164,11 +165,25 @@ impl PathAnalysis for UseTree {
             }
         }
     }
+
+    fn extract_path_root(&self) -> Ident {
+        match self {
+            UseTree::Path(use_path) => use_path.ident.to_owned(),
+            UseTree::Group(_) | UseTree::Glob(_) => {
+                unreachable!("UseTree cannot start with group or glob.")
+            }
+            UseTree::Name(name) => name.ident.to_owned(),
+            UseTree::Rename(rename) => rename.rename.to_owned(),
+        }
+    }
 }
 
 impl PathAnalysis for Path {
     fn extract_path(&self) -> SourcePath {
         SourcePath::Name(self.segments.iter().map(|s| s.ident.to_owned()).collect())
+    }
+    fn extract_path_root(&self) -> Ident {
+        self.segments.first().unwrap().ident.to_owned()
     }
 }
 

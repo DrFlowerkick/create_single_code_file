@@ -6,13 +6,13 @@ mod navigate;
 mod visit;
 
 pub use error::{ChallengeTreeError, TreeResult};
-pub use navigate::PathTarget;
+pub use navigate::{PathRoot, PathTarget};
 pub use visit::BfsByEdgeType;
 
 use crate::metadata::MetaWrapper;
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::StableDiGraph;
-use syn::{File, ImplItem, Item, ItemUse};
+use syn::{Attribute, ImplItem, Item, ItemUse};
 
 pub type ChallengeTree = StableDiGraph<NodeTyp, EdgeType>;
 
@@ -56,7 +56,8 @@ pub struct LocalPackage {
 pub struct CrateFile {
     pub name: String,
     pub path: Utf8PathBuf,
-    pub syntax: File,
+    pub shebang: Option<String>,
+    pub attrs: Vec<Attribute>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

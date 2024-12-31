@@ -169,16 +169,17 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     }
                     PathTarget::PathCouldNotBeParsed => return Ok(None), // If path could not be parsed, it probably contains a use glob
                     PathTarget::ExternalPackage => (),
-                    PathTarget::Item(item_index)
-                    | PathTarget::ItemRenamed(item_index, _) => {
+                    PathTarget::Item(item_index) | PathTarget::ItemRenamed(item_index, _) => {
                         let use_item_owning_module_index = self
                             .get_syn_item_module_index(item_index)
-                            .context(add_context!("Expected index of owning module of use item."))?;
+                            .context(add_context!(
+                                "Expected index of owning module of use item."
+                            ))?;
                         if use_item_owning_module_index == use_statement_owning_module_index {
                             // ignore use item, which points to item inside the owning module of the use glob
                             continue;
                         }
-                    },
+                    }
                 }
             }
             let ident: Ident = match ItemName::from(i) {

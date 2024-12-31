@@ -340,9 +340,11 @@ impl<O, S> CgData<O, S> {
                         if let Some((item_index, _)) = self
                             .iter_syn_neighbors(current_index)
                             .filter_map(|(n, i)| {
-                                ItemName::from(i).extract_ident().map(|name| (n, name))
+                                ItemName::from(i)
+                                    .extract_imported_ident()
+                                    .map(|name| (n, name))
                             })
-                            .find(|(_, n)| segment == n)
+                            .find(|(_, i)| segment == i)
                         {
                             current_index = item_index;
                             continue;
@@ -417,6 +419,68 @@ impl<O, S> CgData<O, S> {
         }
         Ok(PathTarget::Item(current_index))
     }
+
+    pub fn get_path_root(
+        &self,
+        path_item_index: NodeIndex,
+        path: &impl PathAnalysis,
+    ) -> CgResult<PathRoot> {
+        let root = path.extract_path_root();
+        let mut current_index = self
+            .get_syn_item_module_index(path_item_index)
+            .context(add_context!("Expected module index of syn item."))?;
+        // Check path root
+        match root.to_string().as_str() {
+            "crate" => {
+                // module of current crate
+                let crate_index =
+                    self.get_crate_index(current_index)
+                        .context(add_context!(format!(
+                            "Expected crate index of module index {:?}",
+                            current_index
+                        )))?;
+                current_index = crate_index;
+            }
+            "self" => {
+                // current module, do nothing
+            }
+            "super" => {
+                // super module
+                current_index = self
+                    .get_syn_item_module_index(current_index)
+                    .context(add_context!("Expected source index of syn item."))?;
+            }
+            _ => {
+                // check if module points to external or local package dependency
+                if self
+                    .iter_external_dependencies()
+                    .any(|dep_name| root == dep_name)
+                {
+                    return Ok(PathRoot::ExternalPackage);
+                }
+                if let Some((lib_crate_index, _)) =
+                    self.iter_lib_crates().find(|(_, cf)| root == cf.name)
+                {
+                    current_index = lib_crate_index;
+                } else if let Some((item_index, _)) = self
+                    .iter_syn_neighbors(current_index)
+                    .filter_map(|(n, i)| {
+                        ItemName::from(i)
+                            .extract_imported_ident()
+                            .map(|name| (n, name))
+                    })
+                    .find(|(_, i)| root == *i)
+                {
+                    // found local item
+                    current_index = item_index;
+                } else {
+                    // could not identify root, probably because of not expanded use group or glob
+                    return Ok(PathRoot::PathCouldNotBeParsed);
+                }
+            }
+        }
+        Ok(PathRoot::Item(current_index))
+    }
 }
 
 impl<O: CliInput, S> CgData<O, S> {
@@ -444,5 +508,12 @@ pub enum PathTarget {
     Glob(NodeIndex),
     Item(NodeIndex),
     ItemRenamed(NodeIndex, Ident),
+    PathCouldNotBeParsed,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PathRoot {
+    ExternalPackage,
+    Item(NodeIndex),
     PathCouldNotBeParsed,
 }
