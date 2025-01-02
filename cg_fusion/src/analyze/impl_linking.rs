@@ -98,7 +98,7 @@ mod tests {
             .find(|(_, c)| c.name == "cg_fusion_binary_test")
             .unwrap();
         let (enum_value_index, _) = cg_data
-            .iter_syn_neighbors(cg_fusion_binary_test_index)
+            .iter_syn_item_neighbors(cg_fusion_binary_test_index)
             .filter_map(|(n, i)| {
                 ItemName::from(i)
                     .get_ident_in_name_space()
@@ -115,7 +115,7 @@ mod tests {
             1
         );
         let (struct_go_index, _) = cg_data
-            .iter_syn_neighbors(cg_fusion_binary_test_index)
+            .iter_syn_item_neighbors(cg_fusion_binary_test_index)
             .filter_map(|(n, i)| {
                 ItemName::from(i)
                     .get_ident_in_name_space()
@@ -138,7 +138,7 @@ mod tests {
             .unwrap();
 
         let (struct_my_map_2d_index, _) = cg_data
-            .iter_syn_neighbors(my_map_two_dim_index)
+            .iter_syn_item_neighbors(my_map_two_dim_index)
             .filter_map(|(n, i)| {
                 ItemName::from(i)
                     .get_ident_in_name_space()

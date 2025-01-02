@@ -148,7 +148,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         // collect visible items of target module
         let mut visible_items: Vec<Ident> = Vec::new();
         for (n, i) in self
-            .iter_syn_neighbors(use_glob_target_module_index)
+            .iter_syn_item_neighbors(use_glob_target_module_index)
             .filter(|(n, _)| {
                 self.is_visible_for_module(*n, use_statement_owning_module_index)
                     .is_ok_and(|vis| vis)

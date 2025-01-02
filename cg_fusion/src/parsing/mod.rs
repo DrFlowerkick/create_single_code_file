@@ -427,9 +427,16 @@ impl From<&Item> for ItemName {
                             None => unreachable!("Path must have at least one segment."),
                         };
                         if let Some(ti) = trait_ident {
-                            ItemName::TypeStringAndTraitAndNameString("Impl".into(), ti, path_target.to_string())
+                            ItemName::TypeStringAndTraitAndNameString(
+                                "Impl".into(),
+                                ti,
+                                path_target.to_string(),
+                            )
                         } else {
-                            ItemName::TypeStringAndNameString("Impl".into(), path_target.to_string())
+                            ItemName::TypeStringAndNameString(
+                                "Impl".into(),
+                                path_target.to_string(),
+                            )
                         }
                     }
                     Type::Reference(type_ref) => {
@@ -439,9 +446,16 @@ impl From<&Item> for ItemName {
                                 None => unreachable!("Path must have at least one segment."),
                             };
                             if let Some(ti) = trait_ident {
-                                ItemName::TypeStringAndTraitAndNameString("Impl".into(), ti, path_target.to_string())
+                                ItemName::TypeStringAndTraitAndNameString(
+                                    "Impl".into(),
+                                    ti,
+                                    path_target.to_string(),
+                                )
                             } else {
-                                ItemName::TypeStringAndNameString("Impl".into(), path_target.to_string())
+                                ItemName::TypeStringAndNameString(
+                                    "Impl".into(),
+                                    path_target.to_string(),
+                                )
                             }
                         } else {
                             ItemName::TypeString("Impl".into())

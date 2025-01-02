@@ -19,13 +19,13 @@ fn test_expand_use_group() {
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
     assert_eq!(
         cg_data
-            .iter_syn_neighbors(challenge_bin_crate_index)
+            .iter_syn_item_neighbors(challenge_bin_crate_index)
             .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
             .count(),
         3
     );
     let (challenge_bin_crate_use_group_index, _) = cg_data
-        .iter_syn_neighbors(challenge_bin_crate_index)
+        .iter_syn_item_neighbors(challenge_bin_crate_index)
         .find(|(_, i)| i.contains_use_group())
         .unwrap();
     // number of use statements before expansion in cg_fusion_lib_test lib crate
@@ -35,13 +35,13 @@ fn test_expand_use_group() {
         .unwrap();
     assert_eq!(
         cg_data
-            .iter_syn_neighbors(cg_fusion_lib_test_index)
+            .iter_syn_item_neighbors(cg_fusion_lib_test_index)
             .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
             .count(),
         5
     );
     let (cg_fusion_lib_test_use_group_index, _) = cg_data
-        .iter_syn_neighbors(cg_fusion_lib_test_index)
+        .iter_syn_item_neighbors(cg_fusion_lib_test_index)
         .find(|(_, i)| i.contains_use_group())
         .unwrap();
 
@@ -57,13 +57,13 @@ fn test_expand_use_group() {
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
     assert_eq!(
         cg_data
-            .iter_syn_neighbors(challenge_bin_crate_index)
+            .iter_syn_item_neighbors(challenge_bin_crate_index)
             .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
             .count(),
         5
     );
     let use_statements: Vec<String> = cg_data
-        .iter_syn_neighbors(challenge_bin_crate_index)
+        .iter_syn_item_neighbors(challenge_bin_crate_index)
         .filter_map(|(_, i)| match i {
             Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
             _ => None,
@@ -86,7 +86,7 @@ fn test_expand_use_group() {
         .unwrap();
     assert_eq!(
         cg_data
-            .iter_syn_neighbors(cg_fusion_lib_test_index)
+            .iter_syn_item_neighbors(cg_fusion_lib_test_index)
             .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
             .count(),
         6
@@ -109,13 +109,13 @@ fn test_get_path_target() {
 
     // expand use group in cg_fusion_lib_test for testing (see below MyMap2D and MapPoint)
     let (use_group_index, _) = cg_data
-        .iter_syn_neighbors(cg_fusion_lib_test_index)
+        .iter_syn_item_neighbors(cg_fusion_lib_test_index)
         .find(|(_, i)| i.contains_use_group())
         .unwrap();
     cg_data.expand_use_group(use_group_index).unwrap();
 
     let use_statements_of_cg_fusion_lib_test: Vec<(NodeIndex, Ident, &UseTree)> = cg_data
-        .iter_syn_neighbors(cg_fusion_lib_test_index)
+        .iter_syn_item_neighbors(cg_fusion_lib_test_index)
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
                 ItemName::from(i)
@@ -190,7 +190,7 @@ fn test_get_path_target() {
         .find(|(_, c)| c == "my_map_point")
         .unwrap();
     let my_array_item_index = cg_data
-        .iter_syn_neighbors(my_array_mod_index)
+        .iter_syn_item_neighbors(my_array_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
                 .get_ident_in_name_space()
@@ -200,7 +200,7 @@ fn test_get_path_target() {
         .unwrap()
         .0;
     let my_map_2d_item_index = cg_data
-        .iter_syn_neighbors(my_map_two_dim_mod_index)
+        .iter_syn_item_neighbors(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
                 .get_ident_in_name_space()
@@ -210,7 +210,7 @@ fn test_get_path_target() {
         .unwrap()
         .0;
     let my_map_point_item_index = cg_data
-        .iter_syn_neighbors(my_map_point_mod_index)
+        .iter_syn_item_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
                 .get_ident_in_name_space()
@@ -244,7 +244,7 @@ fn test_get_path_target() {
 
     // get use entries, which point to use globs
     let use_globs: Vec<(NodeIndex, Ident, &UseTree)> = cg_data
-        .iter_syn_neighbors(my_map_two_dim_mod_index)
+        .iter_syn_item_neighbors(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
                 if let SourcePath::Glob(segments) = item_use.tree.extract_path() {
@@ -272,7 +272,7 @@ fn test_get_path_target() {
         .unwrap();
 
     let my_compass_mod_index = cg_data
-        .iter_syn_neighbors(my_map_point_mod_index)
+        .iter_syn_item_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Mod(_) = i {
                 ItemName::from(i)
@@ -308,7 +308,7 @@ fn test_get_path_target() {
 
     // get use entries of my_map_point
     let use_of_my_map_point: Vec<(NodeIndex, Ident, &UseTree)> = cg_data
-        .iter_syn_neighbors(my_map_point_mod_index)
+        .iter_syn_item_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
                 match item_use.tree.extract_path() {
@@ -387,7 +387,7 @@ fn test_is_visible_for_module() {
         .0;
     // get visible items in my_map_point for my_compass
     let visible_items_with_ident_of_my_map_point_for_my_compass: Vec<Ident> = cg_data
-        .iter_syn_neighbors(my_map_point_mod_index)
+        .iter_syn_item_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
                 .get_ident_in_name_space()
@@ -415,7 +415,7 @@ fn test_is_visible_for_module() {
     // test single use glob is visible
     assert_eq!(
         cg_data
-            .iter_syn_neighbors(my_map_point_mod_index)
+            .iter_syn_item_neighbors(my_map_point_mod_index)
             .filter_map(|(n, i)| {
                 i.is_use_glob()
                     .and_then(|_| cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
@@ -425,7 +425,7 @@ fn test_is_visible_for_module() {
     );
     // get visible items in my_map_two_dim for my_compass
     let visible_items_with_ident_of_my_map_two_dim_for_my_compass: Vec<Ident> = cg_data
-        .iter_syn_neighbors(my_map_two_dim_mod_index)
+        .iter_syn_item_neighbors(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
                 .get_ident_in_name_space()
@@ -453,7 +453,7 @@ fn test_is_visible_for_module() {
     // test use globs are visible
     assert_eq!(
         cg_data
-            .iter_syn_neighbors(my_map_two_dim_mod_index)
+            .iter_syn_item_neighbors(my_map_two_dim_mod_index)
             .filter_map(|(n, i)| {
                 i.is_use_glob()
                     .and_then(|_| cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
@@ -463,7 +463,7 @@ fn test_is_visible_for_module() {
     );
     // get visible items in my_map_point for my_map_two_dim
     let visible_items_with_ident_of_my_map_point_for_my_map_two_dim: Vec<Ident> = cg_data
-        .iter_syn_neighbors(my_map_point_mod_index)
+        .iter_syn_item_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
                 .get_ident_in_name_space()
@@ -484,7 +484,7 @@ fn test_is_visible_for_module() {
     );
     // get visible items in my_compass for my_map_two_dim
     let visible_items_with_ident_of_my_compass_for_my_map_two_dim: Vec<Ident> = cg_data
-        .iter_syn_neighbors(my_compass_mod_index)
+        .iter_syn_item_neighbors(my_compass_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
                 .get_ident_in_name_space()
@@ -538,12 +538,12 @@ fn test_expand_use_glob() {
         .unwrap();
     // get use glob in action and cg_fusion_binary_test
     let use_glob_of_action_index = cg_data
-        .iter_syn_neighbors(action_mod_index)
+        .iter_syn_item_neighbors(action_mod_index)
         .find(|(_, i)| i.is_use_glob().is_some())
         .unwrap()
         .0;
     let use_glob_of_cg_fusion_binary_test_pointing_to_action_index = cg_data
-        .iter_syn_neighbors(cg_fusion_binary_test_mod_index)
+        .iter_syn_item_neighbors(cg_fusion_binary_test_mod_index)
         .find(|(_, i)| {
             i.is_use_glob().is_some() && {
                 let path = i.get_item_use().unwrap().tree.extract_path();
@@ -557,7 +557,7 @@ fn test_expand_use_glob() {
         .unwrap()
         .0;
     let use_glob_of_cg_fusion_binary_test_pointing_to_my_map_two_dim_index = cg_data
-        .iter_syn_neighbors(cg_fusion_binary_test_mod_index)
+        .iter_syn_item_neighbors(cg_fusion_binary_test_mod_index)
         .find(|(_, i)| {
             i.is_use_glob().is_some() && {
                 let path = i.get_item_use().unwrap().tree.extract_path();
@@ -657,7 +657,7 @@ fn test_expand_and_link_use_statements() {
     // assert use statements after expansion of globs in challenge bin crate
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
     let use_statements: Vec<String> = cg_data
-        .iter_syn_neighbors(challenge_bin_crate_index)
+        .iter_syn_item_neighbors(challenge_bin_crate_index)
         .filter_map(|(_, i)| match i {
             Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
             _ => None,

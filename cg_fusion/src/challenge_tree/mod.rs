@@ -7,7 +7,7 @@ mod visit;
 
 pub use error::{ChallengeTreeError, TreeResult};
 pub use navigate::{PathRoot, PathTarget};
-pub use visit::BfsByEdgeType;
+pub use visit::{BfsByEdgeType, BfsModuleNameSpace, BfsWalker};
 
 use crate::metadata::MetaWrapper;
 use cargo_metadata::camino::Utf8PathBuf;

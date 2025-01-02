@@ -1,8 +1,8 @@
 // functions to navigate the challenge tree
 
 use super::{
-    visit::BfsByEdgeType, ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType,
-    TreeResult,
+    visit::{BfsByEdgeType, BfsModuleNameSpace},
+    ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType, TreeResult,
 };
 use crate::{
     add_context,
@@ -143,16 +143,29 @@ impl<O, S> CgData<O, S> {
         })
     }
 
-    pub fn iter_syn_neighbors(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &Item)> {
+    pub fn iter_syn_neighbors(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
         self.tree
             .edges_directed(node, Direction::Outgoing)
             .filter(|e| *e.weight() == EdgeType::Syn)
             .map(|e| e.target())
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .map(|(n, w)| match w {
-                NodeType::SynItem(item) => (n, item),
+            .filter(|(_, w)| match w {
+                NodeType::SynItem(_) | NodeType::SynImplItem(_) => true,
                 _ => unreachable!("All syn edges must end in SynItem nodes."),
             })
+    }
+
+    pub fn iter_syn_item_neighbors(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &Item)> {
+        self.iter_syn_neighbors(node).filter_map(|(n, w)| match w {
+            NodeType::SynItem(item) => Some((n, item)),
+            _ => None,
+        })
     }
 
     pub fn iter_syn_items(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &Item)> {
@@ -277,6 +290,20 @@ impl<O, S> CgData<O, S> {
         false
     }
 
+    pub fn is_syn_item(&self, node: NodeIndex) -> bool {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            return matches!(node_weight, NodeType::SynItem(_));
+        }
+        false
+    }
+
+    pub fn is_syn_impl_item(&self, node: NodeIndex) -> bool {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            return matches!(node_weight, NodeType::SynImplItem(_));
+        }
+        false
+    }
+
     pub fn is_item_descendant_of_or_same_module(
         &self,
         item_index: NodeIndex,
@@ -296,16 +323,52 @@ impl<O, S> CgData<O, S> {
         false
     }
 
+    pub fn has_semantic_edge(&self, node: NodeIndex) -> bool {
+        self.tree
+            .edges_directed(node, Direction::Outgoing)
+            .any(|e| *e.weight() == EdgeType::Semantic)
+    }
+
     pub fn iter_syn_neighbors_without_semantic_link(
         &self,
         node: NodeIndex,
-    ) -> impl Iterator<Item = (NodeIndex, &Item)> {
-        self.iter_syn_neighbors(node).filter(move |(n, _)| {
-            !self
-                .tree
-                .edges(*n)
-                .any(|e| *e.weight() == EdgeType::Semantic)
-        })
+    ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
+        BfsModuleNameSpace::new(&self.tree, node)
+            .into_iter(&self.tree)
+            .filter(|n| {
+                !self.has_semantic_edge(*n) && (self.is_syn_item(*n) || self.is_syn_impl_item(*n))
+            })
+            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+            .filter(|(n, nt)| match nt {
+                NodeType::SynImplItem(_) => {
+                    if let Some(parent_index) =
+                        self.get_parent_index_by_edge_type(*n, EdgeType::Syn)
+                    {
+                        // only include impl items, if their corresponding item_impl has a semantic link
+                        self.has_semantic_edge(parent_index)
+                    } else {
+                        unreachable!("Expected parent index of impl item.")
+                    }
+                }
+                _ => true,
+            })
+            .fuse()
+    }
+
+    pub fn iter_syn_neighbors_with_semantic_link(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
+        BfsModuleNameSpace::new(&self.tree, node)
+            .into_iter(&self.tree)
+            .filter(|n| self.has_semantic_edge(*n))
+            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+            .filter(|(_, nt)| match nt {
+                // Only include impl items, which are associated with a trait, because their impl items are not part of iterator
+                NodeType::SynItem(Item::Impl(item_impl)) => item_impl.trait_.is_some(),
+                _ => true,
+            })
+            .fuse()
     }
 
     pub fn get_path_target(
@@ -371,7 +434,7 @@ impl<O, S> CgData<O, S> {
                     if seg_index == segments.len() - 1 && !glob {
                         // search for item in tree und fetch it's Index, if it is not a glob
                         if let Some((item_index, _)) = self
-                            .iter_syn_neighbors(current_index)
+                            .iter_syn_item_neighbors(current_index)
                             .filter_map(|(n, i)| {
                                 ItemName::from(i)
                                     .get_ident_in_name_space()
@@ -385,7 +448,7 @@ impl<O, S> CgData<O, S> {
                     }
                     // search for locale module at current index
                     if let Some((sub_module_index, _)) = self
-                        .iter_syn_neighbors(current_index)
+                        .iter_syn_item_neighbors(current_index)
                         .filter_map(|(n, i)| match i {
                             Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
                             _ => None,
@@ -398,7 +461,7 @@ impl<O, S> CgData<O, S> {
                     }
                     // search for reimported module at current index
                     if let Some((use_module_index, _, use_tree)) = self
-                        .iter_syn_neighbors(current_index)
+                        .iter_syn_item_neighbors(current_index)
                         .filter_map(|(n, i)| match i {
                             Item::Use(item_use) => ItemName::from(i)
                                 .get_ident_in_name_space()
@@ -496,7 +559,7 @@ impl<O, S> CgData<O, S> {
                 {
                     current_index = lib_crate_index;
                 } else if let Some((item_index, _)) = self
-                    .iter_syn_neighbors(current_index)
+                    .iter_syn_item_neighbors(current_index)
                     .filter_map(|(n, i)| {
                         ItemName::from(i)
                             .get_ident_in_name_space()

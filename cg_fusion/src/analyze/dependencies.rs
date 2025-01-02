@@ -2,7 +2,7 @@
 
 use super::{AnalyzeError, AnalyzeState};
 use crate::{
-    challenge_tree::{BfsByEdgeType, EdgeType, LocalPackage},
+    challenge_tree::{BfsByEdgeType, BfsWalker, EdgeType, LocalPackage},
     configuration::{ChallengePlatform, CliInput},
     metadata::MetaWrapper,
     utilities::CODINGAME_SUPPORTED_CRATES,

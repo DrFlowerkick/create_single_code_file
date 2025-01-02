@@ -239,7 +239,7 @@ impl<O: CliInput, S> CgData<O, S> {
                 // ToDo: do we need to do this at this state of execution? Or should we do this during merging?
                 let mut inline_mod = item_mod.to_owned();
                 let inline_items: Vec<Item> = self
-                    .iter_syn_neighbors(item_mod_index)
+                    .iter_syn_item_neighbors(item_mod_index)
                     .map(|(_, i)| i.to_owned())
                     .collect();
                 inline_mod.content = Some((Brace::default(), inline_items));
