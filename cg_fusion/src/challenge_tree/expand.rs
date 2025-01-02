@@ -1,6 +1,5 @@
 // functions to expand the challenge tree
-
-use super::{ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeTyp, TreeResult};
+use super::{ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType, TreeResult};
 use crate::{
     add_context,
     configuration::CliInput,
@@ -12,19 +11,21 @@ use anyhow::anyhow;
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::NodeIndex;
 use quote::ToTokens;
-use syn::{token::Brace, Item, ItemImpl, ItemMod, Type};
+use syn::{token::Brace, Item, ItemImpl, ItemMod};
 
 impl<O: CliInput, S> CgData<O, S> {
     pub fn add_local_package(&mut self, source: NodeIndex, package: LocalPackage) -> NodeIndex {
-        if self.options.verbose() {
-            println!(
-                "Found local dependency '{}' at '{}'",
-                package.name, package.path
-            );
-        }
-        let package_index = self.tree.add_node(NodeTyp::LocalPackage(package));
+        let package_path = package.path.to_owned();
+        let package_index = self.tree.add_node(NodeType::LocalPackage(package));
         self.tree
             .add_edge(source, package_index, EdgeType::Dependency);
+        if self.options.verbose() {
+            println!(
+                "Adding '{}' at path '{}' to tree.",
+                self.get_verbose_name_of_tree_node(package_index).unwrap(),
+                package_path
+            );
+        }
         package_index
     }
 
@@ -37,14 +38,17 @@ impl<O: CliInput, S> CgData<O, S> {
         source: NodeIndex,
         package: String,
     ) -> NodeIndex {
-        if self.options.verbose() {
-            println!("Found external supported dependency '{}'", package);
-        }
         let package_index = self
             .tree
-            .add_node(NodeTyp::ExternalSupportedPackage(package));
+            .add_node(NodeType::ExternalSupportedPackage(package));
         self.tree
             .add_edge(source, package_index, EdgeType::Dependency);
+        if self.options.verbose() {
+            println!(
+                "Adding '{}' to tree.",
+                self.get_verbose_name_of_tree_node(package_index).unwrap()
+            );
+        }
         package_index
     }
 
@@ -53,14 +57,17 @@ impl<O: CliInput, S> CgData<O, S> {
         source: NodeIndex,
         package: String,
     ) -> NodeIndex {
-        if self.options.verbose() {
-            println!("Found external unsupported dependency '{}'", package);
-        }
         let package_index = self
             .tree
-            .add_node(NodeTyp::ExternalUnsupportedPackage(package));
+            .add_node(NodeType::ExternalUnsupportedPackage(package));
         self.tree
             .add_edge(source, package_index, EdgeType::Dependency);
+        if self.options.verbose() {
+            println!(
+                "Adding '{}' to tree.",
+                self.get_verbose_name_of_tree_node(package_index).unwrap()
+            );
+        }
         package_index
     }
 
@@ -82,21 +89,22 @@ impl<O: CliInput, S> CgData<O, S> {
         // generate node value
         let crate_file = CrateFile {
             name,
-            path,
+            path: path.to_owned(),
             shebang: syntax.shebang,
             attrs: syntax.attrs,
         };
 
-        if self.options.verbose() {
-            println!(
-                "Adding binary crate '{}' with path '{}' to tree...",
-                crate_file.name, crate_file.path
-            );
-        }
-
-        let crate_node_index = self.tree.add_node(NodeTyp::BinCrate(crate_file));
+        let crate_node_index = self.tree.add_node(NodeType::BinCrate(crate_file));
         self.tree
             .add_edge(package_node_index, crate_node_index, EdgeType::Crate);
+
+        if self.options.verbose() {
+            println!(
+                "Adding '{}' at path '{}' to tree.",
+                self.get_verbose_name_of_tree_node(crate_node_index)?,
+                path
+            );
+        }
 
         Ok(crate_node_index)
     }
@@ -121,16 +129,19 @@ impl<O: CliInput, S> CgData<O, S> {
                 attrs: syntax.attrs,
             };
 
-            if self.options.verbose() {
-                println!(
-                    "Adding library crate '{}' with path '{}' to tree...",
-                    crate_file.name, crate_file.path
-                );
-            }
+            let path = target.src_path.to_owned();
 
-            let crate_node_index = self.tree.add_node(NodeTyp::LibCrate(crate_file));
+            let crate_node_index = self.tree.add_node(NodeType::LibCrate(crate_file));
             self.tree
                 .add_edge(package_node_index, crate_node_index, EdgeType::Crate);
+
+            if self.options.verbose() {
+                println!(
+                    "Adding '{}' at path '{}' to tree.",
+                    self.get_verbose_name_of_tree_node(crate_node_index)?,
+                    path
+                );
+            }
 
             Ok(Some(crate_node_index))
         } else {
@@ -145,7 +156,7 @@ impl<O: CliInput, S> CgData<O, S> {
         source_index: NodeIndex,
     ) -> TreeResult<NodeIndex> {
         // add item to tree
-        let item_index: NodeIndex = self.tree.add_node(NodeTyp::SynItem(item.to_owned()));
+        let item_index: NodeIndex = self.tree.add_node(NodeType::SynItem(item.to_owned()));
         self.tree.add_edge(source_index, item_index, EdgeType::Syn);
 
         match item {
@@ -155,18 +166,26 @@ impl<O: CliInput, S> CgData<O, S> {
             }
             // if item is impl, but not impl trait, add content of impl to tree
             Item::Impl(item_impl) => {
+                if self.options.verbose() {
+                    println!("Adding '{}' to tree.", ItemName::from(item));
+                }
                 self.add_syn_item_impl(item_impl, item_index)?;
             }
-            // if item is use statement, at this state of tree a unique name cannot be guaranteed.
-            // therefore just print use statement if verbose option
+            // if item is use statement, check if an ident exist (not the case if group or glob)
             Item::Use(item_use) => {
                 if self.options.verbose() {
-                    println!("Adding syn item '{}' to tree.", item_use.to_token_stream());
+                    let use_item_name = ItemName::from(item);
+                    if use_item_name.get_ident_in_name_space().is_some() {
+                        println!("Adding '{}' to tree.", use_item_name);
+                    } else {
+                        // use statement with group or glob
+                        println!("Adding '{}' (Use) to tree.", item_use.to_token_stream());
+                    }
                 }
             }
             _ => {
                 if self.options.verbose() {
-                    println!("Adding syn item '{}' to tree.", ItemName::from(item));
+                    println!("Adding '{}' to tree.", ItemName::from(item));
                 }
             }
         }
@@ -179,11 +198,13 @@ impl<O: CliInput, S> CgData<O, S> {
         dir_path: &Utf8PathBuf,
         item_mod_index: NodeIndex,
     ) -> TreeResult<()> {
-        let module = item_mod.ident.to_string();
         match item_mod.content {
             Some((_, ref content)) => {
                 if self.options.verbose() {
-                    println!("found inline module '{}', adding it to tree...", module);
+                    println!(
+                        "Adding inline '{}' to tree.",
+                        self.get_verbose_name_of_tree_node(item_mod_index)?
+                    );
                 }
                 for content_item in content.iter() {
                     self.add_syn_item(content_item, dir_path, item_mod_index)?;
@@ -191,7 +212,7 @@ impl<O: CliInput, S> CgData<O, S> {
             }
             None => {
                 // set module directory
-                let mod_dir = dir_path.join(module.as_str());
+                let mod_dir = dir_path.join(item_mod.ident.to_string());
                 // set module filename
                 let mut path = mod_dir.join("mod.rs");
                 // module is either 'module_name.rs' or 'module_name/mod.rs'
@@ -203,7 +224,11 @@ impl<O: CliInput, S> CgData<O, S> {
                     }
                 }
                 if self.options.verbose() {
-                    println!("found module '{}' at '{}', adding to tree...", module, path);
+                    println!(
+                        "Adding '{}' at path '{}' to tree.",
+                        self.get_verbose_name_of_tree_node(item_mod_index)?,
+                        path
+                    );
                 }
                 // get syntax of src file
                 let mod_syntax = load_syntax(&path)?;
@@ -211,6 +236,7 @@ impl<O: CliInput, S> CgData<O, S> {
                     self.add_syn_item(content_item, &mod_dir, item_mod_index)?;
                 }
                 // change mod item in tree to inline module
+                // ToDo: do we need to do this at this state of execution? Or should we do this during merging?
                 let mut inline_mod = item_mod.to_owned();
                 let inline_items: Vec<Item> = self
                     .iter_syn_neighbors(item_mod_index)
@@ -218,7 +244,7 @@ impl<O: CliInput, S> CgData<O, S> {
                     .collect();
                 inline_mod.content = Some((Brace::default(), inline_items));
                 if let Some(node_weight) = self.tree.node_weight_mut(item_mod_index) {
-                    *node_weight = NodeTyp::SynItem(Item::Mod(inline_mod));
+                    *node_weight = NodeType::SynItem(Item::Mod(inline_mod));
                 }
             }
         }
@@ -230,60 +256,41 @@ impl<O: CliInput, S> CgData<O, S> {
         item_impl: &ItemImpl,
         item_impl_index: NodeIndex,
     ) -> TreeResult<()> {
-        if let Some((_, ref impl_trait_path, _)) = item_impl.trait_ {
-            if self.options.verbose() {
-                if let Type::Path(type_path) = item_impl.self_ty.as_ref() {
-                    println!(
-                        "Adding syn impl block item of '{}' for trait '{}'.",
-                        type_path.path.segments.to_token_stream(),
-                        impl_trait_path.segments.to_token_stream(),
-                    );
+        if let None = item_impl.trait_ {
+            // Add impl items, if impl block is not for a trait
+            for impl_item in item_impl.items.iter() {
+                if self.options.verbose() {
+                    println!("Adding '{}' to tree.", ItemName::from(impl_item));
                 }
+                let impl_item_index = self
+                    .tree
+                    .add_node(NodeType::SynImplItem(impl_item.to_owned()));
+                self.tree
+                    .add_edge(item_impl_index, impl_item_index, EdgeType::Syn);
             }
-            // trait impl is not expanded, since all trait items must be implemented
-            return Ok(());
-        }
-        if let Type::Path(type_path) = item_impl.self_ty.as_ref() {
-            println!(
-                "Adding syn impl block item of '{}'.",
-                type_path.path.segments.to_token_stream(),
-            );
-        }
-        for impl_item in item_impl.items.iter() {
-            if self.options.verbose() {
-                println!(
-                    "Adding syn impl item '{}' to tree.",
-                    ItemName::from(impl_item)
-                );
-            }
-            let impl_item_index = self
-                .tree
-                .add_node(NodeTyp::SynImplItem(impl_item.to_owned()));
-            self.tree
-                .add_edge(item_impl_index, impl_item_index, EdgeType::Syn);
         }
         Ok(())
     }
 
-    pub fn add_usage_link(&mut self, source: NodeIndex, target: NodeIndex) -> TreeResult<()> {
-        // test for existing nodes
-        let source_syn = self
-            .get_syn_item(source)
-            .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
-        let target_name = match self.tree.node_weight(target) {
-            Some(NodeTyp::SynItem(item)) => {
-                format!("{}", ItemName::from(item))
-            }
-            Some(NodeTyp::LibCrate(crate_file)) => crate_file.name.to_owned(),
-            _ => {
-                return Err(ChallengeTreeError::NotCrateOrSyn(target));
-            }
-        };
-        if self.options.verbose() {
-            let source = ItemName::from(source_syn);
-            println!("Adding usage link from '{source}' to '{target_name}'.");
+    pub fn add_usage_link(
+        &mut self,
+        use_index: NodeIndex,
+        item_to_use: NodeIndex,
+    ) -> TreeResult<()> {
+        if !self.is_source_item(use_index) {
+            return Err(ChallengeTreeError::NotCrateOrSyn(use_index));
         }
-        self.tree.add_edge(source, target, EdgeType::Usage);
+        if !self.is_source_item(item_to_use) {
+            return Err(ChallengeTreeError::NotCrateOrSyn(item_to_use));
+        }
+        if self.options.verbose() {
+            println!(
+                "Adding usage link from '{}' to '{}'.",
+                self.get_verbose_name_of_tree_node(item_to_use)?,
+                self.get_verbose_name_of_tree_node(use_index)?
+            );
+        }
+        self.tree.add_edge(item_to_use, use_index, EdgeType::Usage);
         Ok(())
     }
 
@@ -292,33 +299,38 @@ impl<O: CliInput, S> CgData<O, S> {
         source: NodeIndex,
         syn_impl_item_index: NodeIndex,
     ) -> TreeResult<()> {
-        // test for existing nodes
-        let source_syn = self
-            .get_syn_item(source)
-            .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
-        let syn_impl_item = self
-            .get_syn_item(syn_impl_item_index)
-            .ok_or(ChallengeTreeError::NotCrateOrSyn(syn_impl_item_index))?;
-        if self.options.verbose() {
-            let source = ItemName::from(source_syn);
-            let trait_name = ItemName::from(syn_impl_item);
-            if trait_name.extract_name().is_none() {
-                println!("Adding implemented by link for '{source}'.");
-            } else {
-                println!("Adding implemented by link of '{trait_name}' for '{source}'.");
-            }
+        if !self.is_source_item(source) {
+            return Err(ChallengeTreeError::NotCrateOrSyn(source));
         }
-        self.tree.add_edge(source, syn_impl_item_index, EdgeType::Implementation);
+        if !self.is_source_item(syn_impl_item_index) {
+            return Err(ChallengeTreeError::NotCrateOrSyn(syn_impl_item_index));
+        }
+        if self.options.verbose() {
+            println!(
+                "Adding implemented by link from '{}' to '{}'.",
+                self.get_verbose_name_of_tree_node(source)?,
+                self.get_verbose_name_of_tree_node(syn_impl_item_index)?
+            );
+        }
+        self.tree
+            .add_edge(source, syn_impl_item_index, EdgeType::Implementation);
         Ok(())
     }
 
     pub fn add_semantic_link(&mut self, source: NodeIndex, target: NodeIndex) -> TreeResult<()> {
-        self.tree
-            .node_weight(source)
-            .ok_or(ChallengeTreeError::NotCrateOrSyn(source))?;
-        self.tree
-            .node_weight(target)
-            .ok_or(ChallengeTreeError::NotCrateOrSyn(target))?;
+        if !self.is_source_item(source) {
+            return Err(ChallengeTreeError::NotCrateOrSyn(source));
+        }
+        if !self.is_source_item(target) {
+            return Err(ChallengeTreeError::NotCrateOrSyn(target));
+        }
+        if self.options.verbose() {
+            println!(
+                "Adding semantic link from '{}' to '{}'.",
+                self.get_verbose_name_of_tree_node(source)?,
+                self.get_verbose_name_of_tree_node(target)?
+            );
+        }
         self.tree.add_edge(source, target, EdgeType::Semantic);
         Ok(())
     }

@@ -1,7 +1,7 @@
 // functions to navigate the challenge tree
 
 use super::{
-    visit::BfsByEdgeType, ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeTyp,
+    visit::BfsByEdgeType, ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType,
     TreeResult,
 };
 use crate::{
@@ -18,14 +18,14 @@ use syn::{Ident, Item, UseTree};
 
 impl<O, S> CgData<O, S> {
     pub fn challenge_package(&self) -> &LocalPackage {
-        if let NodeTyp::LocalPackage(ref package) = self.tree.node_weight(0.into()).unwrap() {
+        if let NodeType::LocalPackage(ref package) = self.tree.node_weight(0.into()).unwrap() {
             return package;
         }
         unreachable!("Challenge package is created at instantiation of CgDate and should always be at index 0.");
     }
 
     pub fn get_local_package(&self, node: NodeIndex) -> TreeResult<&LocalPackage> {
-        if let NodeTyp::LocalPackage(dependency) = self
+        if let NodeType::LocalPackage(dependency) = self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
@@ -37,7 +37,7 @@ impl<O, S> CgData<O, S> {
     }
 
     pub fn get_binary_crate(&self, node: NodeIndex) -> TreeResult<&CrateFile> {
-        if let NodeTyp::BinCrate(crate_file) = self
+        if let NodeType::BinCrate(crate_file) = self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
@@ -49,7 +49,7 @@ impl<O, S> CgData<O, S> {
     }
 
     pub fn get_library_crate(&self, node: NodeIndex) -> TreeResult<&CrateFile> {
-        if let NodeTyp::LibCrate(crate_file) = self
+        if let NodeType::LibCrate(crate_file) = self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
@@ -60,7 +60,7 @@ impl<O, S> CgData<O, S> {
         }
     }
 
-    fn iter_packages(&self) -> impl Iterator<Item = (NodeIndex, &NodeTyp)> {
+    fn iter_packages(&self) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
         BfsByEdgeType::new(&self.tree, 0.into(), EdgeType::Dependency)
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
@@ -69,30 +69,30 @@ impl<O, S> CgData<O, S> {
 
     pub fn iter_local_packages(&self) -> impl Iterator<Item = (NodeIndex, &LocalPackage)> {
         self.iter_packages().filter_map(|(n, w)| match w {
-            NodeTyp::LocalPackage(package) => Some((n, package)),
-            NodeTyp::ExternalSupportedPackage(_) | NodeTyp::ExternalUnsupportedPackage(_) => None,
+            NodeType::LocalPackage(package) => Some((n, package)),
+            NodeType::ExternalSupportedPackage(_) | NodeType::ExternalUnsupportedPackage(_) => None,
             _ => unreachable!("Dependency edges only target package nodes."),
         })
     }
 
-    pub fn iter_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &NodeTyp)> {
+    pub fn iter_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
         // skip first element, which is root of tree and therefore not a dependency
         self.iter_packages().skip(1)
     }
 
     pub fn iter_accepted_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &str)> {
         self.iter_dependencies().filter_map(|(n, w)| match w {
-            NodeTyp::LocalPackage(local_package) => Some((n, local_package.name.as_str())),
-            NodeTyp::ExternalSupportedPackage(name) => Some((n, name.as_str())),
-            NodeTyp::ExternalUnsupportedPackage(_) => None,
+            NodeType::LocalPackage(local_package) => Some((n, local_package.name.as_str())),
+            NodeType::ExternalSupportedPackage(name) => Some((n, name.as_str())),
+            NodeType::ExternalUnsupportedPackage(_) => None,
             _ => unreachable!("Dependency edges only target package nodes."),
         })
     }
 
     pub fn iter_unsupported_dependencies(&self) -> impl Iterator<Item = (NodeIndex, &str)> {
         self.iter_dependencies().filter_map(|(n, w)| match w {
-            NodeTyp::ExternalUnsupportedPackage(name) => Some((n, name.as_str())),
-            NodeTyp::LocalPackage(_) | NodeTyp::ExternalSupportedPackage(_) => None,
+            NodeType::ExternalUnsupportedPackage(name) => Some((n, name.as_str())),
+            NodeType::LocalPackage(_) | NodeType::ExternalSupportedPackage(_) => None,
             _ => unreachable!("Dependency edges only target package nodes."),
         })
     }
@@ -101,9 +101,9 @@ impl<O, S> CgData<O, S> {
         // include elements of rust libraries in iterator
         self.iter_dependencies()
             .filter_map(|(_, w)| match w {
-                NodeTyp::ExternalSupportedPackage(name)
-                | NodeTyp::ExternalUnsupportedPackage(name) => Some(name.as_str()),
-                NodeTyp::LocalPackage(_) => None,
+                NodeType::ExternalSupportedPackage(name)
+                | NodeType::ExternalUnsupportedPackage(name) => Some(name.as_str()),
+                NodeType::LocalPackage(_) => None,
                 _ => unreachable!("Dependency edges only target package nodes."),
             })
             .chain(["std", "core", "std"])
@@ -117,8 +117,8 @@ impl<O, S> CgData<O, S> {
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .filter_map(|(n, w)| match w {
-                NodeTyp::BinCrate(bin_crate_file) => Some((n, false, bin_crate_file)),
-                NodeTyp::LibCrate(lib_crate_file) => Some((n, true, lib_crate_file)),
+                NodeType::BinCrate(bin_crate_file) => Some((n, false, bin_crate_file)),
+                NodeType::LibCrate(lib_crate_file) => Some((n, true, lib_crate_file)),
                 _ => None,
             })
             .fuse()
@@ -149,8 +149,8 @@ impl<O, S> CgData<O, S> {
             .filter(|e| *e.weight() == EdgeType::Syn)
             .map(|e| e.target())
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .filter_map(|(n, w)| match w {
-                NodeTyp::SynItem(item) => Some((n, item)),
+            .map(|(n, w)| match w {
+                NodeType::SynItem(item) => (n, item),
                 _ => unreachable!("All syn edges must end in SynItem nodes."),
             })
     }
@@ -160,13 +160,13 @@ impl<O, S> CgData<O, S> {
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .filter_map(|(n, w)| match w {
-                NodeTyp::SynItem(syn_item) => Some((n, syn_item)),
+                NodeType::SynItem(syn_item) => Some((n, syn_item)),
                 _ => None,
             })
             .fuse()
     }
 
-    fn get_parent_index_by_edge_type(
+    pub fn get_parent_index_by_edge_type(
         &self,
         node: NodeIndex,
         edge_type: EdgeType,
@@ -179,7 +179,7 @@ impl<O, S> CgData<O, S> {
 
     pub fn get_syn_item_module_index(&self, node: NodeIndex) -> Option<NodeIndex> {
         let module_index = self.get_parent_index_by_edge_type(node, EdgeType::Syn);
-        if let Some(NodeTyp::SynImplItem(_)) = self.tree.node_weight(node) {
+        if let Some(NodeType::SynImplItem(_)) = self.tree.node_weight(node) {
             if let Some(mi) = module_index {
                 return self.get_syn_item_module_index(mi);
             }
@@ -189,7 +189,7 @@ impl<O, S> CgData<O, S> {
 
     pub fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {
         self.tree.node_weight(node).and_then(|w| match w {
-            NodeTyp::SynItem(item) => Some(item),
+            NodeType::SynItem(item) => Some(item),
             _ => None,
         })
     }
@@ -203,14 +203,14 @@ impl<O, S> CgData<O, S> {
 
     pub fn get_name_of_crate_or_module(&self, node: NodeIndex) -> Option<String> {
         self.tree.node_weight(node).and_then(|w| match w {
-            NodeTyp::SynItem(item) => {
+            NodeType::SynItem(item) => {
                 if let Item::Mod(item_mod) = item {
                     Some(item_mod.ident.to_string())
                 } else {
                     None
                 }
             }
-            NodeTyp::BinCrate(crate_file) | NodeTyp::LibCrate(crate_file) => {
+            NodeType::BinCrate(crate_file) | NodeType::LibCrate(crate_file) => {
                 Some(crate_file.name.to_owned())
             }
             _ => None,
@@ -220,8 +220,8 @@ impl<O, S> CgData<O, S> {
     pub fn get_crate_index(&self, node: NodeIndex) -> Option<NodeIndex> {
         if let Some(node_weight) = self.tree.node_weight(node) {
             match node_weight {
-                NodeTyp::BinCrate(_) | NodeTyp::LibCrate(_) => return Some(node),
-                NodeTyp::SynItem(_) | NodeTyp::SynImplItem(_) => {
+                NodeType::BinCrate(_) | NodeType::LibCrate(_) => return Some(node),
+                NodeType::SynItem(_) | NodeType::SynImplItem(_) => {
                     if let Some(parent) = self.get_parent_index_by_edge_type(node, EdgeType::Syn) {
                         return self.get_crate_index(parent);
                     }
@@ -232,14 +232,47 @@ impl<O, S> CgData<O, S> {
         None
     }
 
+    pub fn get_verbose_name_of_tree_node(&self, node: NodeIndex) -> TreeResult<String> {
+        match self
+            .tree
+            .node_weight(node)
+            .context(add_context!("Expected node weight."))?
+        {
+            NodeType::LocalPackage(local_package) => {
+                Ok(format!("{} (local package)", local_package.name))
+            }
+            NodeType::ExternalSupportedPackage(supported_package) => {
+                Ok(format!("{} (supported package)", supported_package))
+            }
+            NodeType::ExternalUnsupportedPackage(unsupported_package) => {
+                Ok(format!("{} (unsupported package)", unsupported_package))
+            }
+            NodeType::BinCrate(crate_file) => Ok(format!("{} (binary crate)", crate_file.name)),
+            NodeType::LibCrate(crate_file) => Ok(format!("{} (library crate)", crate_file.name)),
+            NodeType::SynItem(item) => Ok(format!("{}", ItemName::from(item))),
+            NodeType::SynImplItem(impl_item) => Ok(format!("{}", ItemName::from(impl_item))),
+        }
+    }
+
     pub fn is_crate_or_module(&self, node: NodeIndex) -> bool {
         if let Some(node_weight) = self.tree.node_weight(node) {
-            return match node_weight {
-                NodeTyp::BinCrate(_) | NodeTyp::LibCrate(_) | NodeTyp::SynItem(Item::Mod(_)) => {
-                    true
-                }
-                _ => false,
-            };
+            return matches!(
+                node_weight,
+                NodeType::BinCrate(_) | NodeType::LibCrate(_) | NodeType::SynItem(Item::Mod(_))
+            );
+        }
+        false
+    }
+
+    pub fn is_source_item(&self, node: NodeIndex) -> bool {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            return matches!(
+                node_weight,
+                NodeType::BinCrate(_)
+                    | NodeType::LibCrate(_)
+                    | NodeType::SynItem(_)
+                    | NodeType::SynImplItem(_)
+            );
         }
         false
     }
@@ -267,10 +300,10 @@ impl<O, S> CgData<O, S> {
         &self,
         node: NodeIndex,
     ) -> impl Iterator<Item = (NodeIndex, &Item)> {
-        self.iter_syn_neighbors(node).filter(move |(target, _)| {
+        self.iter_syn_neighbors(node).filter(move |(n, _)| {
             !self
                 .tree
-                .edges_connecting(node, *target)
+                .edges(*n)
                 .any(|e| *e.weight() == EdgeType::Semantic)
         })
     }
@@ -341,7 +374,7 @@ impl<O, S> CgData<O, S> {
                             .iter_syn_neighbors(current_index)
                             .filter_map(|(n, i)| {
                                 ItemName::from(i)
-                                    .extract_imported_ident()
+                                    .get_ident_in_name_space()
                                     .map(|name| (n, name))
                             })
                             .find(|(_, i)| segment == i)
@@ -368,7 +401,7 @@ impl<O, S> CgData<O, S> {
                         .iter_syn_neighbors(current_index)
                         .filter_map(|(n, i)| match i {
                             Item::Use(item_use) => ItemName::from(i)
-                                .extract_imported_ident()
+                                .get_ident_in_name_space()
                                 .map(|ident| (n, ident, &item_use.tree)),
                             _ => None,
                         })
@@ -466,7 +499,7 @@ impl<O, S> CgData<O, S> {
                     .iter_syn_neighbors(current_index)
                     .filter_map(|(n, i)| {
                         ItemName::from(i)
-                            .extract_imported_ident()
+                            .get_ident_in_name_space()
                             .map(|name| (n, name))
                     })
                     .find(|(_, i)| root == *i)

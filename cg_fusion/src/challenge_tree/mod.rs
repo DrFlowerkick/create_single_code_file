@@ -14,10 +14,10 @@ use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::StableDiGraph;
 use syn::{Attribute, ImplItem, Item, ItemUse};
 
-pub type ChallengeTree = StableDiGraph<NodeTyp, EdgeType>;
+pub type ChallengeTree = StableDiGraph<NodeType, EdgeType>;
 
 #[derive(Debug)]
-pub enum NodeTyp {
+pub enum NodeType {
     LocalPackage(LocalPackage),
     ExternalSupportedPackage(String),
     ExternalUnsupportedPackage(String),
@@ -27,9 +27,9 @@ pub enum NodeTyp {
     SynImplItem(ImplItem),
 }
 
-impl NodeTyp {
+impl NodeType {
     pub fn get_item_from_syn_item_node(&self) -> Option<&Item> {
-        if let NodeTyp::SynItem(item) = self {
+        if let NodeType::SynItem(item) = self {
             Some(item)
         } else {
             None
@@ -37,7 +37,7 @@ impl NodeTyp {
     }
     // ToDo: delete this function
     pub fn get_use_item_from_syn_item_node(&self) -> Option<&ItemUse> {
-        if let NodeTyp::SynItem(Item::Use(use_item)) = self {
+        if let NodeType::SynItem(Item::Use(use_item)) = self {
             Some(use_item)
         } else {
             None

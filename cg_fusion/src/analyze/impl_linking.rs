@@ -99,7 +99,11 @@ mod tests {
             .unwrap();
         let (enum_value_index, _) = cg_data
             .iter_syn_neighbors(cg_fusion_binary_test_index)
-            .filter_map(|(n, i)| ItemName::from(i).extract_name().map(|name| (n, name)))
+            .filter_map(|(n, i)| {
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
+            })
             .find(|(_, name)| name == "Value")
             .unwrap();
         assert_eq!(
@@ -112,7 +116,11 @@ mod tests {
         );
         let (struct_go_index, _) = cg_data
             .iter_syn_neighbors(cg_fusion_binary_test_index)
-            .filter_map(|(n, i)| ItemName::from(i).extract_name().map(|name| (n, name)))
+            .filter_map(|(n, i)| {
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
+            })
             .find(|(_, name)| name == "Go")
             .unwrap();
         assert_eq!(
@@ -131,7 +139,11 @@ mod tests {
 
         let (struct_my_map_2d_index, _) = cg_data
             .iter_syn_neighbors(my_map_two_dim_index)
-            .filter_map(|(n, i)| ItemName::from(i).extract_name().map(|name| (n, name)))
+            .filter_map(|(n, i)| {
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
+            })
             .find(|(_, name)| name == "MyMap2D")
             .unwrap();
         assert_eq!(

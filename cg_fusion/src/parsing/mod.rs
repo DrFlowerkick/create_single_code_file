@@ -142,6 +142,17 @@ pub enum SourcePath {
     Group,
 }
 
+impl SourcePath {
+    pub fn get_last(&self) -> Option<&Ident> {
+        match self {
+            SourcePath::Name(segments)
+            | SourcePath::Glob(segments)
+            | SourcePath::Rename(segments, _) => segments.last(),
+            SourcePath::Group => None,
+        }
+    }
+}
+
 impl PathAnalysis for UseTree {
     fn extract_path(&self) -> SourcePath {
         let mut tree = self;
@@ -262,7 +273,7 @@ impl ItemExtras for Item {
 
     fn get_item_use(&self) -> Option<&ItemUse> {
         if let Item::Use(item_use) = self {
-            return Some(&item_use);
+            return Some(item_use);
         }
         None
     }
@@ -342,6 +353,7 @@ pub enum ItemName {
     TypeStringAndIdent(String, Ident),
     TypeStringAndRenamed(String, Ident, Ident),
     TypeStringAndNameString(String, String),
+    TypeStringAndTraitAndNameString(String, Ident, String),
     TypeString(String),
     Group,
     Glob,
@@ -354,6 +366,9 @@ impl Display for ItemName {
             Self::TypeStringAndIdent(ts, i) => write!(f, "{:?} ({ts})", i),
             Self::TypeStringAndRenamed(ts, i, r) => write!(f, "{:?} as {:?} ({ts})", i, r),
             Self::TypeStringAndNameString(ts, ns) => write!(f, "{ns} ({ts})"),
+            Self::TypeStringAndTraitAndNameString(ts, t, ns) => {
+                write!(f, "{:?} for {ns} ({ts})", t)
+            }
             Self::TypeString(ts) => write!(f, "({ts})"),
             Self::Group => write!(f, "(group)"),
             Self::Glob => write!(f, "(glob *)"),
@@ -363,39 +378,20 @@ impl Display for ItemName {
 }
 
 impl ItemName {
-    pub fn extract_ident(&self) -> Option<Ident> {
-        match self {
-            Self::TypeStringAndIdent(_, ident) => Some(ident.to_owned()),
-            Self::TypeStringAndRenamed(_, ident, _) => Some(ident.to_owned()),
-            _ => None,
-        }
-    }
-    pub fn extract_imported_ident(&self) -> Option<Ident> {
+    pub fn get_ident_in_name_space(&self) -> Option<Ident> {
         match self {
             Self::TypeStringAndIdent(_, ident) => Some(ident.to_owned()),
             Self::TypeStringAndRenamed(_, _, rename) => Some(rename.to_owned()),
             _ => None,
         }
     }
-    pub fn extract_name(&self) -> Option<String> {
+    pub fn get_name(&self) -> Option<String> {
         match self {
             Self::TypeStringAndIdent(_, ident) => Some(ident.to_string()),
             Self::TypeStringAndRenamed(_, ident, _) => Some(ident.to_string()),
             Self::TypeStringAndNameString(_, name) => Some(name.to_owned()),
             _ => None,
         }
-    }
-    pub fn extract_rename(&self) -> Option<Ident> {
-        match self {
-            Self::TypeStringAndRenamed(_, _, rename) => Some(rename.to_owned()),
-            _ => None,
-        }
-    }
-    pub fn is_glob(&self) -> bool {
-        matches!(self, Self::Glob)
-    }
-    pub fn is_none(&self) -> bool {
-        matches!(self, Self::None)
     }
 }
 
@@ -414,6 +410,58 @@ impl From<&Item> for ItemName {
             ),
             Item::Fn(item_fn) => {
                 ItemName::TypeStringAndIdent("Fn".into(), item_fn.sig.ident.to_owned())
+            }
+            Item::ForeignMod(_) => ItemName::TypeString("ForeignMod".into()),
+            Item::Impl(item_impl) => {
+                let trait_ident: Option<Ident> = if let Some((_, ref trait_, _)) = item_impl.trait_
+                {
+                    trait_.extract_path().get_last().map(|i| i.to_owned())
+                } else {
+                    None
+                };
+                match item_impl.self_ty.as_ref() {
+                    // at current state of code, we only support Path and Reference
+                    Type::Path(type_path) => {
+                        let path_target = match type_path.path.extract_path().get_last() {
+                            Some(ident) => ident.to_owned(),
+                            None => unreachable!("Path must have at least one segment."),
+                        };
+                        if let Some(ti) = trait_ident {
+                            ItemName::TypeStringAndTraitAndNameString("Impl".into(), ti, path_target.to_string())
+                        } else {
+                            ItemName::TypeStringAndNameString("Impl".into(), path_target.to_string())
+                        }
+                    }
+                    Type::Reference(type_ref) => {
+                        if let Type::Path(type_path) = type_ref.elem.as_ref() {
+                            let path_target = match type_path.path.extract_path().get_last() {
+                                Some(ident) => ident.to_owned(),
+                                None => unreachable!("Path must have at least one segment."),
+                            };
+                            if let Some(ti) = trait_ident {
+                                ItemName::TypeStringAndTraitAndNameString("Impl".into(), ti, path_target.to_string())
+                            } else {
+                                ItemName::TypeStringAndNameString("Impl".into(), path_target.to_string())
+                            }
+                        } else {
+                            ItemName::TypeString("Impl".into())
+                        }
+                    }
+                    _ => {
+                        if let Some(ti) = trait_ident {
+                            ItemName::TypeStringAndTraitAndNameString(
+                                "Impl".into(),
+                                ti,
+                                item_impl.to_token_stream().to_string(),
+                            )
+                        } else {
+                            ItemName::TypeStringAndNameString(
+                                "Impl".into(),
+                                item_impl.to_token_stream().to_string(),
+                            )
+                        }
+                    }
+                }
             }
             Item::Macro(item_macro) => match item_macro.ident {
                 Some(ref ident) => ItemName::TypeStringAndIdent("Macro".into(), ident.to_owned()),
@@ -452,17 +500,6 @@ impl From<&Item> for ItemName {
                     rename.to_owned(),
                 ),
             },
-            Item::ForeignMod(_) => ItemName::TypeString("ForeignMod".into()),
-            Item::Impl(item_impl) => {
-                if let Some((_, ref trait_, _)) = item_impl.trait_ {
-                    ItemName::TypeStringAndNameString(
-                        "Impl".into(),
-                        trait_.to_token_stream().to_string(),
-                    )
-                } else {
-                    ItemName::TypeString("Impl".into())
-                }
-            }
             Item::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
             _ => ItemName::None, // Item is #[non_exhaustive]
         }
@@ -473,19 +510,23 @@ impl From<&ImplItem> for ItemName {
     fn from(impl_item: &ImplItem) -> Self {
         match impl_item {
             ImplItem::Const(impl_item_const) => {
-                ItemName::TypeStringAndIdent("Const".into(), impl_item_const.ident.to_owned())
+                ItemName::TypeStringAndIdent("Impl Const".into(), impl_item_const.ident.to_owned())
             }
             ImplItem::Fn(impl_item_fn) => {
-                ItemName::TypeStringAndIdent("Fn".into(), impl_item_fn.sig.ident.to_owned())
+                ItemName::TypeStringAndIdent("Impl Fn".into(), impl_item_fn.sig.ident.to_owned())
             }
-            ImplItem::Macro(impl_item_macro) => ItemName::TypeStringAndNameString(
-                "Macro".into(),
-                impl_item_macro.mac.path.to_token_stream().to_string(),
-            ),
+            ImplItem::Macro(impl_item_macro) => {
+                match impl_item_macro.mac.path.extract_path().get_last() {
+                    Some(ident) => {
+                        ItemName::TypeStringAndIdent("Impl Macro".into(), ident.to_owned())
+                    }
+                    None => ItemName::TypeString("Impl Macro".into()),
+                }
+            }
             ImplItem::Type(impl_item_type) => {
-                ItemName::TypeStringAndIdent("Type".into(), impl_item_type.ident.to_owned())
+                ItemName::TypeStringAndIdent("Impl Type".into(), impl_item_type.ident.to_owned())
             }
-            ImplItem::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
+            ImplItem::Verbatim(_) => ItemName::TypeString("Impl Verbatim".into()),
             _ => ItemName::None,
         }
     }
@@ -504,37 +545,25 @@ impl<'ast> Visit<'ast> for TypeVisitor {
     }
 }
 
-// Struct to visit source file and collect use statements
-#[derive(Default)]
-pub struct UseVisitor {
-    pub uses: Vec<ItemUse>,
-    external_dependencies: Vec<String>,
+// Struct to visit syn items and check, if ident is used in item
+pub struct IdentVisitor {
+    pub ident: Ident,
+    pub found: bool,
 }
 
-impl UseVisitor {
-    pub fn new(mut external_dependencies: Vec<String>) -> Self {
-        external_dependencies.push("std".into());
-        external_dependencies.push("core".into());
-        external_dependencies.push("alloc".into());
+impl IdentVisitor {
+    pub fn new(ident: Ident) -> Self {
         Self {
-            uses: Vec::new(),
-            external_dependencies,
+            ident,
+            found: false,
         }
     }
 }
 
-impl<'ast> Visit<'ast> for UseVisitor {
-    fn visit_item_use(&mut self, i: &'ast syn::ItemUse) {
-        if let UseTree::Path(ref use_path) = i.tree {
-            // filter external dependencies
-            if self
-                .external_dependencies
-                .iter()
-                .any(|fi| use_path.ident == fi)
-            {
-                return;
-            }
+impl<'ast> Visit<'ast> for IdentVisitor {
+    fn visit_ident(&mut self, i: &'ast syn::Ident) {
+        if i == &self.ident {
+            self.found = true;
         }
-        self.uses.push(i.clone());
     }
 }

@@ -119,7 +119,7 @@ fn test_get_path_target() {
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
                 ItemName::from(i)
-                    .extract_ident()
+                    .get_ident_in_name_space()
                     .map(|id| (n, id, &item_use.tree))
             } else {
                 None
@@ -180,7 +180,9 @@ fn test_get_path_target() {
         .iter_syn_items(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Mod(_) = i {
-                ItemName::from(i).extract_ident().map(|id| (n, id))
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
             } else {
                 None
             }
@@ -189,19 +191,31 @@ fn test_get_path_target() {
         .unwrap();
     let my_array_item_index = cg_data
         .iter_syn_neighbors(my_array_mod_index)
-        .filter_map(|(n, i)| ItemName::from(i).extract_ident().map(|id| (n, id)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
+                .get_ident_in_name_space()
+                .map(|id| (n, id))
+        })
         .find(|(_, id)| id == "MyArray")
         .unwrap()
         .0;
     let my_map_2d_item_index = cg_data
         .iter_syn_neighbors(my_map_two_dim_mod_index)
-        .filter_map(|(n, i)| ItemName::from(i).extract_ident().map(|id| (n, id)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
+                .get_ident_in_name_space()
+                .map(|id| (n, id))
+        })
         .find(|(_, id)| id == "MyMap2D")
         .unwrap()
         .0;
     let my_map_point_item_index = cg_data
         .iter_syn_neighbors(my_map_point_mod_index)
-        .filter_map(|(n, i)| ItemName::from(i).extract_ident().map(|id| (n, id)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
+                .get_ident_in_name_space()
+                .map(|id| (n, id))
+        })
         .find(|(_, id)| id == "MapPoint")
         .unwrap()
         .0;
@@ -261,7 +275,9 @@ fn test_get_path_target() {
         .iter_syn_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Mod(_) = i {
-                ItemName::from(i).extract_ident().map(|id| (n, id))
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
             } else {
                 None
             }
@@ -345,7 +361,9 @@ fn test_is_visible_for_module() {
         .iter_syn_items(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Mod(_) = i {
-                ItemName::from(i).extract_ident().map(|id| (n, id))
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
             } else {
                 None
             }
@@ -357,7 +375,9 @@ fn test_is_visible_for_module() {
         .iter_syn_items(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Mod(_) = i {
-                ItemName::from(i).extract_ident().map(|id| (n, id))
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
             } else {
                 None
             }
@@ -370,7 +390,7 @@ fn test_is_visible_for_module() {
         .iter_syn_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
-                .extract_ident()
+                .get_ident_in_name_space()
                 .map(|id| {
                     cg_data
                         .is_visible_for_module(n, my_compass_mod_index)
@@ -397,10 +417,8 @@ fn test_is_visible_for_module() {
         cg_data
             .iter_syn_neighbors(my_map_point_mod_index)
             .filter_map(|(n, i)| {
-                ItemName::from(i)
-                    .is_glob()
-                    .then_some(cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
-                    .flatten()
+                i.is_use_glob()
+                    .and_then(|_| cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
             })
             .count(),
         1
@@ -410,7 +428,7 @@ fn test_is_visible_for_module() {
         .iter_syn_neighbors(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
-                .extract_ident()
+                .get_ident_in_name_space()
                 .map(|id| {
                     cg_data
                         .is_visible_for_module(n, my_compass_mod_index)
@@ -437,10 +455,8 @@ fn test_is_visible_for_module() {
         cg_data
             .iter_syn_neighbors(my_map_two_dim_mod_index)
             .filter_map(|(n, i)| {
-                ItemName::from(i)
-                    .is_glob()
-                    .then_some(cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
-                    .flatten()
+                i.is_use_glob()
+                    .and_then(|_| cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
             })
             .count(),
         3
@@ -450,7 +466,7 @@ fn test_is_visible_for_module() {
         .iter_syn_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
-                .extract_ident()
+                .get_ident_in_name_space()
                 .map(|id| {
                     cg_data
                         .is_visible_for_module(n, my_map_two_dim_mod_index)
@@ -471,7 +487,7 @@ fn test_is_visible_for_module() {
         .iter_syn_neighbors(my_compass_mod_index)
         .filter_map(|(n, i)| {
             ItemName::from(i)
-                .extract_ident()
+                .get_ident_in_name_space()
                 .map(|id| {
                     cg_data
                         .is_visible_for_module(n, my_map_two_dim_mod_index)
@@ -506,7 +522,9 @@ fn test_expand_use_glob() {
         .iter_syn_items(cg_fusion_binary_test_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Mod(_) = i {
-                ItemName::from(i).extract_ident().map(|id| (n, id))
+                ItemName::from(i)
+                    .get_ident_in_name_space()
+                    .map(|id| (n, id))
             } else {
                 None
             }
@@ -571,7 +589,7 @@ fn test_expand_use_glob() {
         .iter()
         .map(|(n, _)| {
             ItemName::from(cg_data.get_syn_item(*n).unwrap())
-                .extract_ident()
+                .get_ident_in_name_space()
                 .unwrap()
         })
         .collect::<Vec<Ident>>();
@@ -587,7 +605,7 @@ fn test_expand_use_glob() {
         .iter()
         .map(|(n, _)| {
             ItemName::from(cg_data.get_syn_item(*n).unwrap())
-                .extract_ident()
+                .get_ident_in_name_space()
                 .unwrap()
         })
         .collect::<Vec<Ident>>();
@@ -603,7 +621,7 @@ fn test_expand_use_glob() {
         .iter()
         .map(|(n, _)| {
             ItemName::from(cg_data.get_syn_item(*n).unwrap())
-                .extract_ident()
+                .get_ident_in_name_space()
                 .unwrap()
         })
         .collect::<Vec<Ident>>();

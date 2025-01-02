@@ -189,8 +189,9 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 ItemName::TypeStringAndIdent(_, id) => id,
                 ItemName::TypeStringAndRenamed(_, _, rename) => rename,
                 ItemName::None
+                | ItemName::TypeStringAndTraitAndNameString(_, _, _)
                 | ItemName::TypeString(_)
-                | ItemName::TypeStringAndNameString(_, _) => continue, // No ident, no use import
+                | ItemName::TypeStringAndNameString(_, _) => continue, // Trait impl or no ident -> no use import
             };
             visible_items.push(ident);
         }

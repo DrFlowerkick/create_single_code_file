@@ -56,7 +56,7 @@ pub struct BfsByEdgeTypeIterator<'a> {
     graph: &'a ChallengeTree,
 }
 
-impl<'a> Iterator for BfsByEdgeTypeIterator<'a> {
+impl Iterator for BfsByEdgeTypeIterator<'_> {
     type Item = NodeIndex;
 
     fn next(&mut self) -> Option<Self::Item> {

@@ -13,7 +13,7 @@ pub mod solve_cargo_check;
 pub mod utilities;
 
 use analyze::AnalyzeState;
-use challenge_tree::{ChallengeTree, LocalPackage, NodeTyp};
+use challenge_tree::{ChallengeTree, LocalPackage, NodeType};
 use configuration::{AnalyzeCli, CargoCli, FusionCli, MergeCli, PurgeCli};
 use error::{CgError, CgResult};
 use metadata::MetadataError;
@@ -72,7 +72,7 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
     pub fn build(self) -> CgResult<CgMode> {
         let metadata = self.metadata_command.exec().map_err(MetadataError::from)?;
         // initialize root node with challenge metadata
-        let root_node_value = NodeTyp::LocalPackage(LocalPackage::try_from(metadata)?);
+        let root_node_value = NodeType::LocalPackage(LocalPackage::try_from(metadata)?);
         let mut tree: ChallengeTree = StableDiGraph::new();
         // root node should have index 0
         assert_eq!(tree.add_node(root_node_value), 0.into());
