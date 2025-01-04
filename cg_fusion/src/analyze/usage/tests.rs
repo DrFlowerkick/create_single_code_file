@@ -150,13 +150,13 @@ fn test_get_path_target() {
         cg_data
             .get_path_target(*use_index_my_map_two_dim, *use_tree_my_map_two_dim)
             .unwrap(),
-        PathTarget::Item(my_map_two_dim_mod_index)
+        PathElement::Item(my_map_two_dim_mod_index)
     );
     assert_eq!(
         cg_data
             .get_path_target(*use_index_my_array, *use_tree_my_array)
             .unwrap(),
-        PathTarget::Item(my_array_mod_index)
+        PathElement::Item(my_array_mod_index)
     );
 
     // get use entries, which point to items in modules
@@ -224,13 +224,13 @@ fn test_get_path_target() {
         cg_data
             .get_path_target(*use_index_my_array_struct, *use_tree_my_array_struct)
             .unwrap(),
-        PathTarget::Item(my_array_item_index)
+        PathElement::Item(my_array_item_index)
     );
     assert_eq!(
         cg_data
             .get_path_target(*use_index_my_map_2d_struct, *use_tree_my_map_2d_struct)
             .unwrap(),
-        PathTarget::Item(my_map_2d_item_index)
+        PathElement::Item(my_map_2d_item_index)
     );
     assert_eq!(
         cg_data
@@ -239,7 +239,7 @@ fn test_get_path_target() {
                 *use_tree_my_map_point_struct
             )
             .unwrap(),
-        PathTarget::Item(my_map_point_item_index)
+        PathElement::Item(my_map_point_item_index)
     );
 
     // get use entries, which point to use globs
@@ -291,19 +291,19 @@ fn test_get_path_target() {
         cg_data
             .get_path_target(*use_glob_index_my_map_point, *use_glob_tree_my_map_point)
             .unwrap(),
-        PathTarget::Glob(my_map_point_mod_index)
+        PathElement::Glob(my_map_point_mod_index)
     );
     assert_eq!(
         cg_data
             .get_path_target(*use_glob_index_my_array, *use_glob_tree_my_array)
             .unwrap(),
-        PathTarget::Glob(my_array_mod_index)
+        PathElement::Glob(my_array_mod_index)
     );
     assert_eq!(
         cg_data
             .get_path_target(*use_glob_index_my_compass, *use_glob_tree_my_compass)
             .unwrap(),
-        PathTarget::Glob(my_compass_mod_index)
+        PathElement::Glob(my_compass_mod_index)
     );
 
     // get use entries of my_map_point
@@ -334,13 +334,13 @@ fn test_get_path_target() {
         cg_data
             .get_path_target(*use_extern_ordering, *use_tree_extern_ordering)
             .unwrap(),
-        PathTarget::ExternalPackage
+        PathElement::ExternalPackage
     );
     assert_eq!(
         cg_data
             .get_path_target(*use_glob_index_my_compass, *use_glob_tree_my_compass)
             .unwrap(),
-        PathTarget::Glob(my_compass_mod_index)
+        PathElement::Glob(my_compass_mod_index)
     );
 }
 

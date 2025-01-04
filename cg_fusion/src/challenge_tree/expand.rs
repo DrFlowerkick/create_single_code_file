@@ -256,7 +256,7 @@ impl<O: CliInput, S> CgData<O, S> {
         item_impl: &ItemImpl,
         item_impl_index: NodeIndex,
     ) -> TreeResult<()> {
-        if let None = item_impl.trait_ {
+        if item_impl.trait_.is_none() {
             // Add impl items, if impl block is not for a trait
             for impl_item in item_impl.items.iter() {
                 if self.options.verbose() {

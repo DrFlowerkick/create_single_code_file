@@ -2,7 +2,7 @@
 
 use super::AnalyzeState;
 use crate::{
-    challenge_tree::{PathRoot, PathTarget},
+    challenge_tree::{PathElement, PathRoot},
     configuration::CliInput,
     error::CgResult,
     CgData,
@@ -55,18 +55,18 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     fn link_impl_block_by_path(&mut self, syn_impl_index: NodeIndex, path: &Path) -> CgResult<()> {
         let path_target = self.get_path_target(syn_impl_index, path)?;
         match path_target {
-            PathTarget::ExternalPackage => {
+            PathElement::ExternalPackage => {
                 if let PathRoot::Item(item_index) = self.get_path_root(syn_impl_index, path)? {
                     self.add_implementation_by_link(item_index, syn_impl_index)?;
                 }
             }
-            PathTarget::Item(item_index) => {
+            PathElement::Item(item_index) => {
                 self.add_implementation_by_link(item_index, syn_impl_index)?;
             }
-            PathTarget::Glob(_) | PathTarget::Group | PathTarget::ItemRenamed(_, _) => {
+            PathElement::Glob(_) | PathElement::Group | PathElement::ItemRenamed(_, _) => {
                 unreachable!("Impl path cannot be glob or group or renamed item.")
             }
-            PathTarget::PathCouldNotBeParsed => (), // could be traits like 'Default'
+            PathElement::PathCouldNotBeParsed => (), // could be traits like 'Default'
         }
         Ok(())
     }

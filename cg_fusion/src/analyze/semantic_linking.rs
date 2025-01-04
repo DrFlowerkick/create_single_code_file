@@ -66,7 +66,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         // we filter for items with ident
                         let syn_ident =
                             ItemName::from(&syn_item).get_ident_in_name_space().unwrap();
-                            let mut semantic_index: Option<NodeIndex> = None;
+                        let mut semantic_index: Option<NodeIndex> = None;
                         // check if item is (reimported) module
                         if self.is_module_or_reimported_module(item_index) {
                             // ToDo: check if module is used as part of a path
@@ -126,6 +126,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                             }
                         }
                     } else {
+                        todo!("Handle impl blocks.");
                     }
                 }
             }

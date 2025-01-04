@@ -6,7 +6,12 @@ use petgraph::{
 };
 // petgraph uses FixedBitSet as VisitMap for Bfs
 use fixedbitset::FixedBitSet;
-use syn::Item;
+use syn::{Ident, Item};
+
+use crate::{
+    parsing::{ItemName, SourcePath},
+    CgData,
+};
 
 use super::{ChallengeTree, EdgeType, NodeType};
 
@@ -130,5 +135,384 @@ impl<T: BfsWalker> Iterator for BfsIterator<'_, T> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.walker.stack_len(), Some(self.graph.node_count()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PathElement {
+    ExternalPackage,
+    Group,
+    Glob(NodeIndex),
+    Item(NodeIndex),
+    ItemRenamed(NodeIndex, Ident),
+    PathCouldNotBeParsed,
+}
+
+#[derive(Debug)]
+pub struct SourcePathWalker<'a> {
+    source_path: &'a SourcePath,
+    current_node_index: NodeIndex,
+    current_index: usize,
+    walker_finished: bool,
+}
+
+impl<'a> SourcePathWalker<'a> {
+    pub fn new<O, S>(
+        source_path: &'a SourcePath,
+        graph: &CgData<O, S>,
+        path_item_index: NodeIndex,
+    ) -> Self {
+        let (current_node_index, walker_finished) =
+            if let Some(index) = graph.get_syn_item_module_index(path_item_index) {
+                (index, false)
+            } else {
+                (0.into(), true)
+            };
+        Self {
+            source_path,
+            current_node_index,
+            current_index: 0,
+            walker_finished,
+        }
+    }
+
+    pub fn next<O, S>(&mut self, graph: &CgData<O, S>) -> Option<PathElement> {
+        if self.walker_finished {
+            return None;
+        }
+        let (segments, glob, rename) = match self.source_path {
+            SourcePath::Group => {
+                self.walker_finished = true;
+                return Some(PathElement::Group);
+            }
+            SourcePath::Glob(segments) => (segments, true, None),
+            SourcePath::Name(segments) => (segments, false, None),
+            SourcePath::Rename(segments, renamed) => (segments, false, Some(renamed)),
+        };
+        if self.current_index == segments.len() {
+            // if last segment of glob points toward reimported module, we now return the index of this module
+            assert!(glob);
+            self.walker_finished = true;
+            return Some(PathElement::Glob(self.current_node_index));
+        }
+        let segment = &segments[self.current_index];
+        let is_first = self.current_index == 0;
+        let is_last = self.current_index == segments.len() - 1;
+        self.walker_finished = is_last && !glob;
+        self.current_index += 1;
+        match segment.to_string().as_str() {
+            "crate" => {
+                // module of current crate
+                self.current_node_index =
+                    if let Some(crate_index) = graph.get_crate_index(self.current_node_index) {
+                        crate_index
+                    } else {
+                        self.walker_finished = true;
+                        return Some(PathElement::PathCouldNotBeParsed);
+                    };
+                return Some(PathElement::Item(self.current_node_index));
+            }
+            "self" => {
+                // current module, do nothing
+                return Some(PathElement::Item(self.current_node_index));
+            }
+            "super" => {
+                // super module
+                self.current_node_index = if let Some(super_module_index) =
+                    graph.get_syn_item_module_index(self.current_node_index)
+                {
+                    super_module_index
+                } else {
+                    self.walker_finished = true;
+                    return Some(PathElement::PathCouldNotBeParsed);
+                };
+                return Some(PathElement::Item(self.current_node_index));
+            }
+            _ => {
+                if is_first {
+                    if graph
+                        .iter_external_dependencies()
+                        .any(|dep_name| segment == dep_name)
+                    {
+                        // module points to external or local package dependency
+                        self.walker_finished = true;
+                        return Some(PathElement::ExternalPackage);
+                    }
+                    if let Some((local_package_index, _)) =
+                        graph.iter_lib_crates().find(|(_, cf)| *segment == cf.name)
+                    {
+                        // module points to local package
+                        self.current_node_index = local_package_index;
+                        return Some(PathElement::Item(self.current_node_index));
+                    }
+                }
+                if is_last && !glob {
+                    // search for item in tree und fetch it's Index, if it is not a glob
+                    if let Some((item_index, _)) = graph
+                        .iter_syn_item_neighbors(self.current_node_index)
+                        .filter_map(|(n, i)| {
+                            ItemName::from(i)
+                                .get_ident_in_name_space()
+                                .map(|name| (n, name))
+                        })
+                        .find(|(_, i)| segment == i)
+                    {
+                        self.current_node_index = item_index;
+                        if let Some(renamed) = rename {
+                            return Some(PathElement::ItemRenamed(
+                                self.current_node_index,
+                                renamed.to_owned(),
+                            ));
+                        }
+                        return Some(PathElement::Item(self.current_node_index));
+                    }
+                }
+                // search for locale module at current index
+                if let Some((sub_module_index, _)) = graph
+                    .iter_syn_item_neighbors(self.current_node_index)
+                    .filter_map(|(n, i)| match i {
+                        Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
+                        _ => None,
+                    })
+                    .find(|(_, m)| segment == m)
+                {
+                    // found local module
+                    self.current_node_index = sub_module_index;
+                    if is_last && glob {
+                        self.walker_finished = true;
+                        return Some(PathElement::Glob(self.current_node_index));
+                    }
+                    return Some(PathElement::Item(self.current_node_index));
+                }
+                // search for reimported module at current index
+                if let Some((use_module_index, _, use_tree)) = graph
+                    .iter_syn_item_neighbors(self.current_node_index)
+                    .filter_map(|(n, i)| match i {
+                        Item::Use(item_use) => ItemName::from(i)
+                            .get_ident_in_name_space()
+                            .map(|ident| (n, ident, &item_use.tree)),
+                        _ => None,
+                    })
+                    .find(|(_, m, _)| segment == m)
+                {
+                    // found reimported module -> get index of it
+                    if let Ok(path_element) = graph.get_path_target(use_module_index, use_tree) {
+                        match path_element {
+                            PathElement::ExternalPackage => {
+                                return Some(PathElement::ExternalPackage)
+                            }
+                            PathElement::Glob(_) | PathElement::Group => {
+                                unreachable!(
+                                    "filter_map use statements which end on name or rename"
+                                );
+                            }
+                            PathElement::Item(item_index) => {
+                                // Item must be module or crate
+                                if let Some(name) = graph.get_name_of_crate_or_module(item_index) {
+                                    assert_eq!(*segment, name);
+                                    let result = Some(PathElement::Item(use_module_index));
+                                    self.current_node_index = item_index;
+                                    return result;
+                                }
+                            }
+                            PathElement::ItemRenamed(item_index, rename) => {
+                                // Renamed item must be module or crate
+                                assert_eq!(*segment, rename);
+                                let result = Some(PathElement::Item(use_module_index));
+                                self.current_node_index = item_index;
+                                return result;
+                            }
+                            PathElement::PathCouldNotBeParsed => {
+                                // could not find module of use statement
+                                return Some(PathElement::PathCouldNotBeParsed);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.walker_finished = true;
+        Some(PathElement::PathCouldNotBeParsed)
+    }
+
+    pub fn into_iter<O, S>(self, graph: &'a CgData<O, S>) -> SourcePathIterator<'a, O, S> {
+        SourcePathIterator {
+            walker: self,
+            graph,
+        }
+    }
+}
+
+pub struct SourcePathIterator<'a, O, S> {
+    walker: SourcePathWalker<'a>,
+    graph: &'a CgData<O, S>,
+}
+
+impl<O, S> Iterator for SourcePathIterator<'_, O, S> {
+    type Item = PathElement;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.walker.next(self.graph)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::parsing::PathAnalysis;
+
+    use super::super::super::analyze::tests::setup_analyze_test;
+    use super::*;
+
+    use syn::UseTree;
+
+    #[test]
+    fn test_source_path_walker() {
+        // preparation
+        let mut cg_data = setup_analyze_test();
+        cg_data.add_challenge_dependencies().unwrap();
+        cg_data.add_bin_src_files_of_challenge().unwrap();
+        cg_data.add_lib_src_files().unwrap();
+
+        // test case 1: test use statements of challenge
+        let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
+        let use_statements = cg_data
+            .iter_syn_item_neighbors(challenge_bin_crate_index)
+            .filter(|(_, i)| if let Item::Use(_) = i { true } else { false })
+            .collect::<Vec<_>>();
+        let use_statement_targets = use_statements
+            .iter()
+            .filter_map(|(n, i)| match i {
+                Item::Use(item_use) => {
+                    let source_path = item_use.tree.extract_path();
+                    let walker = SourcePathWalker::new(&source_path, &cg_data, *n);
+                    walker.into_iter(&cg_data).last()
+                }
+                _ => unreachable!("use statement expected"),
+            })
+            .collect::<Vec<_>>();
+        assert!(matches!(use_statement_targets[0], PathElement::Glob(_)));
+        assert!(matches!(use_statement_targets[1], PathElement::Group));
+        assert!(matches!(use_statement_targets[2], PathElement::Item(_)));
+
+        // test case 2: test use statements of my_map_two_dim
+        let (my_map_two_dim_mod_index, _) = cg_data
+            .iter_lib_crates()
+            .find(|(_, c)| c.name == "my_map_two_dim")
+            .unwrap();
+        let (my_map_point_mod_index, _) = cg_data
+            .iter_syn_items(my_map_two_dim_mod_index)
+            .filter_map(|(n, i)| {
+                if let Item::Mod(_) = i {
+                    ItemName::from(i)
+                        .get_ident_in_name_space()
+                        .map(|id| (n, id))
+                } else {
+                    None
+                }
+            })
+            .find(|(_, c)| c == "my_map_point")
+            .unwrap();
+        let use_of_my_map_point: Vec<(NodeIndex, Ident, &UseTree)> = cg_data
+            .iter_syn_item_neighbors(my_map_point_mod_index)
+            .filter_map(|(n, i)| {
+                if let Item::Use(item_use) = i {
+                    match item_use.tree.extract_path() {
+                        SourcePath::Name(segments) | SourcePath::Glob(segments) => {
+                            Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let (use_glob_index_my_compass, _, use_glob_tree_my_compass) = use_of_my_map_point
+            .iter()
+            .find(|(_, id, _)| id == "my_compass")
+            .unwrap();
+        let my_compass_mod_index = cg_data
+            .iter_syn_item_neighbors(my_map_point_mod_index)
+            .filter_map(|(n, i)| {
+                if let Item::Mod(_) = i {
+                    ItemName::from(i)
+                        .get_ident_in_name_space()
+                        .map(|id| (n, id))
+                } else {
+                    None
+                }
+            })
+            .find(|(_, id)| id == "my_compass")
+            .unwrap()
+            .0;
+        let path_elements_of_use_glob_my_compass: Vec<PathElement> = SourcePathWalker::new(
+            &use_glob_tree_my_compass.extract_path(),
+            &cg_data,
+            *use_glob_index_my_compass,
+        )
+        .into_iter(&cg_data)
+        .collect();
+        assert_eq!(
+            *path_elements_of_use_glob_my_compass.iter().last().unwrap(),
+            PathElement::Glob(my_compass_mod_index)
+        );
+
+        // test case 3: test use statements of cg_fusion_binary_test
+        let (cg_fusion_binary_test_index, _) = cg_data
+            .iter_lib_crates()
+            .find(|(_, c)| c.name == "cg_fusion_binary_test")
+            .unwrap();
+        let use_of_cg_fusion_binary_test: Vec<(NodeIndex, Ident, &UseTree)> = cg_data
+            .iter_syn_item_neighbors(cg_fusion_binary_test_index)
+            .filter_map(|(n, i)| {
+                if let Item::Use(item_use) = i {
+                    match item_use.tree.extract_path() {
+                        SourcePath::Name(segments) | SourcePath::Glob(segments) => {
+                            Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let (use_glob_index_my_map_two_dim, _, use_glob_tree_my_map_two_dim) =
+            use_of_cg_fusion_binary_test
+                .iter()
+                .find(|(_, id, _)| id == "my_map_two_dim")
+                .unwrap();
+        let (my_map_two_dim_index, _) = cg_data
+            .iter_lib_crates()
+            .find(|(_, c)| c.name == "my_map_two_dim")
+            .unwrap();
+        let path_elements_of_use_glob_my_map_two_dim: Vec<PathElement> = SourcePathWalker::new(
+            &use_glob_tree_my_map_two_dim.extract_path(),
+            &cg_data,
+            *use_glob_index_my_map_two_dim,
+        )
+        .into_iter(&cg_data)
+        .collect();
+        assert_eq!(
+            *path_elements_of_use_glob_my_map_two_dim
+                .iter()
+                .last()
+                .unwrap(),
+            PathElement::Glob(my_map_two_dim_index)
+        );
+        assert_eq!(path_elements_of_use_glob_my_map_two_dim.len(), 3);
+        if let PathElement::Item(cg_fusion_lib_test_index) = path_elements_of_use_glob_my_map_two_dim[0]
+        {
+            assert_eq!(cg_data.get_verbose_name_of_tree_node(cg_fusion_lib_test_index).unwrap(), "cg_fusion_lib_test (library crate)");  
+        }
+        if let PathElement::Item(cg_fusion_lib_test_index) = path_elements_of_use_glob_my_map_two_dim[1]
+        {
+            assert_eq!(cg_data.get_verbose_name_of_tree_node(cg_fusion_lib_test_index).unwrap(), "Ident(my_map_two_dim) (Use)");  
+        }
+        if let PathElement::Item(cg_fusion_lib_test_index) = path_elements_of_use_glob_my_map_two_dim[2]
+        {
+            assert_eq!(cg_data.get_verbose_name_of_tree_node(cg_fusion_lib_test_index).unwrap(), "my_map_two_dim (library crate)");  
+        }
     }
 }

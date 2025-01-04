@@ -6,7 +6,8 @@ mod navigate;
 mod visit;
 
 pub use error::{ChallengeTreeError, TreeResult};
-pub use navigate::{PathRoot, PathTarget};
+pub use navigate::PathRoot;
+pub use visit::PathElement;
 pub use visit::{BfsByEdgeType, BfsModuleNameSpace, BfsWalker};
 
 use crate::metadata::MetaWrapper;
@@ -65,9 +66,11 @@ pub enum EdgeType {
     Dependency,
     Crate,
     Syn,
-    Usage,
-    Implementation,
-    Semantic,
+    ModuleOfPath,
+    PathElement,
+    Usage,          // ToDo: replace this with PathElement
+    Implementation, // ToDo: replace this with PathElement and ModuleOfPath
+    Semantic,       // ToDo: rename this to RequiredByChallenge
 }
 
 impl TryFrom<MetaWrapper> for LocalPackage {

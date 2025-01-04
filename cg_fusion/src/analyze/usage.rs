@@ -3,7 +3,7 @@
 use super::{AnalyzeError, AnalyzeState};
 use crate::{
     add_context,
-    challenge_tree::PathTarget,
+    challenge_tree::PathElement,
     configuration::CliInput,
     error::CgResult,
     parsing::{ItemExtras, ItemName},
@@ -17,7 +17,7 @@ use syn::{Ident, Item, Visibility};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn expand_and_link_use_statements(&mut self) -> CgResult<()> {
-        let mut use_indices_and_path_targets: VecDeque<(NodeIndex, PathTarget)> = self
+        let mut use_indices_and_path_targets: VecDeque<(NodeIndex, PathElement)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
                 self.iter_syn_items(crate_index).filter_map(|(n, i)| {
@@ -37,7 +37,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         // expand use statements and link to target
         while let Some((use_index, use_path_target)) = use_indices_and_path_targets.pop_front() {
             match use_path_target {
-                PathTarget::Group => {
+                PathElement::Group => {
                     // expand use group
                     for (new_use_item_index, new_source_path) in
                         self.expand_use_group(use_index)?.into_iter()
@@ -47,7 +47,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     }
                     continue;
                 }
-                PathTarget::Glob(use_glob_target_module_index) => {
+                PathElement::Glob(use_glob_target_module_index) => {
                     if let Some(new_use_items) =
                         self.expand_use_glob(use_index, use_glob_target_module_index)?
                     {
@@ -58,13 +58,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         continue;
                     }
                 }
-                PathTarget::ExternalPackage => continue, // external package, no need to expand or link
-                PathTarget::Item(target_index) | PathTarget::ItemRenamed(target_index, _) => {
+                PathElement::ExternalPackage => continue, // external package, no need to expand or link
+                PathElement::Item(target_index) | PathElement::ItemRenamed(target_index, _) => {
                     // Link use item
                     self.add_usage_link(use_index, target_index)?;
                     continue;
                 }
-                PathTarget::PathCouldNotBeParsed => (), // path could not be parsed, probably because of use glob in path
+                PathElement::PathCouldNotBeParsed => (), // path could not be parsed, probably because of use glob in path
             }
             // use statement could not be expanded or linked to target, try again after expanding other use statements
             // reasons for not expanding or linking are:
@@ -100,7 +100,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     fn expand_use_group(
         &mut self,
         syn_use_group_index: NodeIndex,
-    ) -> CgResult<Vec<(NodeIndex, PathTarget)>> {
+    ) -> CgResult<Vec<(NodeIndex, PathElement)>> {
         // get index of module of syn use item
         let module_index = self
             .get_syn_item_module_index(syn_use_group_index)
@@ -124,7 +124,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             );
         }
         // expand and collect use items and add them to tree
-        let mut new_use_items: Vec<(NodeIndex, PathTarget)> = Vec::new();
+        let mut new_use_items: Vec<(NodeIndex, PathElement)> = Vec::new();
         for new_use_item in old_use_item.get_use_items_of_use_group() {
             let new_index = self.add_syn_item(&new_use_item, &"".into(), module_index)?;
             if let Item::Use(item_use) = &new_use_item {
@@ -139,7 +139,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         &mut self,
         use_glob_index: NodeIndex,
         use_glob_target_module_index: NodeIndex,
-    ) -> CgResult<Option<Vec<(NodeIndex, PathTarget)>>> {
+    ) -> CgResult<Option<Vec<(NodeIndex, PathElement)>>> {
         // get index and name of module, which owns the use statement
         let use_statement_owning_module_index = self
             .get_syn_item_module_index(use_glob_index)
@@ -157,8 +157,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             // catch all use statements, which we will not expand or prevent expansion
             if let Item::Use(item_use) = i {
                 match self.get_path_target(n, &item_use.tree)? {
-                    PathTarget::Group => return Ok(None), // first expand all use groups
-                    PathTarget::Glob(glob_target_index) => {
+                    PathElement::Group => return Ok(None), // first expand all use groups
+                    PathElement::Glob(glob_target_index) => {
                         // check if glob target module is equal to owning module of use glob
                         if glob_target_index == use_statement_owning_module_index {
                             // ignore use glob, which points to the owning module of the use glob
@@ -167,9 +167,10 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         // first expand all use globs, which do not point to the owning module of the use glob
                         return Ok(None);
                     }
-                    PathTarget::PathCouldNotBeParsed => return Ok(None), // If path could not be parsed, it probably contains a use glob
-                    PathTarget::ExternalPackage => (),
-                    PathTarget::Item(item_index) | PathTarget::ItemRenamed(item_index, _) => {
+                    // If path could not be parsed, it probably contains a module 'hidden' in use glob
+                    PathElement::PathCouldNotBeParsed => return Ok(None),
+                    PathElement::ExternalPackage => (),
+                    PathElement::Item(item_index) | PathElement::ItemRenamed(item_index, _) => {
                         let use_item_owning_module_index = self
                             .get_syn_item_module_index(item_index)
                             .context(add_context!(
@@ -184,7 +185,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             }
             let ident: Ident = match ItemName::from(i) {
                 ItemName::Glob | ItemName::Group => {
-                    unreachable!("Glob and Group has been evaluated with PathTarget")
+                    unreachable!("Glob and Group has been evaluated with PathElement")
                 }
                 ItemName::TypeStringAndIdent(_, id) => id,
                 ItemName::TypeStringAndRenamed(_, _, rename) => rename,
@@ -223,7 +224,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             }
         }
         // expand and collect use items of use glob and add them to tree
-        let mut new_use_items: Vec<(NodeIndex, PathTarget)> = Vec::new();
+        let mut new_use_items: Vec<(NodeIndex, PathElement)> = Vec::new();
         for new_use_ident in visible_items {
             let new_use_item = old_use_item
                 .clone()
@@ -276,13 +277,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 Visibility::Public(_) => return Ok(true),
                 Visibility::Restricted(vis_restricted) => {
                     match self.get_path_target(item_index, vis_restricted.path.as_ref())? {
-                        PathTarget::ExternalPackage => return Ok(false), // only local syn items have NodeIndex to link to
-                        PathTarget::Group => unreachable!("No group in visibility path."),
-                        PathTarget::Glob(_) => unreachable!("No glob in visibility path."),
-                        PathTarget::ItemRenamed(_, _) => {
+                        PathElement::ExternalPackage => return Ok(false), // only local syn items have NodeIndex to link to
+                        PathElement::Group => unreachable!("No group in visibility path."),
+                        PathElement::Glob(_) => unreachable!("No glob in visibility path."),
+                        PathElement::ItemRenamed(_, _) => {
                             unreachable!("No rename in visibility path.")
                         }
-                        PathTarget::Item(vis_path_module_index) => {
+                        PathElement::Item(vis_path_module_index) => {
                             if self.is_item_descendant_of_or_same_module(
                                 vis_path_module_index,
                                 module_index,
@@ -290,7 +291,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                                 return Ok(true);
                             }
                         }
-                        PathTarget::PathCouldNotBeParsed => return Ok(false),
+                        PathElement::PathCouldNotBeParsed => return Ok(false),
                     }
                 }
             }
