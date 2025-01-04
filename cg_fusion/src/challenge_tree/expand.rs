@@ -324,12 +324,48 @@ impl<O: CliInput, S> CgData<O, S> {
         if !self.is_source_item(target) {
             return Err(ChallengeTreeError::NotCrateOrSyn(target));
         }
+        let source_module = if !self.is_crate_or_module(source) {
+            self.get_parent_index_by_edge_type(source, EdgeType::Syn)
+        } else {
+            None
+        };
+        let target_module = if !self.is_crate_or_module(source) {
+            self.get_parent_index_by_edge_type(target, EdgeType::Syn)
+        } else {
+            None
+        };
         if self.options.verbose() {
-            println!(
-                "Adding semantic link from '{}' to '{}'.",
-                self.get_verbose_name_of_tree_node(source)?,
-                self.get_verbose_name_of_tree_node(target)?
-            );
+            if source_module.is_some() && source_module == target_module {
+                println!(
+                    "Adding semantic link from '{}' to '{}' inside '{}'.",
+                    self.get_verbose_name_of_tree_node(source)?,
+                    self.get_verbose_name_of_tree_node(target)?,
+                    self.get_verbose_name_of_tree_node(source_module.unwrap())?
+                );
+            } else {
+                let source_string = if let Some(sm) = source_module {
+                    format!(
+                        "{}::{}",
+                        self.get_verbose_name_of_tree_node(sm)?,
+                        self.get_verbose_name_of_tree_node(source)?
+                    )
+                } else {
+                    self.get_verbose_name_of_tree_node(source)?
+                };
+                let target_string = if let Some(tm) = target_module {
+                    format!(
+                        "{}::{}",
+                        self.get_verbose_name_of_tree_node(tm)?,
+                        self.get_verbose_name_of_tree_node(target)?
+                    )
+                } else {
+                    self.get_verbose_name_of_tree_node(target)?
+                };
+                println!(
+                    "Adding semantic link from '{}' to '{}'.",
+                    source_string, target_string
+                );
+            }
         }
         self.tree.add_edge(source, target, EdgeType::Semantic);
         Ok(())

@@ -41,6 +41,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         while new_semantic_link {
             new_semantic_link = false;
             for module_index in modules_to_check.clone().iter() {
+                if self.options.verbose() {
+                    println!(
+                        "Checking module {} for semantic linking.",
+                        self.get_verbose_name_of_tree_node(*module_index).unwrap()
+                    );
+                }
+                // ToDo: check if filter for items with ident should be included in iter_syn_neighbors_without_semantic_link()
                 let items_to_check: Vec<NodeIndex> = self
                     .iter_syn_neighbors_without_semantic_link(*module_index)
                     .filter_map(|(n, nt)| match nt {
@@ -55,38 +62,38 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                     .collect();
                 for item_index in items_to_check {
                     if self.is_syn_item(item_index) {
-                        let syn_ident = ItemName::from(
-                            self.get_syn_item(item_index)
-                                .context(add_context!("Expected syn item."))?,
-                        )
-                        .get_ident_in_name_space()
-                        .context(add_context!("Expected syn item ident."))?;
-                        let mut visit_ident = IdentVisitor::new(syn_ident);
-                        let mut semantic_index: Option<NodeIndex> = None;
-                        for (si, semantic_node) in
-                            self.iter_syn_neighbors_with_semantic_link(*module_index)
-                        {
-                            match semantic_node {
-                                NodeType::SynItem(item) => {
-                                    visit_ident.visit_item(item);
+                        let syn_item = self.get_syn_item(item_index).unwrap().to_owned();
+                        // we filter for items with ident
+                        let syn_ident =
+                            ItemName::from(&syn_item).get_ident_in_name_space().unwrap();
+                            let mut semantic_index: Option<NodeIndex> = None;
+                        // check if item is (reimported) module
+                        if self.is_module_or_reimported_module(item_index) {
+                            // ToDo: check if module is used as part of a path
+                        } else {
+                            let mut visit_ident = IdentVisitor::new(syn_ident);
+                            for (si, semantic_node) in
+                                self.iter_syn_neighbors_with_semantic_link(*module_index)
+                            {
+                                match semantic_node {
+                                    NodeType::SynItem(item) => {
+                                        visit_ident.visit_item(item);
+                                    }
+                                    NodeType::SynImplItem(impl_block) => {
+                                        visit_ident.visit_impl_item(impl_block);
+                                    }
+                                    _ => unreachable!("Expected SynItem or SynImplItem."),
                                 }
-                                NodeType::SynImplItem(impl_block) => {
-                                    visit_ident.visit_impl_item(impl_block);
+                                if visit_ident.found {
+                                    semantic_index = Some(si);
+                                    break;
                                 }
-                                _ => unreachable!("Expected SynItem or SynImplItem."),
-                            }
-                            if visit_ident.found {
-                                semantic_index = Some(si);
-                                break;
                             }
                         }
                         if let Some(si) = semantic_index {
                             new_semantic_link = true;
                             self.add_semantic_link(item_index, si)?;
-                            match self
-                                .get_syn_item(item_index)
-                                .context(add_context!("Expected syn item."))?
-                            {
+                            match &syn_item {
                                 Item::Mod(_) => {
                                     // ToDo: how do we check if module is used at start of path?
                                     modules_to_check.insert(item_index);

@@ -235,8 +235,6 @@ pub trait ItemExtras {
     fn is_use_glob(&self) -> Option<&UseTree>;
     fn extract_visibility(&self) -> Option<&Visibility>;
     fn replace_glob_with_name_ident(self, ident: Ident) -> Option<Item>;
-    fn first_item_impl_is_ident(&self, ident: &Ident) -> bool;
-    fn first_trait_impl_is_ident(&self, ident: &Ident) -> bool;
 }
 
 impl ItemExtras for Item {
@@ -323,28 +321,6 @@ impl ItemExtras for Item {
             }
         }
         None
-    }
-
-    fn first_item_impl_is_ident(&self, ident: &Ident) -> bool {
-        if let Item::Impl(item_impl) = self {
-            if let Type::Path(type_path) = item_impl.self_ty.as_ref() {
-                if let Some(first_ident) = type_path.path.segments.first() {
-                    return first_ident.ident == *ident;
-                }
-            }
-        }
-        false
-    }
-
-    fn first_trait_impl_is_ident(&self, ident: &Ident) -> bool {
-        if let Item::Impl(item_impl) = self {
-            if let Some((_, ref trait_path, _)) = item_impl.trait_ {
-                if let Some(first_ident) = trait_path.segments.first() {
-                    return first_ident.ident == *ident;
-                }
-            }
-        }
-        false
     }
 }
 

@@ -277,6 +277,28 @@ impl<O, S> CgData<O, S> {
         false
     }
 
+    pub fn is_module_or_reimported_module(&self, node: NodeIndex) -> bool {
+        if let Some(node_type) = self.tree.node_weight(node) {
+            match node_type {
+                NodeType::BinCrate(_) | NodeType::LibCrate(_) | NodeType::SynItem(Item::Mod(_)) => {
+                    return true;
+                }
+                NodeType::SynItem(Item::Use(_)) => {
+                    if let Some(use_item_index) =
+                        self.get_parent_index_by_edge_type(node, EdgeType::Usage)
+                    {
+                        return self.is_module_or_reimported_module(use_item_index);
+                    } else {
+                        // use item of external package or not linked, yet
+                        return false;
+                    }
+                }
+                _ => return false,
+            }
+        }
+        false
+    }
+
     pub fn is_source_item(&self, node: NodeIndex) -> bool {
         if let Some(node_weight) = self.tree.node_weight(node) {
             return matches!(
@@ -366,6 +388,8 @@ impl<O, S> CgData<O, S> {
             .filter(|(_, nt)| match nt {
                 // Only include impl items, which are associated with a trait, because their impl items are not part of iterator
                 NodeType::SynItem(Item::Impl(item_impl)) => item_impl.trait_.is_some(),
+                // Do not include mod items, because they contain all items of module name space
+                NodeType::SynItem(Item::Mod(_)) => false,
                 _ => true,
             })
             .fuse()
