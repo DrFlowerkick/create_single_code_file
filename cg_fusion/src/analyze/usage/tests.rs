@@ -1,5 +1,7 @@
 // test cases for usage.rs
 
+use std::collections::HashSet;
+
 use syn::{Ident, UseTree};
 
 use crate::parsing::{ItemName, PathAnalysis, SourcePath};
@@ -94,7 +96,7 @@ fn test_expand_use_group() {
 }
 
 #[test]
-fn test_get_path_target() {
+fn test_get_path_leaf() {
     // preparation
     let mut cg_data = setup_analyze_test();
     cg_data.add_challenge_dependencies().unwrap();
@@ -148,13 +150,13 @@ fn test_get_path_target() {
     // test path target of use items, which point to lib crates
     assert_eq!(
         cg_data
-            .get_path_target(*use_index_my_map_two_dim, *use_tree_my_map_two_dim)
+            .get_path_leaf(*use_index_my_map_two_dim, *use_tree_my_map_two_dim)
             .unwrap(),
         PathElement::Item(my_map_two_dim_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_target(*use_index_my_array, *use_tree_my_array)
+            .get_path_leaf(*use_index_my_array, *use_tree_my_array)
             .unwrap(),
         PathElement::Item(my_array_mod_index)
     );
@@ -222,19 +224,19 @@ fn test_get_path_target() {
     // test path target of use items, which point to items in modules
     assert_eq!(
         cg_data
-            .get_path_target(*use_index_my_array_struct, *use_tree_my_array_struct)
+            .get_path_leaf(*use_index_my_array_struct, *use_tree_my_array_struct)
             .unwrap(),
         PathElement::Item(my_array_item_index)
     );
     assert_eq!(
         cg_data
-            .get_path_target(*use_index_my_map_2d_struct, *use_tree_my_map_2d_struct)
+            .get_path_leaf(*use_index_my_map_2d_struct, *use_tree_my_map_2d_struct)
             .unwrap(),
         PathElement::Item(my_map_2d_item_index)
     );
     assert_eq!(
         cg_data
-            .get_path_target(
+            .get_path_leaf(
                 *use_index_my_map_point_struct,
                 *use_tree_my_map_point_struct
             )
@@ -289,19 +291,19 @@ fn test_get_path_target() {
     // test path target of use items, which point to use globs
     assert_eq!(
         cg_data
-            .get_path_target(*use_glob_index_my_map_point, *use_glob_tree_my_map_point)
+            .get_path_leaf(*use_glob_index_my_map_point, *use_glob_tree_my_map_point)
             .unwrap(),
         PathElement::Glob(my_map_point_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_target(*use_glob_index_my_array, *use_glob_tree_my_array)
+            .get_path_leaf(*use_glob_index_my_array, *use_glob_tree_my_array)
             .unwrap(),
         PathElement::Glob(my_array_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_target(*use_glob_index_my_compass, *use_glob_tree_my_compass)
+            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass)
             .unwrap(),
         PathElement::Glob(my_compass_mod_index)
     );
@@ -332,13 +334,13 @@ fn test_get_path_target() {
         .unwrap();
     assert_eq!(
         cg_data
-            .get_path_target(*use_extern_ordering, *use_tree_extern_ordering)
+            .get_path_leaf(*use_extern_ordering, *use_tree_extern_ordering)
             .unwrap(),
         PathElement::ExternalPackage
     );
     assert_eq!(
         cg_data
-            .get_path_target(*use_glob_index_my_compass, *use_glob_tree_my_compass)
+            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass)
             .unwrap(),
         PathElement::Glob(my_compass_mod_index)
     );
@@ -532,10 +534,6 @@ fn test_expand_use_glob() {
         .find(|(_, id)| id == "action")
         .unwrap()
         .0;
-    let (my_map_two_dim_mod_index, _) = cg_data
-        .iter_lib_crates()
-        .find(|(_, c)| c.name == "my_map_two_dim")
-        .unwrap();
     // get use glob in action and cg_fusion_binary_test
     let use_glob_of_action_index = cg_data
         .iter_syn_item_neighbors(action_mod_index)
@@ -573,72 +571,123 @@ fn test_expand_use_glob() {
     // try to expand use_glob_of_action_index, which should return None
     // because cg_fusion_binary_test still has a use glob, which does not point to action
     assert_eq!(
-        cg_data
-            .expand_use_glob(use_glob_of_action_index, cg_fusion_binary_test_mod_index)
-            .unwrap(),
-        None,
+        cg_data.expand_use_glob(use_glob_of_action_index).unwrap(),
+        true,
     );
     // expand use_glob_of_cg_fusion_binary_test_pointing_to_action_index
-    let new_use_items = cg_data
-        .expand_use_glob(
-            use_glob_of_cg_fusion_binary_test_pointing_to_action_index,
-            action_mod_index,
-        )
-        .unwrap()
-        .unwrap()
-        .iter()
-        .map(|(n, _)| {
-            ItemName::from(cg_data.get_syn_item(*n).unwrap())
+    let nodes_of_tree: HashSet<(NodeIndex, Ident)> = cg_data
+        .tree
+        .node_indices()
+        .filter_map(|n| cg_data.get_syn_item(n).map(|i| (n, i)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
                 .get_ident_in_name_space()
-                .unwrap()
+                .map(|id| (n, id))
         })
-        .collect::<Vec<Ident>>();
+        .collect();
+    assert_eq!(
+        cg_data
+            .expand_use_glob(use_glob_of_cg_fusion_binary_test_pointing_to_action_index,)
+            .unwrap(),
+        false
+    );
+    let nodes_of_tree_after_expansion: HashSet<(NodeIndex, Ident)> = cg_data
+        .tree
+        .node_indices()
+        .filter_map(|n| cg_data.get_syn_item(n).map(|i| (n, i)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
+                .get_ident_in_name_space()
+                .map(|id| (n, id))
+        })
+        .collect();
+    let new_use_items: Vec<&Ident> = nodes_of_tree
+        .symmetric_difference(&nodes_of_tree_after_expansion)
+        .map(|(_, id)| id)
+        .collect();
     assert_eq!(new_use_items, vec!["Action"]);
+
     // expand use_glob_of_cg_fusion_binary_test_pointing_to_my_map_two_dim_index
-    let new_use_items = cg_data
-        .expand_use_glob(
-            use_glob_of_cg_fusion_binary_test_pointing_to_my_map_two_dim_index,
-            my_map_two_dim_mod_index,
-        )
-        .unwrap()
-        .unwrap()
-        .iter()
-        .map(|(n, _)| {
-            ItemName::from(cg_data.get_syn_item(*n).unwrap())
+    let nodes_of_tree: HashSet<(NodeIndex, Ident)> = cg_data
+        .tree
+        .node_indices()
+        .filter_map(|n| cg_data.get_syn_item(n).map(|i| (n, i)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
                 .get_ident_in_name_space()
-                .unwrap()
+                .map(|id| (n, id))
         })
-        .collect::<Vec<Ident>>();
+        .collect();
+    assert_eq!(
+        cg_data
+            .expand_use_glob(use_glob_of_cg_fusion_binary_test_pointing_to_my_map_two_dim_index,)
+            .unwrap(),
+        false
+    );
+    let nodes_of_tree_after_expansion: HashSet<(NodeIndex, Ident)> = cg_data
+        .tree
+        .node_indices()
+        .filter_map(|n| cg_data.get_syn_item(n).map(|i| (n, i)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
+                .get_ident_in_name_space()
+                .map(|id| (n, id))
+        })
+        .collect();
+    let mut new_use_items: Vec<&Ident> = nodes_of_tree
+        .symmetric_difference(&nodes_of_tree_after_expansion)
+        .map(|(_, id)| id)
+        .collect();
+    new_use_items.sort();
     assert_eq!(
         new_use_items,
-        vec!["FilterFn", "MyMap2D", "IsCellFreeFn", "my_map_point"]
+        vec!["FilterFn", "IsCellFreeFn", "MyMap2D", "my_map_point"]
     );
+
     // second try to expand use_glob_of_action_index
-    let new_use_items = cg_data
-        .expand_use_glob(use_glob_of_action_index, cg_fusion_binary_test_mod_index)
-        .unwrap()
-        .unwrap()
-        .iter()
-        .map(|(n, _)| {
-            ItemName::from(cg_data.get_syn_item(*n).unwrap())
+    let nodes_of_tree: HashSet<(NodeIndex, Ident)> = cg_data
+        .tree
+        .node_indices()
+        .filter_map(|n| cg_data.get_syn_item(n).map(|i| (n, i)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
                 .get_ident_in_name_space()
-                .unwrap()
+                .map(|id| (n, id))
         })
-        .collect::<Vec<Ident>>();
+        .collect();
+    assert_eq!(
+        cg_data.expand_use_glob(use_glob_of_action_index).unwrap(),
+        false
+    );
+    let nodes_of_tree_after_expansion: HashSet<(NodeIndex, Ident)> = cg_data
+        .tree
+        .node_indices()
+        .filter_map(|n| cg_data.get_syn_item(n).map(|i| (n, i)))
+        .filter_map(|(n, i)| {
+            ItemName::from(i)
+                .get_ident_in_name_space()
+                .map(|id| (n, id))
+        })
+        .collect();
+    let mut new_use_items: Vec<&Ident> = nodes_of_tree
+        .symmetric_difference(&nodes_of_tree_after_expansion)
+        .map(|(_, id)| id)
+        .collect();
+    new_use_items.sort();
     assert_eq!(
         new_use_items,
         vec![
-            "my_map_point",
-            "IsCellFreeFn",
-            "MyMap2D",
             "FilterFn",
             "Go",
-            "Value",
+            "IsCellFreeFn",
+            "MyMap2D",
             "N",
-            "Y",
+            "Value",
             "X",
+            "Y",
+            "action",
             "fmt",
-            "action"
+            "my_map_point"
         ]
     );
 }

@@ -339,11 +339,13 @@ pub enum ItemName {
 impl Display for ItemName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TypeStringAndIdent(ts, i) => write!(f, "{:?} ({ts})", i),
-            Self::TypeStringAndRenamed(ts, i, r) => write!(f, "{:?} as {:?} ({ts})", i, r),
+            Self::TypeStringAndIdent(ts, i) => write!(f, "{} ({ts})", i),
+            Self::TypeStringAndRenamed(ts, i, r) => {
+                write!(f, "{} as {} ({ts})", i, r)
+            }
             Self::TypeStringAndNameString(ts, ns) => write!(f, "{ns} ({ts})"),
             Self::TypeStringAndTraitAndNameString(ts, t, ns) => {
-                write!(f, "{:?} for {ns} ({ts})", t)
+                write!(f, "{} for {ns} ({ts})", t)
             }
             Self::TypeString(ts) => write!(f, "({ts})"),
             Self::Group => write!(f, "(group)"),

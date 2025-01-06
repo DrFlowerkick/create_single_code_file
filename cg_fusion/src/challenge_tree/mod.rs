@@ -3,12 +3,11 @@
 mod error;
 mod expand;
 mod navigate;
-mod visit;
+mod walkers;
 
 pub use error::{ChallengeTreeError, TreeResult};
 pub use navigate::PathRoot;
-pub use visit::PathElement;
-pub use visit::{BfsByEdgeType, BfsModuleNameSpace, BfsWalker};
+pub use walkers::{BfsByEdgeType, BfsModuleNameSpace, BfsWalker, PathElement};
 
 use crate::metadata::MetaWrapper;
 use cargo_metadata::camino::Utf8PathBuf;
@@ -66,11 +65,11 @@ pub enum EdgeType {
     Dependency,
     Crate,
     Syn,
-    ModuleOfPath,
-    PathElement,
-    Usage,          // ToDo: replace this with PathElement
-    Implementation, // ToDo: replace this with PathElement and ModuleOfPath
-    Semantic,       // ToDo: rename this to RequiredByChallenge
+    ModuleOfPath, // ToDo: do we really need this? With SourcePathWalker we have an efficient way to identify modules of a path
+    PathLeaf, // ToDo: do we really need this? With SourcePathWalker and get_path_leaf() we have an efficient way to identify path leaf
+    Usage,    // ToDo: replace this with PathLeaf; see above
+    Implementation, // ToDo: replace this with PathLeaf and ModuleOfPath; see above
+    Semantic, // ToDo: rename this to RequiredByChallenge
 }
 
 impl TryFrom<MetaWrapper> for LocalPackage {

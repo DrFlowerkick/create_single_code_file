@@ -1,7 +1,7 @@
 // functions to navigate the challenge tree
 
 use super::{
-    visit::{BfsByEdgeType, BfsModuleNameSpace, PathElement, SourcePathWalker},
+    walkers::{BfsByEdgeType, BfsModuleNameSpace, PathElement, SourcePathWalker},
     ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType, TreeResult,
 };
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
     CgData,
 };
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use syn::{Item, UseTree};
 
@@ -283,14 +283,13 @@ impl<O, S> CgData<O, S> {
                 NodeType::BinCrate(_) | NodeType::LibCrate(_) | NodeType::SynItem(Item::Mod(_)) => {
                     return true;
                 }
-                NodeType::SynItem(Item::Use(_)) => {
-                    if let Some(use_item_index) =
-                        self.get_parent_index_by_edge_type(node, EdgeType::Usage)
-                    {
-                        return self.is_module_or_reimported_module(use_item_index);
-                    } else {
-                        // use item of external package or not linked, yet
-                        return false;
+                NodeType::SynItem(Item::Use(item_use)) => {
+                    match self.get_path_leaf(node, &item_use.tree) {
+                        Ok(PathElement::Item(use_item_index))
+                        | Ok(PathElement::ItemRenamed(use_item_index, _)) => {
+                            return self.is_module_or_reimported_module(use_item_index)
+                        }
+                        _ => return false,
                     }
                 }
                 _ => return false,
@@ -457,7 +456,7 @@ impl<O, S> CgData<O, S> {
         Ok(PathRoot::Item(current_index))
     }
 
-    pub fn get_path_target(
+    pub fn get_path_leaf(
         &self,
         path_item_index: NodeIndex,
         path: &impl PathAnalysis,
@@ -467,6 +466,16 @@ impl<O, S> CgData<O, S> {
             .last()
             .context(add_context!("Expected path target."))
             .map_err(|err| err.into())
+    }
+
+    pub fn get_use_item_leaf(&self, index_of_use_item: NodeIndex) -> TreeResult<PathElement> {
+        if let Item::Use(item_use) = self
+            .get_syn_item(index_of_use_item)
+            .context(add_context!("Expected syn item."))?
+        {
+            return self.get_path_leaf(index_of_use_item, &item_use.tree);
+        }
+        Err(anyhow!(add_context!("Expected use item")).into())
     }
 }
 

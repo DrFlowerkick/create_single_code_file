@@ -1,5 +1,7 @@
 // Tools to link Impl Items to their corresponding struct or enum
 
+// ToDo: Delete this, if planed implementation for challenge linking will not require impl linking
+
 use super::AnalyzeState;
 use crate::{
     challenge_tree::{PathElement, PathRoot},
@@ -53,7 +55,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     }
 
     fn link_impl_block_by_path(&mut self, syn_impl_index: NodeIndex, path: &Path) -> CgResult<()> {
-        let path_target = self.get_path_target(syn_impl_index, path)?;
+        let path_target = self.get_path_leaf(syn_impl_index, path)?;
         match path_target {
             PathElement::ExternalPackage => {
                 if let PathRoot::Item(item_index) = self.get_path_root(syn_impl_index, path)? {

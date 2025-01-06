@@ -296,7 +296,7 @@ impl<'a> SourcePathWalker<'a> {
                     .find(|(_, m, _)| segment == m)
                 {
                     // found reimported module -> get index of it
-                    if let Ok(path_element) = graph.get_path_target(use_module_index, use_tree) {
+                    if let Ok(path_element) = graph.get_path_leaf(use_module_index, use_tree) {
                         match path_element {
                             PathElement::ExternalPackage => {
                                 return Some(PathElement::ExternalPackage)
@@ -502,17 +502,35 @@ mod tests {
             PathElement::Glob(my_map_two_dim_index)
         );
         assert_eq!(path_elements_of_use_glob_my_map_two_dim.len(), 3);
-        if let PathElement::Item(cg_fusion_lib_test_index) = path_elements_of_use_glob_my_map_two_dim[0]
+        if let PathElement::Item(cg_fusion_lib_test_index) =
+            path_elements_of_use_glob_my_map_two_dim[0]
         {
-            assert_eq!(cg_data.get_verbose_name_of_tree_node(cg_fusion_lib_test_index).unwrap(), "cg_fusion_lib_test (library crate)");  
+            assert_eq!(
+                cg_data
+                    .get_verbose_name_of_tree_node(cg_fusion_lib_test_index)
+                    .unwrap(),
+                "cg_fusion_lib_test (library crate)"
+            );
         }
-        if let PathElement::Item(cg_fusion_lib_test_index) = path_elements_of_use_glob_my_map_two_dim[1]
+        if let PathElement::Item(cg_fusion_lib_test_index) =
+            path_elements_of_use_glob_my_map_two_dim[1]
         {
-            assert_eq!(cg_data.get_verbose_name_of_tree_node(cg_fusion_lib_test_index).unwrap(), "Ident(my_map_two_dim) (Use)");  
+            assert_eq!(
+                cg_data
+                    .get_verbose_name_of_tree_node(cg_fusion_lib_test_index)
+                    .unwrap(),
+                "my_map_two_dim (Use)"
+            );
         }
-        if let PathElement::Item(cg_fusion_lib_test_index) = path_elements_of_use_glob_my_map_two_dim[2]
+        if let PathElement::Item(cg_fusion_lib_test_index) =
+            path_elements_of_use_glob_my_map_two_dim[2]
         {
-            assert_eq!(cg_data.get_verbose_name_of_tree_node(cg_fusion_lib_test_index).unwrap(), "my_map_two_dim (library crate)");  
+            assert_eq!(
+                cg_data
+                    .get_verbose_name_of_tree_node(cg_fusion_lib_test_index)
+                    .unwrap(),
+                "my_map_two_dim (library crate)"
+            );
         }
     }
 }

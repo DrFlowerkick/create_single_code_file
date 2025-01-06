@@ -272,28 +272,6 @@ impl<O: CliInput, S> CgData<O, S> {
         Ok(())
     }
 
-    pub fn add_usage_link(
-        &mut self,
-        use_index: NodeIndex,
-        item_to_use: NodeIndex,
-    ) -> TreeResult<()> {
-        if !self.is_source_item(use_index) {
-            return Err(ChallengeTreeError::NotCrateOrSyn(use_index));
-        }
-        if !self.is_source_item(item_to_use) {
-            return Err(ChallengeTreeError::NotCrateOrSyn(item_to_use));
-        }
-        if self.options.verbose() {
-            println!(
-                "Adding usage link from '{}' to '{}'.",
-                self.get_verbose_name_of_tree_node(item_to_use)?,
-                self.get_verbose_name_of_tree_node(use_index)?
-            );
-        }
-        self.tree.add_edge(item_to_use, use_index, EdgeType::Usage);
-        Ok(())
-    }
-
     pub fn add_implementation_by_link(
         &mut self,
         source: NodeIndex,
