@@ -147,16 +147,16 @@ pub enum PathElement {
 }
 
 #[derive(Debug)]
-pub struct SourcePathWalker<'a> {
-    source_path: &'a SourcePath,
+pub struct SourcePathWalker {
+    source_path: SourcePath,
     current_node_index: NodeIndex,
     current_index: usize,
     walker_finished: bool,
 }
 
-impl<'a> SourcePathWalker<'a> {
+impl SourcePathWalker {
     pub fn new<O, S>(
-        source_path: &'a SourcePath,
+        source_path: SourcePath,
         graph: &CgData<O, S>,
         path_item_index: NodeIndex,
     ) -> Self {
@@ -183,9 +183,9 @@ impl<'a> SourcePathWalker<'a> {
                 self.walker_finished = true;
                 return Some(PathElement::Group);
             }
-            SourcePath::Glob(segments) => (segments, true, None),
-            SourcePath::Name(segments) => (segments, false, None),
-            SourcePath::Rename(segments, renamed) => (segments, false, Some(renamed)),
+            SourcePath::Glob(ref segments) => (segments, true, None),
+            SourcePath::Name(ref segments) => (segments, false, None),
+            SourcePath::Rename(ref segments, ref renamed) => (segments, false, Some(renamed)),
         };
         if self.current_index == segments.len() {
             // if last segment of glob points toward reimported module, we now return the index of this module
@@ -342,7 +342,7 @@ impl<'a> SourcePathWalker<'a> {
         Some(PathElement::PathCouldNotBeParsed)
     }
 
-    pub fn into_iter<O, S>(self, graph: &'a CgData<O, S>) -> SourcePathIterator<'a, O, S> {
+    pub fn into_iter<O, S>(self, graph: &CgData<O, S>) -> SourcePathIterator<'_, O, S> {
         SourcePathIterator {
             walker: self,
             graph,
@@ -351,7 +351,7 @@ impl<'a> SourcePathWalker<'a> {
 }
 
 pub struct SourcePathIterator<'a, O, S> {
-    walker: SourcePathWalker<'a>,
+    walker: SourcePathWalker,
     graph: &'a CgData<O, S>,
 }
 
@@ -392,7 +392,7 @@ mod tests {
             .filter_map(|(n, i)| match i {
                 Item::Use(item_use) => {
                     let source_path = item_use.tree.extract_path();
-                    let walker = SourcePathWalker::new(&source_path, &cg_data, *n);
+                    let walker = SourcePathWalker::new(source_path, &cg_data, *n);
                     walker.into_iter(&cg_data).last()
                 }
                 _ => unreachable!("use statement expected"),
@@ -454,7 +454,7 @@ mod tests {
             .unwrap()
             .0;
         let path_elements_of_use_glob_my_compass: Vec<PathElement> = SourcePathWalker::new(
-            &use_glob_tree_my_compass.extract_path(),
+            use_glob_tree_my_compass.extract_path(),
             &cg_data,
             *use_glob_index_my_compass,
         )
@@ -495,7 +495,7 @@ mod tests {
             .find(|(_, c)| c.name == "my_map_two_dim")
             .unwrap();
         let path_elements_of_use_glob_my_map_two_dim: Vec<PathElement> = SourcePathWalker::new(
-            &use_glob_tree_my_map_two_dim.extract_path(),
+            use_glob_tree_my_map_two_dim.extract_path(),
             &cg_data,
             *use_glob_index_my_map_two_dim,
         )

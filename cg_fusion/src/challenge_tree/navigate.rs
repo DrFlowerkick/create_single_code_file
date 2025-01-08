@@ -421,7 +421,9 @@ impl<O, S> CgData<O, S> {
         path_item_index: NodeIndex,
         path: &impl PathAnalysis,
     ) -> CgResult<PathRoot> {
-        let root = path.extract_path_root();
+        let root = path
+            .extract_path_root()
+            .context(add_context!("Path should have at least a root element."))?;
         let mut current_index = self
             .get_syn_module_index(path_item_index)
             .context(add_context!("Expected module index of syn item."))?;
@@ -483,7 +485,7 @@ impl<O, S> CgData<O, S> {
         path_item_index: NodeIndex,
         path: &impl PathAnalysis,
     ) -> TreeResult<PathElement> {
-        SourcePathWalker::new(&path.extract_path(), self, path_item_index)
+        SourcePathWalker::new(path.extract_path(), self, path_item_index)
             .into_iter(self)
             .last()
             .context(add_context!("Expected path target."))

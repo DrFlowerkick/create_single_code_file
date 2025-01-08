@@ -7,7 +7,7 @@ mod walkers;
 
 pub use error::{ChallengeTreeError, TreeResult};
 pub use navigate::PathRoot;
-pub use walkers::{BfsByEdgeType, BfsModuleNameSpace, BfsWalker, PathElement};
+pub use walkers::{BfsByEdgeType, BfsModuleNameSpace, BfsWalker, PathElement, SourcePathWalker};
 
 use crate::metadata::MetaWrapper;
 use cargo_metadata::camino::Utf8PathBuf;

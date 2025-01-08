@@ -2,7 +2,7 @@
 
 mod error;
 pub use error::{ParsingError, ParsingResult};
-use syn::{ItemTrait, TraitItem, UseName};
+use syn::{TraitItem, UseName};
 
 use crate::add_context;
 use cargo_metadata::camino::Utf8PathBuf;
@@ -131,10 +131,10 @@ impl<'ast> Visit<'ast> for VisitVerbatim {
 // path analysis
 pub trait PathAnalysis {
     fn extract_path(&self) -> SourcePath;
-    fn extract_path_root(&self) -> Ident;
+    fn extract_path_root(&self) -> Option<Ident>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SourcePath {
     Name(Vec<Ident>),
     Glob(Vec<Ident>),
@@ -148,6 +148,20 @@ impl SourcePath {
             SourcePath::Name(segments)
             | SourcePath::Glob(segments)
             | SourcePath::Rename(segments, _) => segments.last(),
+            SourcePath::Group => None,
+        }
+    }
+}
+
+impl PathAnalysis for SourcePath {
+    fn extract_path(&self) -> SourcePath {
+        self.clone()
+    }
+    fn extract_path_root(&self) -> Option<Ident> {
+        match self {
+            SourcePath::Glob(segments)
+            | SourcePath::Name(segments)
+            | SourcePath::Rename(segments, _) => segments.first().cloned(),
             SourcePath::Group => None,
         }
     }
@@ -177,14 +191,14 @@ impl PathAnalysis for UseTree {
         }
     }
 
-    fn extract_path_root(&self) -> Ident {
+    fn extract_path_root(&self) -> Option<Ident> {
         match self {
-            UseTree::Path(use_path) => use_path.ident.to_owned(),
+            UseTree::Path(use_path) => Some(use_path.ident.to_owned()),
             UseTree::Group(_) | UseTree::Glob(_) => {
                 unreachable!("UseTree cannot start with group or glob.")
             }
-            UseTree::Name(name) => name.ident.to_owned(),
-            UseTree::Rename(rename) => rename.rename.to_owned(),
+            UseTree::Name(name) => Some(name.ident.to_owned()),
+            UseTree::Rename(rename) => Some(rename.rename.to_owned()),
         }
     }
 }
@@ -193,8 +207,8 @@ impl PathAnalysis for Path {
     fn extract_path(&self) -> SourcePath {
         SourcePath::Name(self.segments.iter().map(|s| s.ident.to_owned()).collect())
     }
-    fn extract_path_root(&self) -> Ident {
-        self.segments.first().unwrap().ident.to_owned()
+    fn extract_path_root(&self) -> Option<Ident> {
+        self.segments.first().map(|ps| ps.ident.to_owned())
     }
 }
 
@@ -551,10 +565,10 @@ impl From<&TraitItem> for ItemName {
     }
 }
 
-// struct to collect syn::Path items
+// struct to collect syn::Path items as SourcePath
 
 pub struct PathCollector {
-    pub paths: Vec<Path>,
+    pub paths: Vec<SourcePath>,
 }
 
 impl PathCollector {
@@ -565,7 +579,7 @@ impl PathCollector {
 
 impl<'ast> Visit<'ast> for PathCollector {
     fn visit_path(&mut self, node: &'ast Path) {
-        self.paths.push(node.clone());
+        self.paths.push(node.extract_path());
         syn::visit::visit_path(self, node); // recursive visit
     }
 }

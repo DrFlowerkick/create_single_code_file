@@ -4,26 +4,26 @@
 
 use super::AnalyzeState;
 use crate::{
-    challenge_tree::{PathElement, PathRoot},
+    challenge_tree::PathElement,
     configuration::CliInput,
     error::CgResult,
-    parsing::PathCollector,
+    parsing::{PathAnalysis, PathCollector, SourcePath},
     CgData,
 };
 use petgraph::stable_graph::NodeIndex;
-use syn::{visit::Visit, Item, Path};
+use syn::{visit::Visit, Item};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn link_impl_blocks_with_corresponding_item(&mut self) -> CgResult<()> {
         // get indices of SynItem Nodes, which contain Impl Items
-        let syn_impl_indices: Vec<(NodeIndex, Option<Path>, Vec<Path>)> = self
+        let syn_impl_indices: Vec<(NodeIndex, Option<SourcePath>, Vec<SourcePath>)> = self
             .iter_crates()
             .flat_map(|(n, _, _)| {
                 self.iter_syn_items(n).filter_map(|(n, i)| {
                     if let Item::Impl(item_impl) = i {
                         let trait_path = if let Some((_, trait_path, _)) = item_impl.trait_.as_ref()
                         {
-                            Some(trait_path.clone())
+                            Some(trait_path.extract_path())
                         } else {
                             None
                         };
@@ -48,7 +48,11 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         Ok(())
     }
 
-    fn link_impl_block_by_path(&mut self, syn_impl_index: NodeIndex, path: &Path) -> CgResult<()> {
+    fn link_impl_block_by_path(
+        &mut self,
+        syn_impl_index: NodeIndex,
+        path: &impl PathAnalysis,
+    ) -> CgResult<()> {
         let path_target = self.get_path_leaf(syn_impl_index, path)?;
         match path_target {
             PathElement::Item(item_index) => {
