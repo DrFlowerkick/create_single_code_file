@@ -13,7 +13,7 @@ use std::fmt::{self, Display};
     version,
     about,
     long_about = "cg-fusion is a handy extension of cargo for codingame and similar online \
-                  challenges, which require a single source file containing all required code. \
+                  challenges, which require a single source file containing all necessary code. \
                   codingame supports the rust std library and some crates from crates.io (As of \
                   2024/11/13, the following packages are supported: chrono 0.4.26, itertools 0.11.0, \
                   libc 0.2.147, rand 0.8.5, regex 1.8.4, and time 0.3.22). Since sane programmers use \

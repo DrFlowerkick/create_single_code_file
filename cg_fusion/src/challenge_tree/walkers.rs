@@ -92,12 +92,10 @@ impl BfsWalker for BfsModuleNameSpace {
     // code adapted from petgraph, see Bfs implementation of next()
     fn next(&mut self, graph: &ChallengeTree) -> Option<NodeIndex> {
         if let Some(node) = self.walker.stack.pop_front() {
-            let add_successors =
-                if let Some(NodeType::SynItem(Item::Impl(item_impl))) = graph.node_weight(node) {
-                    item_impl.trait_.is_none()
-                } else {
-                    self.start == node
-                };
+            let add_successors = matches!(
+                graph.node_weight(node),
+                Some(NodeType::SynItem(Item::Impl(_))) | Some(NodeType::SynItem(Item::Trait(_)))
+            ) || self.start == node;
             // add only successors, which are connected by syn edge type and when add_successors is true
             for successor in graph
                 .edges(node)
@@ -163,7 +161,7 @@ impl<'a> SourcePathWalker<'a> {
         path_item_index: NodeIndex,
     ) -> Self {
         let (current_node_index, walker_finished) =
-            if let Some(index) = graph.get_syn_item_module_index(path_item_index) {
+            if let Some(index) = graph.get_syn_module_index(path_item_index) {
                 (index, false)
             } else {
                 (0.into(), true)
@@ -219,7 +217,7 @@ impl<'a> SourcePathWalker<'a> {
             "super" => {
                 // super module
                 self.current_node_index = if let Some(super_module_index) =
-                    graph.get_syn_item_module_index(self.current_node_index)
+                    graph.get_syn_module_index(self.current_node_index)
                 {
                     super_module_index
                 } else {
@@ -246,87 +244,96 @@ impl<'a> SourcePathWalker<'a> {
                         return Some(PathElement::Item(self.current_node_index));
                     }
                 }
-                if is_last && !glob {
-                    // search for item in tree und fetch it's Index, if it is not a glob
-                    if let Some((item_index, _)) = graph
-                        .iter_syn_item_neighbors(self.current_node_index)
-                        .filter_map(|(n, i)| {
-                            ItemName::from(i)
-                                .get_ident_in_name_space()
-                                .map(|name| (n, name))
+                // if node of current_node_index is a struct, enum, or union AND if
+                // one or more impl for this node exists, search items of these impl
+                let next_item = if matches!(
+                    graph.get_syn_item(self.current_node_index),
+                    Some(Item::Enum(_)) | Some(Item::Struct(_)) | Some(Item::Union(_))
+                ) {
+                    // iter all impl items of all impl blocks linked to current_node_index
+                    graph
+                        .iter_impl_blocks_of_item(self.current_node_index)
+                        .flat_map(|(n, _)| {
+                            graph
+                                .iter_syn_neighbors(n)
+                                .filter_map(|(n_impl, nt)| match nt {
+                                    NodeType::SynImplItem(impl_item) => ItemName::from(impl_item)
+                                        .get_ident_in_name_space()
+                                        .map(|id| (n_impl, nt, id)),
+                                    _ => None,
+                                })
                         })
-                        .find(|(_, i)| segment == i)
-                    {
-                        self.current_node_index = item_index;
-                        if let Some(renamed) = rename {
-                            return Some(PathElement::ItemRenamed(
-                                self.current_node_index,
-                                renamed.to_owned(),
-                            ));
+                        .find(|(_, _, id)| id == segment)
+                } else {
+                    // iter all syn neighbors, which can although be trait items
+                    graph
+                        .iter_syn_neighbors(self.current_node_index)
+                        .filter_map(|(n, nt)| match nt {
+                            NodeType::SynItem(item) => ItemName::from(item)
+                                .get_ident_in_name_space()
+                                .map(|id| (n, nt, id)),
+                            NodeType::SynTraitItem(trait_item) => ItemName::from(trait_item)
+                                .get_ident_in_name_space()
+                                .map(|id| (n, nt, id)),
+                            _ => None,
+                        })
+                        .find(|(_, _, id)| id == segment)
+                };
+
+                if let Some((item_index, node_type, _)) = next_item {
+                    match node_type {
+                        // we need mod, use, struct, enum, union, all other syn items which have an ident, all syn impl items, which have an ident.
+                        NodeType::SynItem(Item::Mod(_)) => {
+                            // found local module
+                            self.current_node_index = item_index;
+                            if is_last && glob {
+                                self.walker_finished = true;
+                                return Some(PathElement::Glob(self.current_node_index));
+                            }
+                            return Some(PathElement::Item(self.current_node_index));
                         }
-                        return Some(PathElement::Item(self.current_node_index));
-                    }
-                }
-                // search for locale module at current index
-                if let Some((sub_module_index, _)) = graph
-                    .iter_syn_item_neighbors(self.current_node_index)
-                    .filter_map(|(n, i)| match i {
-                        Item::Mod(mod_item) => Some((n, mod_item.ident.to_string())),
-                        _ => None,
-                    })
-                    .find(|(_, m)| segment == m)
-                {
-                    // found local module
-                    self.current_node_index = sub_module_index;
-                    if is_last && glob {
-                        self.walker_finished = true;
-                        return Some(PathElement::Glob(self.current_node_index));
-                    }
-                    return Some(PathElement::Item(self.current_node_index));
-                }
-                // search for reimported module at current index
-                if let Some((use_module_index, _, use_tree)) = graph
-                    .iter_syn_item_neighbors(self.current_node_index)
-                    .filter_map(|(n, i)| match i {
-                        Item::Use(item_use) => ItemName::from(i)
-                            .get_ident_in_name_space()
-                            .map(|ident| (n, ident, &item_use.tree)),
-                        _ => None,
-                    })
-                    .find(|(_, m, _)| segment == m)
-                {
-                    // found reimported module -> get index of it
-                    if let Ok(path_element) = graph.get_path_leaf(use_module_index, use_tree) {
-                        match path_element {
-                            PathElement::ExternalPackage => {
-                                return Some(PathElement::ExternalPackage)
-                            }
-                            PathElement::Glob(_) | PathElement::Group => {
-                                unreachable!(
-                                    "filter_map use statements which end on name or rename"
-                                );
-                            }
-                            PathElement::Item(item_index) => {
-                                // Item must be module or crate
-                                if let Some(name) = graph.get_name_of_crate_or_module(item_index) {
-                                    assert_eq!(*segment, name);
-                                    let result = Some(PathElement::Item(use_module_index));
-                                    self.current_node_index = item_index;
-                                    return result;
+                        NodeType::SynItem(Item::Use(item_use)) => {
+                            // found reimported item -> get index of it
+                            if let Ok(path_element) =
+                                graph.get_path_leaf(item_index, &item_use.tree)
+                            {
+                                match path_element {
+                                    PathElement::ExternalPackage => {
+                                        return Some(PathElement::ExternalPackage)
+                                    }
+                                    PathElement::Glob(_) | PathElement::Group => {
+                                        unreachable!(
+                                            "filter_map use statements which end on name or rename"
+                                        );
+                                    }
+                                    PathElement::Item(path_item_index)
+                                    | PathElement::ItemRenamed(path_item_index, _) => {
+                                        let result = Some(PathElement::Item(item_index));
+                                        self.current_node_index = path_item_index;
+                                        return result;
+                                    }
+                                    PathElement::PathCouldNotBeParsed => {
+                                        // could not find module of use statement
+                                        return Some(PathElement::PathCouldNotBeParsed);
+                                    }
                                 }
                             }
-                            PathElement::ItemRenamed(item_index, rename) => {
-                                // Renamed item must be module or crate
-                                assert_eq!(*segment, rename);
-                                let result = Some(PathElement::Item(use_module_index));
-                                self.current_node_index = item_index;
-                                return result;
-                            }
-                            PathElement::PathCouldNotBeParsed => {
-                                // could not find module of use statement
-                                return Some(PathElement::PathCouldNotBeParsed);
-                            }
                         }
+                        NodeType::SynItem(_) => {
+                            self.current_node_index = item_index;
+                            if is_last && rename.is_some() {
+                                return Some(PathElement::ItemRenamed(
+                                    self.current_node_index,
+                                    rename.unwrap().to_owned(),
+                                ));
+                            }
+                            return Some(PathElement::Item(self.current_node_index));
+                        }
+                        NodeType::SynImplItem(_) | NodeType::SynTraitItem(_) => {
+                            self.current_node_index = item_index;
+                            return Some(PathElement::Item(self.current_node_index));
+                        }
+                        _ => unreachable!("Filtering for SynItem, SynImplItem, and SynTraitItem."),
                     }
                 }
             }

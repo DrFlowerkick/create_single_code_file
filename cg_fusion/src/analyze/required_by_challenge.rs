@@ -15,11 +15,12 @@ use std::collections::HashSet;
 use syn::{visit::Visit, Item};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
-    pub fn link_challenge_semantic(&mut self) -> CgResult<()> {
-        // initialize semantic linking with main function of challenge bin crate
-        let (index, _) = self.get_challenge_bin_crate().unwrap();
+    pub fn link_required_by_challenge(&mut self) -> CgResult<()> {
+        // ToDo: replace semantic wording with required by challenge
+        // initialize linking of required items with main function of challenge bin crate
+        let (challenge_bin_index, _) = self.get_challenge_bin_crate().unwrap();
         let (main_index, _) = self
-            .iter_syn_item_neighbors(index)
+            .iter_syn_item_neighbors(challenge_bin_index)
             .filter_map(|(n, i)| match i {
                 Item::Fn(fn_item) => {
                     if fn_item.sig.ident == "main" {
@@ -32,14 +33,18 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             })
             .next()
             .context(add_context!("Expected main fn of challenge bin crate."))?;
-        self.add_semantic_link(main_index, index)?;
+        self.add_required_by_challenge_link(challenge_bin_index, main_index)?;
+        // a seen cache to make sure, that every required item is only checked once for path statements
+        let mut seen_items_path_check: HashSet<NodeIndex> = HashSet::new();
+        // ToDo: modules to check should be an iterator over every crate or module, which has an outgoing or incoming
+        // RequiredByChallenge edge
         let mut modules_to_check = HashSet::new();
-        modules_to_check.insert(index);
+        modules_to_check.insert(challenge_bin_index);
         // ToDo: rework below to name space conform behavior. Only use statements and paths starting with
         // a module or crate can cross name spaces.
-        let mut new_semantic_link = true;
-        while new_semantic_link {
-            new_semantic_link = false;
+        let mut new_challenge_link = true;
+        while new_challenge_link {
+            new_challenge_link = false;
             for module_index in modules_to_check.clone().iter() {
                 if self.options.verbose() {
                     println!(
@@ -47,9 +52,9 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         self.get_verbose_name_of_tree_node(*module_index).unwrap()
                     );
                 }
-                // ToDo: check if filter for items with ident should be included in iter_syn_neighbors_without_semantic_link()
+                // ToDo: check if filter for items with ident should be included in iter_items_of_module_to_check_for_challenge()
                 let items_to_check: Vec<NodeIndex> = self
-                    .iter_syn_neighbors_without_semantic_link(*module_index)
+                    .iter_items_of_module_to_check_for_challenge(*module_index)
                     .filter_map(|(n, nt)| match nt {
                         NodeType::SynItem(item) => {
                             ItemName::from(item).get_ident_in_name_space().map(|_| n)
@@ -73,7 +78,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         } else {
                             let mut visit_ident = IdentVisitor::new(syn_ident);
                             for (si, semantic_node) in
-                                self.iter_syn_neighbors_with_semantic_link(*module_index)
+                                self.iter_items_of_module_required_by_challenge(*module_index)
                             {
                                 match semantic_node {
                                     NodeType::SynItem(item) => {
@@ -91,8 +96,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                             }
                         }
                         if let Some(si) = semantic_index {
-                            new_semantic_link = true;
-                            self.add_semantic_link(item_index, si)?;
+                            new_challenge_link = true;
+                            self.add_required_by_challenge_link(item_index, si)?;
                             match &syn_item {
                                 Item::Mod(_) => {
                                     // ToDo: how do we check if module is used at start of path?
@@ -108,12 +113,14 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                                             modules_to_check.insert(use_item_index);
                                         } else {
                                             // get module of use item and add it to modules_to_check
-                                            let module_of_use_item = self
-                                                .get_syn_item_module_index(use_item_index)
-                                                .context(add_context!(
-                                                    "Expected module of use item."
-                                                ))?;
-                                            self.add_semantic_link(use_item_index, item_index)?;
+                                            let module_of_use_item =
+                                                self.get_syn_module_index(use_item_index).context(
+                                                    add_context!("Expected module of use item."),
+                                                )?;
+                                            self.add_required_by_challenge_link(
+                                                use_item_index,
+                                                item_index,
+                                            )?;
                                             modules_to_check.insert(module_of_use_item);
                                         }
                                     }
@@ -149,13 +156,14 @@ mod tests {
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();
-        cg_data.expand_and_link_use_statements().unwrap();
+        cg_data.expand_use_statements().unwrap();
+        cg_data.link_impl_blocks_with_corresponding_item().unwrap();
 
         // action to test
         // initialize semantic linking with main function of challenge bin crate
-        let (index, _) = cg_data.get_challenge_bin_crate().unwrap();
+        let (challenge_bin_index, _) = cg_data.get_challenge_bin_crate().unwrap();
         let (main_index, _) = cg_data
-            .iter_syn_item_neighbors(index)
+            .iter_syn_item_neighbors(challenge_bin_index)
             .filter_map(|(n, i)| match i {
                 Item::Fn(fn_item) => {
                     if fn_item.sig.ident == "main" {
@@ -169,9 +177,12 @@ mod tests {
             .next()
             .context(add_context!("Expected main fn of challenge bin crate."))
             .unwrap();
-        cg_data.add_semantic_link(main_index, index).unwrap();
+        dbg!(cg_data.get_syn_item(main_index));
+        cg_data
+            .add_required_by_challenge_link(challenge_bin_index, main_index)
+            .unwrap();
         let semantic_links: Vec<(NodeIndex, String)> = cg_data
-            .iter_syn_neighbors_with_semantic_link(index)
+            .iter_items_of_module_required_by_challenge(challenge_bin_index)
             .filter_map(|(n, _)| {
                 cg_data
                     .get_verbose_name_of_tree_node(n)
@@ -181,7 +192,7 @@ mod tests {
             .collect();
         dbg!(&semantic_links);
         let no_semantic_links: Vec<(NodeIndex, String)> = cg_data
-            .iter_syn_neighbors_without_semantic_link(index)
+            .iter_items_of_module_to_check_for_challenge(challenge_bin_index)
             .filter_map(|(n, _)| {
                 cg_data
                     .get_verbose_name_of_tree_node(n)
@@ -199,11 +210,11 @@ mod tests {
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();
-        cg_data.expand_and_link_use_statements().unwrap();
+        cg_data.expand_use_statements().unwrap();
         cg_data.link_impl_blocks_with_corresponding_item().unwrap();
 
         // action to test
-        cg_data.link_challenge_semantic().unwrap();
+        cg_data.link_required_by_challenge().unwrap();
 
         // assertion
         let items_with_semantic_link: Vec<(NodeIndex, Item)> = cg_data
@@ -214,7 +225,7 @@ mod tests {
                 cg_data
                     .tree
                     .edges(*n)
-                    .any(|e| *e.weight() == EdgeType::Semantic)
+                    .any(|e| *e.weight() == EdgeType::RequiredByChallenge)
             })
             .map(|(n, i)| (n, i.to_owned()))
             .collect();

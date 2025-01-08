@@ -4,7 +4,7 @@ mod crate_src_files;
 mod dependencies;
 mod error;
 mod impl_linking;
-mod semantic_linking;
+mod required_by_challenge;
 mod usage;
 pub use error::AnalyzeError;
 
@@ -52,9 +52,11 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
         self.add_bin_src_files_of_challenge()?;
         self.add_lib_src_files()?;
         // expand use statements
-        self.expand_and_link_use_statements()?;
+        self.expand_use_statements()?;
+        // link enums, structs, unions, and traits with their impl items
+        self.link_impl_blocks_with_corresponding_item()?;
         // link items, which are required for challenge
-        self.link_challenge_semantic()?;
+        self.link_required_by_challenge()?;
 
         Ok(())
     }

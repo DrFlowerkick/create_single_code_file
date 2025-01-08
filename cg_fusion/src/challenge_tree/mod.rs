@@ -12,7 +12,7 @@ pub use walkers::{BfsByEdgeType, BfsModuleNameSpace, BfsWalker, PathElement};
 use crate::metadata::MetaWrapper;
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::StableDiGraph;
-use syn::{Attribute, ImplItem, Item, ItemUse};
+use syn::{Attribute, ImplItem, Item, ItemUse, TraitItem};
 
 pub type ChallengeTree = StableDiGraph<NodeType, EdgeType>;
 
@@ -25,6 +25,7 @@ pub enum NodeType {
     LibCrate(CrateFile),
     SynItem(Item),
     SynImplItem(ImplItem),
+    SynTraitItem(TraitItem),
 }
 
 impl NodeType {
@@ -68,8 +69,8 @@ pub enum EdgeType {
     ModuleOfPath, // ToDo: do we really need this? With SourcePathWalker we have an efficient way to identify modules of a path
     PathLeaf, // ToDo: do we really need this? With SourcePathWalker and get_path_leaf() we have an efficient way to identify path leaf
     Usage,    // ToDo: replace this with PathLeaf; see above
-    Implementation, // ToDo: replace this with PathLeaf and ModuleOfPath; see above
-    Semantic, // ToDo: rename this to RequiredByChallenge
+    Implementation,
+    RequiredByChallenge,
 }
 
 impl TryFrom<MetaWrapper> for LocalPackage {

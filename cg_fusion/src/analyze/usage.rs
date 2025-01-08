@@ -16,7 +16,7 @@ use std::collections::{HashMap, VecDeque};
 use syn::{Ident, Item, Visibility};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
-    pub fn expand_and_link_use_statements(&mut self) -> CgResult<()> {
+    pub fn expand_use_statements(&mut self) -> CgResult<()> {
         let mut use_groups_and_globs: VecDeque<(NodeIndex, ItemName)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
@@ -54,9 +54,8 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         {
                             // too many attempts to expand use statement
                             // get index and name of module, which owns the use statement
-                            let use_statement_owning_module_index = self
-                                .get_syn_item_module_index(use_index)
-                                .context(add_context!(
+                            let use_statement_owning_module_index =
+                                self.get_syn_module_index(use_index).context(add_context!(
                                     "Expected index of owning module of use glob."
                                 ))?;
                             let module = self
@@ -82,7 +81,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     fn expand_use_group(&mut self, syn_use_group_index: NodeIndex) -> CgResult<Vec<NodeIndex>> {
         // get index of module of syn use item
         let module_index = self
-            .get_syn_item_module_index(syn_use_group_index)
+            .get_syn_module_index(syn_use_group_index)
             .context(add_context!("Expected source index of syn item."))?;
         // remove old use item from tree
         let old_use_item = self
@@ -116,7 +115,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     fn expand_use_glob(&mut self, use_glob_index: NodeIndex) -> CgResult<bool> {
         // get index and name of module, which owns the use statement
         let use_statement_owning_module_index = self
-            .get_syn_item_module_index(use_glob_index)
+            .get_syn_module_index(use_glob_index)
             .context(add_context!("Expected index of owning module of use glob."))?;
         // get index of module use glob is pointing to
         let use_glob_target_module_index = match self.get_use_item_leaf(use_glob_index)? {
@@ -161,7 +160,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                             PathElement::Item(item_index)
                             | PathElement::ItemRenamed(item_index, _) => {
                                 if let Some(use_item_owning_module_index) =
-                                    self.get_syn_item_module_index(*item_index)
+                                    self.get_syn_module_index(*item_index)
                                 {
                                     if use_item_owning_module_index
                                         == use_statement_owning_module_index

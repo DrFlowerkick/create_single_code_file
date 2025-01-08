@@ -693,7 +693,7 @@ fn test_expand_use_glob() {
 }
 
 #[test]
-fn test_expand_and_link_use_statements() {
+fn test_expand_use_statements() {
     // preparation
     let mut cg_data = setup_analyze_test();
     cg_data.add_challenge_dependencies().unwrap();
@@ -701,7 +701,7 @@ fn test_expand_and_link_use_statements() {
     cg_data.add_lib_src_files().unwrap();
 
     // action to test
-    cg_data.expand_and_link_use_statements().unwrap();
+    cg_data.expand_use_statements().unwrap();
 
     // assert use statements after expansion of globs in challenge bin crate
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();

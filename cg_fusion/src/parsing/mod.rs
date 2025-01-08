@@ -2,7 +2,7 @@
 
 mod error;
 pub use error::{ParsingError, ParsingResult};
-use syn::UseName;
+use syn::{ItemTrait, TraitItem, UseName};
 
 use crate::add_context;
 use cargo_metadata::camino::Utf8PathBuf;
@@ -444,12 +444,12 @@ impl From<&Item> for ItemName {
                             ItemName::TypeStringAndTraitAndNameString(
                                 "Impl".into(),
                                 ti,
-                                item_impl.to_token_stream().to_string(),
+                                item_impl.self_ty.to_token_stream().to_string(),
                             )
                         } else {
                             ItemName::TypeStringAndNameString(
                                 "Impl".into(),
-                                item_impl.to_token_stream().to_string(),
+                                item_impl.self_ty.to_token_stream().to_string(),
                             )
                         }
                     }
@@ -524,16 +524,49 @@ impl From<&ImplItem> for ItemName {
     }
 }
 
-// struct to visit types
-#[derive(Default)]
-pub struct TypeVisitor {
-    pub types: Vec<Type>,
+impl From<&TraitItem> for ItemName {
+    fn from(trait_item: &TraitItem) -> Self {
+        match trait_item {
+            TraitItem::Const(trait_item_const) => ItemName::TypeStringAndIdent(
+                "Trait Const".into(),
+                trait_item_const.ident.to_owned(),
+            ),
+            TraitItem::Fn(trait_item_fn) => {
+                ItemName::TypeStringAndIdent("Trait Fn".into(), trait_item_fn.sig.ident.to_owned())
+            }
+            TraitItem::Macro(trait_item_macro) => {
+                match trait_item_macro.mac.path.extract_path().get_last() {
+                    Some(ident) => {
+                        ItemName::TypeStringAndIdent("Trait Macro".into(), ident.to_owned())
+                    }
+                    None => ItemName::TypeString("Trait Macro".into()),
+                }
+            }
+            TraitItem::Type(trait_item_type) => {
+                ItemName::TypeStringAndIdent("Impl Type".into(), trait_item_type.ident.to_owned())
+            }
+            TraitItem::Verbatim(_) => ItemName::TypeString("Impl Verbatim".into()),
+            _ => ItemName::None,
+        }
+    }
 }
 
-impl<'ast> Visit<'ast> for TypeVisitor {
-    fn visit_type(&mut self, i: &'ast syn::Type) {
-        self.types.push(i.to_owned());
-        syn::visit::visit_type(self, i);
+// struct to collect syn::Path items
+
+pub struct PathCollector {
+    pub paths: Vec<Path>,
+}
+
+impl PathCollector {
+    pub fn new() -> Self {
+        PathCollector { paths: Vec::new() }
+    }
+}
+
+impl<'ast> Visit<'ast> for PathCollector {
+    fn visit_path(&mut self, node: &'ast Path) {
+        self.paths.push(node.clone());
+        syn::visit::visit_path(self, node); // recursive visit
     }
 }
 

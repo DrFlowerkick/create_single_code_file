@@ -7,15 +7,16 @@ use crate::{
     challenge_tree::{PathElement, PathRoot},
     configuration::CliInput,
     error::CgResult,
+    parsing::PathCollector,
     CgData,
 };
 use petgraph::stable_graph::NodeIndex;
-use syn::{Item, Path, Type};
+use syn::{visit::Visit, Item, Path};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn link_impl_blocks_with_corresponding_item(&mut self) -> CgResult<()> {
         // get indices of SynItem Nodes, which contain Impl Items
-        let syn_impl_indices: Vec<(NodeIndex, Option<Path>, Path)> = self
+        let syn_impl_indices: Vec<(NodeIndex, Option<Path>, Vec<Path>)> = self
             .iter_crates()
             .flat_map(|(n, _, _)| {
                 self.iter_syn_items(n).filter_map(|(n, i)| {
@@ -26,30 +27,23 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         } else {
                             None
                         };
-                        let self_ty_path = match item_impl.self_ty.as_ref() {
-                            // at current state of code, we only support Path and Reference
-                            Type::Path(type_path) => Some(type_path.path.clone()),
-                            Type::Reference(type_ref) => {
-                                if let Type::Path(type_path) = type_ref.elem.as_ref() {
-                                    Some(type_path.path.clone())
-                                } else {
-                                    None
-                                }
-                            }
-                            _ => None,
-                        };
-                        self_ty_path.map(|self_ty_path| (n, trait_path, self_ty_path))
+                        let mut path_collector = PathCollector::new();
+                        path_collector.visit_type(item_impl.self_ty.as_ref());
+                        if !path_collector.paths.is_empty() {
+                            Some((n, trait_path, path_collector.paths))
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
                 })
             })
             .collect();
-        for (syn_impl_index, trait_path, impl_path) in syn_impl_indices {
-            if let Some(ref tp) = trait_path {
-                self.link_impl_block_by_path(syn_impl_index, tp)?;
+        for (syn_impl_index, trait_path, impl_paths) in syn_impl_indices {
+            for impl_path in impl_paths.iter().chain(trait_path.iter()) {
+                self.link_impl_block_by_path(syn_impl_index, impl_path)?;
             }
-            self.link_impl_block_by_path(syn_impl_index, &impl_path)?;
         }
         Ok(())
     }
@@ -57,17 +51,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
     fn link_impl_block_by_path(&mut self, syn_impl_index: NodeIndex, path: &Path) -> CgResult<()> {
         let path_target = self.get_path_leaf(syn_impl_index, path)?;
         match path_target {
-            PathElement::ExternalPackage => {
-                if let PathRoot::Item(item_index) = self.get_path_root(syn_impl_index, path)? {
-                    self.add_implementation_by_link(item_index, syn_impl_index)?;
-                }
-            }
             PathElement::Item(item_index) => {
-                self.add_implementation_by_link(item_index, syn_impl_index)?;
+                self.add_implementation_link(item_index, syn_impl_index)?;
             }
             PathElement::Glob(_) | PathElement::Group | PathElement::ItemRenamed(_, _) => {
                 unreachable!("Impl path cannot be glob or group or renamed item.")
             }
+            PathElement::ExternalPackage | // external type or trait
             PathElement::PathCouldNotBeParsed => (), // could be traits like 'Default'
         }
         Ok(())
@@ -89,7 +79,7 @@ mod tests {
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();
-        cg_data.expand_and_link_use_statements().unwrap();
+        cg_data.expand_use_statements().unwrap();
 
         // action to test
         cg_data.link_impl_blocks_with_corresponding_item().unwrap();

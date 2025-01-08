@@ -143,6 +143,17 @@ impl<O, S> CgData<O, S> {
         })
     }
 
+    pub fn iter_impl_blocks_of_item(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &Item)> {
+        self.tree
+            .edges_directed(node, Direction::Outgoing)
+            .filter(|e| *e.weight() == EdgeType::Implementation)
+            .map(|e| e.target())
+            .filter_map(|n| self.get_syn_item(n).map(|i| (n, i)))
+    }
+
     pub fn iter_syn_neighbors(
         &self,
         node: NodeIndex,
@@ -152,10 +163,6 @@ impl<O, S> CgData<O, S> {
             .filter(|e| *e.weight() == EdgeType::Syn)
             .map(|e| e.target())
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .filter(|(_, w)| match w {
-                NodeType::SynItem(_) | NodeType::SynImplItem(_) => true,
-                _ => unreachable!("All syn edges must end in SynItem nodes."),
-            })
     }
 
     pub fn iter_syn_item_neighbors(
@@ -190,14 +197,16 @@ impl<O, S> CgData<O, S> {
             .map(|e| e.source())
     }
 
-    pub fn get_syn_item_module_index(&self, node: NodeIndex) -> Option<NodeIndex> {
-        let module_index = self.get_parent_index_by_edge_type(node, EdgeType::Syn);
-        if let Some(NodeType::SynImplItem(_)) = self.tree.node_weight(node) {
-            if let Some(mi) = module_index {
-                return self.get_syn_item_module_index(mi);
+    pub fn get_syn_module_index(&self, node: NodeIndex) -> Option<NodeIndex> {
+        if let Some(parent_index) = self.get_parent_index_by_edge_type(node, EdgeType::Syn) {
+            if self.is_crate_or_module(parent_index) {
+                Some(parent_index)
+            } else {
+                self.get_syn_module_index(parent_index)
             }
+        } else {
+            None
         }
-        module_index
     }
 
     pub fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {
@@ -264,6 +273,7 @@ impl<O, S> CgData<O, S> {
             NodeType::LibCrate(crate_file) => Ok(format!("{} (library crate)", crate_file.name)),
             NodeType::SynItem(item) => Ok(format!("{}", ItemName::from(item))),
             NodeType::SynImplItem(impl_item) => Ok(format!("{}", ItemName::from(impl_item))),
+            NodeType::SynTraitItem(trait_item) => Ok(format!("{}", ItemName::from(trait_item))),
         }
     }
 
@@ -325,16 +335,23 @@ impl<O, S> CgData<O, S> {
         false
     }
 
+    pub fn is_syn_trait_item(&self, node: NodeIndex) -> bool {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            return matches!(node_weight, NodeType::SynTraitItem(_));
+        }
+        false
+    }
+
     pub fn is_item_descendant_of_or_same_module(
         &self,
         item_index: NodeIndex,
         mut module_index: NodeIndex,
     ) -> bool {
-        if let Some(item_module_index) = self.get_syn_item_module_index(item_index) {
+        if let Some(item_module_index) = self.get_syn_module_index(item_index) {
             if item_module_index == module_index {
                 return true;
             }
-            while let Some(mi) = self.get_syn_item_module_index(module_index) {
+            while let Some(mi) = self.get_syn_module_index(module_index) {
                 if item_module_index == mi {
                     return true;
                 }
@@ -344,31 +361,35 @@ impl<O, S> CgData<O, S> {
         false
     }
 
-    pub fn has_semantic_edge(&self, node: NodeIndex) -> bool {
+    pub fn is_required_by_challenge(&self, node: NodeIndex) -> bool {
         self.tree
-            .edges_directed(node, Direction::Outgoing)
-            .any(|e| *e.weight() == EdgeType::Semantic)
+            .edges_directed(node, Direction::Incoming)
+            .any(|e| *e.weight() == EdgeType::RequiredByChallenge)
     }
 
-    pub fn iter_syn_neighbors_without_semantic_link(
+    pub fn iter_items_of_module_to_check_for_challenge(
         &self,
-        node: NodeIndex,
+        module: NodeIndex,
     ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
-        BfsModuleNameSpace::new(&self.tree, node)
+        BfsModuleNameSpace::new(&self.tree, module)
             .into_iter(&self.tree)
             .filter(|n| {
-                !self.has_semantic_edge(*n) && (self.is_syn_item(*n) || self.is_syn_impl_item(*n))
+                !self.is_required_by_challenge(*n)
+                    && (self.is_syn_item(*n)
+                        || self.is_syn_impl_item(*n)
+                        || self.is_syn_trait_item(*n))
             })
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .filter(|(n, nt)| match nt {
-                NodeType::SynImplItem(_) => {
+                NodeType::SynImplItem(_) | NodeType::SynTraitItem(_) => {
                     if let Some(parent_index) =
                         self.get_parent_index_by_edge_type(*n, EdgeType::Syn)
                     {
-                        // only include impl items, if their corresponding item_impl has a semantic link
-                        self.has_semantic_edge(parent_index)
+                        // only include impl or trait items, if their corresponding item_impl respectively item_trait
+                        // is required by challenge
+                        self.is_required_by_challenge(parent_index)
                     } else {
-                        unreachable!("Expected parent index of impl item.")
+                        unreachable!("Expected parent index of impl or trait item.")
                     }
                 }
                 _ => true,
@@ -376,19 +397,20 @@ impl<O, S> CgData<O, S> {
             .fuse()
     }
 
-    pub fn iter_syn_neighbors_with_semantic_link(
+    pub fn iter_items_of_module_required_by_challenge(
         &self,
-        node: NodeIndex,
+        module: NodeIndex, // or crate
     ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
-        BfsModuleNameSpace::new(&self.tree, node)
+        BfsModuleNameSpace::new(&self.tree, module)
             .into_iter(&self.tree)
-            .filter(|n| self.has_semantic_edge(*n))
+            .filter(|n| self.is_required_by_challenge(*n))
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .filter(|(_, nt)| match nt {
-                // Only include impl items, which are associated with a trait, because their impl items are not part of iterator
-                NodeType::SynItem(Item::Impl(item_impl)) => item_impl.trait_.is_some(),
-                // Do not include mod items, because they contain all items of module name space
-                NodeType::SynItem(Item::Mod(_)) => false,
+                // Do not include mod, impl or trait items, because they contain further items,
+                // which will be added on their own to list
+                NodeType::SynItem(Item::Impl(_))
+                | NodeType::SynItem(Item::Trait(_))
+                | NodeType::SynItem(Item::Mod(_)) => false,
                 _ => true,
             })
             .fuse()
@@ -401,7 +423,7 @@ impl<O, S> CgData<O, S> {
     ) -> CgResult<PathRoot> {
         let root = path.extract_path_root();
         let mut current_index = self
-            .get_syn_item_module_index(path_item_index)
+            .get_syn_module_index(path_item_index)
             .context(add_context!("Expected module index of syn item."))?;
         // Check path root
         match root.to_string().as_str() {
@@ -421,7 +443,7 @@ impl<O, S> CgData<O, S> {
             "super" => {
                 // super module
                 current_index = self
-                    .get_syn_item_module_index(current_index)
+                    .get_syn_module_index(current_index)
                     .context(add_context!("Expected source index of syn item."))?;
             }
             _ => {
@@ -469,13 +491,10 @@ impl<O, S> CgData<O, S> {
     }
 
     pub fn get_use_item_leaf(&self, index_of_use_item: NodeIndex) -> TreeResult<PathElement> {
-        if let Item::Use(item_use) = self
-            .get_syn_item(index_of_use_item)
-            .context(add_context!("Expected syn item."))?
-        {
+        if let Some(Item::Use(item_use)) = self.get_syn_item(index_of_use_item) {
             return self.get_path_leaf(index_of_use_item, &item_use.tree);
         }
-        Err(anyhow!(add_context!("Expected use item")).into())
+        Err(anyhow!(add_context!("Expected syn use item")).into())
     }
 }
 
