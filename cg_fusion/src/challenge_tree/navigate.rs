@@ -272,8 +272,27 @@ impl<O, S> CgData<O, S> {
             NodeType::BinCrate(crate_file) => Ok(format!("{} (binary crate)", crate_file.name)),
             NodeType::LibCrate(crate_file) => Ok(format!("{} (library crate)", crate_file.name)),
             NodeType::SynItem(item) => Ok(format!("{}", ItemName::from(item))),
-            NodeType::SynImplItem(impl_item) => Ok(format!("{}", ItemName::from(impl_item))),
-            NodeType::SynTraitItem(trait_item) => Ok(format!("{}", ItemName::from(trait_item))),
+            NodeType::SynImplItem(impl_item) => {
+                let syn_impl_item_index = self
+                    .get_parent_index_by_edge_type(node, EdgeType::Syn)
+                    .context(add_context!("Expected index of impl item"))?;
+                Ok(format!(
+                    "{}::{}",
+                    self.get_verbose_name_of_tree_node(syn_impl_item_index)?,
+                    ItemName::from(impl_item)
+                ))
+            }
+            NodeType::SynTraitItem(trait_item) => {
+                let syn_trait_item_index = self
+                    .get_parent_index_by_edge_type(node, EdgeType::Syn)
+                    .context(add_context!("Expected index of trait item"))?;
+
+                Ok(format!(
+                    "{}::{}",
+                    self.get_verbose_name_of_tree_node(syn_trait_item_index)?,
+                    ItemName::from(trait_item)
+                ))
+            }
         }
     }
 
