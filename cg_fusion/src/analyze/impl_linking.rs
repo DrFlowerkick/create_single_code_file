@@ -7,7 +7,7 @@ use crate::{
     challenge_tree::PathElement,
     configuration::CliInput,
     error::CgResult,
-    parsing::{PathAnalysis, PathCollector, SourcePath},
+    parsing::{ChallengeCollector, PathAnalysis, SourcePath},
     CgData,
 };
 use petgraph::stable_graph::NodeIndex;
@@ -27,7 +27,7 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                         } else {
                             None
                         };
-                        let mut path_collector = PathCollector::new();
+                        let mut path_collector = ChallengeCollector::new();
                         path_collector.visit_type(item_impl.self_ty.as_ref());
                         if !path_collector.paths.is_empty() {
                             Some((n, trait_path, path_collector.paths))

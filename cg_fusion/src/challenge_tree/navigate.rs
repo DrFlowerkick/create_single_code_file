@@ -14,7 +14,7 @@ use crate::{
 
 use anyhow::{anyhow, Context};
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
-use syn::{Item, UseTree};
+use syn::{ImplItem, Item, TraitItem, UseTree};
 
 impl<O, S> CgData<O, S> {
     pub fn challenge_package(&self) -> &LocalPackage {
@@ -165,6 +165,13 @@ impl<O, S> CgData<O, S> {
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
     }
 
+    pub fn iter_syn(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
+        BfsByEdgeType::new(&self.tree, node, EdgeType::Syn)
+            .into_iter(&self.tree)
+            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
+            .fuse()
+    }
+
     pub fn iter_syn_item_neighbors(
         &self,
         node: NodeIndex,
@@ -176,14 +183,30 @@ impl<O, S> CgData<O, S> {
     }
 
     pub fn iter_syn_items(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &Item)> {
-        BfsByEdgeType::new(&self.tree, node, EdgeType::Syn)
-            .into_iter(&self.tree)
-            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .filter_map(|(n, w)| match w {
-                NodeType::SynItem(syn_item) => Some((n, syn_item)),
-                _ => None,
-            })
-            .fuse()
+        self.iter_syn(node).filter_map(|(n, w)| match w {
+            NodeType::SynItem(syn_item) => Some((n, syn_item)),
+            _ => None,
+        })
+    }
+
+    pub fn iter_syn_impl_item(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &ImplItem)> {
+        self.iter_syn_neighbors(node).filter_map(|(n, w)| match w {
+            NodeType::SynImplItem(impl_item) => Some((n, impl_item)),
+            _ => None,
+        })
+    }
+
+    pub fn iter_syn_trait_item(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &TraitItem)> {
+        self.iter_syn_neighbors(node).filter_map(|(n, w)| match w {
+            NodeType::SynTraitItem(trait_item) => Some((n, trait_item)),
+            _ => None,
+        })
     }
 
     pub fn get_parent_index_by_edge_type(
@@ -416,23 +439,10 @@ impl<O, S> CgData<O, S> {
             .fuse()
     }
 
-    pub fn iter_items_of_module_required_by_challenge(
-        &self,
-        module: NodeIndex, // or crate
-    ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
-        BfsModuleNameSpace::new(&self.tree, module)
-            .into_iter(&self.tree)
-            .filter(|n| self.is_required_by_challenge(*n))
-            .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
-            .filter(|(_, nt)| match nt {
-                // Do not include mod, impl or trait items, because they contain further items,
-                // which will be added on their own to list
-                NodeType::SynItem(Item::Impl(_))
-                | NodeType::SynItem(Item::Trait(_))
-                | NodeType::SynItem(Item::Mod(_)) => false,
-                _ => true,
-            })
-            .fuse()
+    pub fn iter_items_required_by_challenge(&self) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
+        self.iter_crates()
+            .flat_map(|(n, _, _)| self.iter_syn(n))
+            .filter(|(n, _)| self.is_required_by_challenge(*n))
     }
 
     pub fn get_path_root(

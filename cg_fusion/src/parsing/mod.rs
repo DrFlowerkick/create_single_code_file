@@ -2,7 +2,7 @@
 
 mod error;
 pub use error::{ParsingError, ParsingResult};
-use syn::{TraitItem, UseName};
+use syn::{Expr, TraitItem, UseName};
 
 use crate::add_context;
 use cargo_metadata::camino::Utf8PathBuf;
@@ -10,8 +10,8 @@ use quote::ToTokens;
 use std::fmt::{Display, Write};
 use std::fs;
 use syn::{
-    fold::Fold, visit::Visit, Attribute, File, Ident, ImplItem, Item, ItemUse, Meta, Path, Type,
-    UseTree, Visibility,
+    fold::Fold, visit::Visit, Attribute, ExprMethodCall, File, Ident, ImplItem, Item, ItemUse,
+    Meta, Path, Type, UseTree, Visibility,
 };
 
 // load syntax from given file
@@ -567,20 +567,38 @@ impl From<&TraitItem> for ItemName {
 
 // struct to collect syn::Path items as SourcePath
 
-pub struct PathCollector {
+pub struct ChallengeCollector {
     pub paths: Vec<SourcePath>,
+    pub self_method_calls: Vec<Ident>,
 }
 
-impl PathCollector {
+impl ChallengeCollector {
     pub fn new() -> Self {
-        PathCollector { paths: Vec::new() }
+        ChallengeCollector {
+            paths: Vec::new(),
+            self_method_calls: Vec::new(),
+        }
     }
 }
 
-impl<'ast> Visit<'ast> for PathCollector {
+impl<'ast> Visit<'ast> for ChallengeCollector {
     fn visit_path(&mut self, node: &'ast Path) {
         self.paths.push(node.extract_path());
-        syn::visit::visit_path(self, node); // recursive visit
+        // recursive visit
+        syn::visit::visit_path(self, node);
+    }
+    fn visit_expr_method_call(&mut self, expr_method_call: &'ast ExprMethodCall) {
+        if let Expr::Path(expr_path) = expr_method_call.receiver.as_ref() {
+            if let SourcePath::Name(segments) = expr_path.path.extract_path() {
+                if segments.len() == 1 && segments[0] == "self" {
+                    // add method call, if receiver is self
+                    self.self_method_calls
+                        .push(expr_method_call.method.to_owned());
+                }
+            }
+        }
+        // recursive visit
+        syn::visit::visit_expr_method_call(self, expr_method_call);
     }
 }
 

@@ -6,7 +6,7 @@ use crate::{
     challenge_tree::{EdgeType, NodeType, PathElement, SourcePathWalker},
     configuration::CliInput,
     error::CgResult,
-    parsing::{PathAnalysis, PathCollector, SourcePath},
+    parsing::{ChallengeCollector, ItemName, PathAnalysis, SourcePath},
     CgData,
 };
 use anyhow::{anyhow, Context};
@@ -16,6 +16,12 @@ use syn::{visit::Visit, Item};
 
 impl<O: CliInput> CgData<O, AnalyzeState> {
     pub fn link_required_by_challenge(&mut self) -> CgResult<()> {
+        self.link_required_by_challenge_via_parsing()?;
+        self.link_required_by_challenge_via_dialog()?;
+        Ok(())
+    }
+
+    fn link_required_by_challenge_via_parsing(&mut self) -> CgResult<()> {
         // initialize linking of required items with main function of challenge bin crate
         let (challenge_bin_index, _) = self.get_challenge_bin_crate().unwrap();
         let (main_index, _) = self
@@ -33,18 +39,75 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
             .context(add_context!("Expected main fn of challenge bin crate."))?;
         self.add_required_by_challenge_link(challenge_bin_index, main_index)?;
         // a seen cache to make sure, that every required item is only checked once for path statements
-        let mut seen_items_path_check: HashSet<NodeIndex> = HashSet::new();
-        self.check_path_items_for_challenge(main_index, &mut seen_items_path_check)?;
+        let mut seen_check_items: HashSet<NodeIndex> = HashSet::new();
+        self.check_path_items_for_challenge(main_index, &mut seen_check_items)?;
+        // mark all trait items of required trait as required by challenge
+        let trait_items: Vec<(NodeIndex, NodeIndex)> = self
+            .iter_items_required_by_challenge()
+            .filter_map(|(n, nt)| match nt {
+                NodeType::SynItem(Item::Trait(_)) => Some(n),
+                _ => None,
+            })
+            .flat_map(|n| self.iter_syn_trait_item(n).map(move |(nti, _)| (nti, n)))
+            .filter(|(n, _)| !self.is_required_by_challenge(*n))
+            .collect();
+        for (trait_item_index, trait_index) in trait_items {
+            self.add_required_by_challenge_link(trait_index, trait_item_index)?;
+            self.check_path_items_for_challenge(trait_item_index, &mut seen_check_items)?;
+        }
+        // mark all impl items of required impl with trait as required by challenge
+        let impl_with_trait_items: Vec<(NodeIndex, NodeIndex)> = self
+            .iter_items_required_by_challenge()
+            .filter_map(|(n, nt)| match nt {
+                NodeType::SynItem(Item::Impl(item_impl)) => item_impl.trait_.is_some().then_some(n),
+                _ => None,
+            })
+            .flat_map(|n| self.iter_syn_impl_item(n).map(move |(nii, _)| (nii, n)))
+            .filter(|(n, _)| !self.is_required_by_challenge(*n))
+            .collect();
+        for (impl_with_trait_item_index, trait_index) in impl_with_trait_items {
+            self.add_required_by_challenge_link(trait_index, impl_with_trait_item_index)?;
+            self.check_path_items_for_challenge(impl_with_trait_item_index, &mut seen_check_items)?;
+        }
+        Ok(())
+    }
+
+    fn link_required_by_challenge_via_dialog(&mut self) -> CgResult<()> {
+        let mut seen_dialog_items: HashSet<NodeIndex> = HashSet::new();
+        let mut seen_check_items: HashSet<NodeIndex> = self
+            .iter_items_required_by_challenge()
+            .map(|(n, _)| n)
+            .collect();
+        while let Some(dialog_item) =
+            self.find_impl_item_without_required_link_in_required_impl_block(&seen_dialog_items)
+        {
+            seen_dialog_items.insert(dialog_item);
+            let impl_block_index = self
+                .get_parent_index_by_edge_type(dialog_item, EdgeType::Syn)
+                .unwrap();
+            println!(
+                "Found '{}' of required '{}'.",
+                self.get_verbose_name_of_tree_node(dialog_item)?,
+                self.get_verbose_name_of_tree_node(impl_block_index)?
+            );
+            // ToDo: Dialog setup. We want to test dialogs with mock. Probably will use dialoguer
+            // for cmd dialog.
+            let user_input: bool = unimplemented!("Create dialog fn");
+            if user_input {
+                self.add_required_by_challenge_link(impl_block_index, dialog_item)?;
+                self.check_path_items_for_challenge(dialog_item, &mut seen_check_items)?;
+            }
+        }
         Ok(())
     }
 
     fn check_path_items_for_challenge(
         &mut self,
         item_to_check: NodeIndex,
-        seen_items_path_check: &mut HashSet<NodeIndex>,
+        seen_check_items: &mut HashSet<NodeIndex>,
     ) -> CgResult<()> {
-        if seen_items_path_check.insert(item_to_check) {
-            let mut path_collector = PathCollector::new();
+        if seen_check_items.insert(item_to_check) {
+            let mut challenge_collector = ChallengeCollector::new();
             match self.tree.node_weight(item_to_check) {
                 Some(NodeType::SynItem(Item::Mod(_)))            // do not search path in these items, since
                 | Some(NodeType::SynItem(Item::Impl(_)))         // we will search in their sub items if they
@@ -60,18 +123,19 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                             .into())
                         }
                         SourcePath::Name(_) | SourcePath::Rename(_, _) => {
-                            path_collector.paths.push(source_path)
+                            challenge_collector.paths.push(source_path)
                         }
                     }
                 }
-                Some(NodeType::SynItem(item)) => path_collector.visit_item(item),
-                Some(NodeType::SynImplItem(impl_item)) => path_collector.visit_impl_item(impl_item),
+                Some(NodeType::SynItem(item)) => challenge_collector.visit_item(item),
+                Some(NodeType::SynImplItem(impl_item)) => challenge_collector.visit_impl_item(impl_item),
                 Some(NodeType::SynTraitItem(trait_item)) => {
-                    path_collector.visit_trait_item(trait_item)
+                    challenge_collector.visit_trait_item(trait_item)
                 }
                 _ => return Ok(()),
             }
-            for path in path_collector.paths.iter() {
+            // check collected path elements
+            for path in challenge_collector.paths.iter() {
                 let mut path_walker =
                     SourcePathWalker::new(path.extract_path(), self, item_to_check);
                 while let Some(path_element) = path_walker.next(self) {
@@ -88,13 +152,41 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                                 }
                             }
                             self.add_required_by_challenge_link(item_to_check, item_index)?;
-                            self.check_path_items_for_challenge(item_index, seen_items_path_check)?;
+                            self.check_path_items_for_challenge(item_index, seen_check_items)?;
                         },
+                    }
+                }
+            }
+            // check collected method calls with self as receiver
+            if self.is_syn_impl_item(item_to_check) {
+                for method_id in challenge_collector.self_method_calls.iter() {
+                    let impl_method = self
+                        .get_parent_index_by_edge_type(item_to_check, EdgeType::Syn)
+                        .into_iter()
+                        .flat_map(|n| self.iter_syn_impl_item(n))
+                        .filter(|(n, _)| !self.is_required_by_challenge(*n))
+                        .find(|(_, i)| {
+                            if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
+                                name == *method_id
+                            } else {
+                                false
+                            }
+                        });
+                    if let Some((item_index, _)) = impl_method {
+                        self.add_required_by_challenge_link(item_to_check, item_index)?;
+                        self.check_path_items_for_challenge(item_index, seen_check_items)?;
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    fn find_impl_item_without_required_link_in_required_impl_block(
+        &self,
+        seen_dialog_items: &HashSet<NodeIndex>,
+    ) -> Option<NodeIndex> {
+        None
     }
 }
 
@@ -103,7 +195,6 @@ mod tests {
 
     use super::super::tests::setup_analyze_test;
     use super::*;
-    use crate::challenge_tree::EdgeType;
 
     #[test]
     fn test_initial_challenge_linking() {
@@ -133,9 +224,9 @@ mod tests {
             .next()
             .context(add_context!("Expected main fn of challenge bin crate."))
             .unwrap();
-        let mut path_collector = PathCollector::new();
-        path_collector.visit_item(&main_fn);
-        let path_leafs: Vec<(&SourcePath, PathElement, String)> = path_collector
+        let mut challenge_collector = ChallengeCollector::new();
+        challenge_collector.visit_item(&main_fn);
+        let path_leafs: Vec<(&SourcePath, PathElement, String)> = challenge_collector
             .paths
             .iter()
             .filter_map(|sp| {
@@ -167,20 +258,14 @@ mod tests {
         cg_data.link_impl_blocks_with_corresponding_item().unwrap();
 
         // action to test
-        cg_data.link_required_by_challenge().unwrap();
+        cg_data.link_required_by_challenge_via_parsing().unwrap();
 
         // assertion
-        let items_with_challenge_link: Vec<NodeIndex> = cg_data
-            .tree
-            .node_indices()
-            .filter(|n| {
-                cg_data
-                    .tree
-                    .edges_directed(*n, petgraph::Direction::Incoming)
-                    .any(|e| *e.weight() == EdgeType::RequiredByChallenge)
-            })
+        let items_required_by_challenge: Vec<NodeIndex> = cg_data
+            .iter_items_required_by_challenge()
+            .map(|(n, _)| n)
             .collect();
-        let mut challenge_items_ident: Vec<String> = items_with_challenge_link
+        let mut challenge_items_ident: Vec<String> = items_required_by_challenge
             .iter()
             .map(|n| {
                 if let Some(module_index) = cg_data.get_syn_module_index(*n) {
