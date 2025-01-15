@@ -9,42 +9,25 @@ mod usage;
 pub use error::AnalyzeError;
 
 pub struct AnalyzeState;
+pub struct ProcessedState;
 
 use crate::{
-    configuration::{AnalyzeCli, CliInput, FusionCli, MergeCli},
+    configuration::{CgCli, FusionCli},
     error::CgResult,
-    merge::MergeState,
     CgData,
 };
 
-// do analyze for analyze mode
-impl CgData<AnalyzeCli, AnalyzeState> {
-    pub fn analyze(mut self) -> CgResult<()> {
-        // force verbose output
-        self.options.force_verbose();
-        self.generic_analyze()?;
-        Ok(())
-    }
-}
-
-// do analyze for merge mode
-impl CgData<MergeCli, AnalyzeState> {
-    pub fn analyze(mut self) -> CgResult<CgData<MergeCli, MergeState>> {
-        self.generic_analyze()?;
-        Err(AnalyzeError::SomeAnalyzeError.into())
-    }
-}
-
 // do analyze for fusion mode
 impl CgData<FusionCli, AnalyzeState> {
-    pub fn analyze(mut self) -> CgResult<CgData<FusionCli, MergeState>> {
+    pub fn analyze(mut self) -> CgResult<CgData<FusionCli, ProcessedState>> {
         self.generic_analyze()?;
         Err(AnalyzeError::SomeAnalyzeError.into())
     }
 }
 
-// generic analyze for all modes with CliInput
-impl<O: CliInput> CgData<O, AnalyzeState> {
+// generic analyze for all modes with CgCli
+// ToDo: this must be reworked
+impl<O: CgCli> CgData<O, AnalyzeState> {
     pub fn generic_analyze(&mut self) -> CgResult<()> {
         // add dependencies to tree
         self.add_challenge_dependencies()?;
@@ -69,18 +52,17 @@ pub mod tests {
 
     use crate::{configuration::CargoCli, CgDataBuilder, CgMode};
 
-    pub fn setup_analyze_test() -> CgData<AnalyzeCli, AnalyzeState> {
-        let mut analyze_options = AnalyzeCli::default();
-        analyze_options.set_manifest_path("../cg_fusion_binary_test/Cargo.toml".into());
+    pub fn setup_processing_test() -> CgData<FusionCli, AnalyzeState> {
+        let mut fusion_options = FusionCli::default();
+        fusion_options.set_manifest_path("../cg_fusion_binary_test/Cargo.toml".into());
 
         let cg_data = match CgDataBuilder::new()
-            .set_options(CargoCli::CgAnalyze(analyze_options))
+            .set_options(CargoCli::CgFusion(fusion_options))
             .set_command()
             .build()
             .unwrap()
         {
-            CgMode::Analyze(cg_data) => cg_data,
-            _ => unreachable!("It's always analyze"),
+            CgMode::Fusion(cg_data) => cg_data,
         };
         cg_data
     }

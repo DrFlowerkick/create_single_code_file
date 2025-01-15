@@ -25,7 +25,9 @@ pub struct CommonOptions {
 
 impl Display for CommonOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "verbose: {}", self.verbose)
+        writeln!(f, "verbose: {}", self.verbose)?;
+        writeln!(f, "manifest: {:?}", self.manifest.manifest_path)?;
+        writeln!(f, "force: {}", self.force)
     }
 }
 

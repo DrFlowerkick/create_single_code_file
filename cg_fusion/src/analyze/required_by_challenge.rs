@@ -4,7 +4,7 @@ use super::AnalyzeState;
 use crate::{
     add_context,
     challenge_tree::{EdgeType, NodeType, PathElement, SourcePathWalker},
-    configuration::CliInput,
+    configuration::CgCli,
     error::CgResult,
     parsing::{ChallengeCollector, ItemName, PathAnalysis, SourcePath},
     CgData,
@@ -14,7 +14,7 @@ use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
 use syn::{visit::Visit, Item};
 
-impl<O: CliInput> CgData<O, AnalyzeState> {
+impl<O: CgCli> CgData<O, AnalyzeState> {
     pub fn link_required_by_challenge(&mut self) -> CgResult<()> {
         self.link_required_by_challenge_via_parsing()?;
         self.link_required_by_challenge_via_dialog()?;
@@ -91,7 +91,27 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
                 self.get_verbose_name_of_tree_node(impl_block_index)?
             );
             // ToDo: Dialog setup. We want to test dialogs with mock. Probably will use dialoguer
-            // for cmd dialog.
+            // Select for cmd dialog.
+            // Dialog prompt: Mark '{}' as required? ('Esc' or 'q' quits cg_fusion), dialog_item
+            // Options:
+            // yes
+            // no
+            // always yes for all remaining impl items of '{}', impl_block_index
+            // always no for all remaining impl items of '{}', impl_block_index
+            // show '{}', dialog_item
+            // show possible usage of '{}', dialog_item
+            // We need enum UserInput with Yes, No, AlwaysYes, AlwaysNo
+            // dialog returns Option<UserInput>; if None, quit cg_fusion with CgError::UserQuitDialog
+            // We need cli to skip dialog with either AlwaysYes or AlwaysNo; Both could be a
+            // Vec<String> with names of struct, enum, union. We check, if these names are unambiguous.
+            // If no, cg_fusion quits with message. name structure is
+            // crate_name::module_name_1::...::module_name_n::item_name
+            // no wild cards, crate_name and module_names are optional.
+            // We need cli option to save dialog results in a config file and an option to use config file
+            // for impl fn
+            // NEXT STEP: rework states of cg-fusion. Each major step of cg-fusion get's it's own state
+            // to secure right order of processing the challenge and library code. Although rename
+            // analyze to processing.
             let user_input: bool = unimplemented!("Create dialog fn");
             if user_input {
                 self.add_required_by_challenge_link(impl_block_index, dialog_item)?;
@@ -193,13 +213,13 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 #[cfg(test)]
 mod tests {
 
-    use super::super::tests::setup_analyze_test;
+    use super::super::tests::setup_processing_test;
     use super::*;
 
     #[test]
     fn test_initial_challenge_linking() {
         // preparation
-        let mut cg_data = setup_analyze_test();
+        let mut cg_data = setup_processing_test();
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();
@@ -250,7 +270,7 @@ mod tests {
     #[test]
     fn test_around_with_challenge_linking() {
         // preparation
-        let mut cg_data = setup_analyze_test();
+        let mut cg_data = setup_processing_test();
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();

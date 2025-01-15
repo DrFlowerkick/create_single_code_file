@@ -10,11 +10,7 @@ use clap::Parser;
 
 fn main() {
     let options = CargoCli::parse();
-    let delete_tmp_file = options.delete_tmp_files();
     if let Err(err) = run(options) {
-        if let Some(true) = delete_tmp_file {
-            // ToDo: check for tmp file(s), which have a valid uuid as filename and delete it.
-        }
         eprintln!("Error occurred: {:?}", err);
     }
 }
@@ -28,18 +24,6 @@ fn run(options: CargoCli) -> CgResult<()> {
         CgMode::Fusion(fusion) => {
             fusion.analyze()?;
         }
-        CgMode::Analyze(analyze) => {
-            analyze.analyze()?;
-        }
-        CgMode::Merge(merge) => {
-            merge.analyze()?;
-        }
-        CgMode::Purge(_purge) => (),
     }
-    //let _data = options.initialize_cg_data();
-    //data.prepare_cg_data()?;
-    //data.create_output()?;
-    //data.filter_unused_code()?;
-    //data.cleanup_cg_data()?;
     Ok(())
 }

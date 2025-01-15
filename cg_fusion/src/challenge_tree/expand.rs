@@ -2,7 +2,7 @@
 use super::{ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType, TreeResult};
 use crate::{
     add_context,
-    configuration::CliInput,
+    configuration::CgCli,
     parsing::{load_syntax, ItemName},
     CgData,
 };
@@ -13,7 +13,7 @@ use petgraph::stable_graph::NodeIndex;
 use quote::ToTokens;
 use syn::{token::Brace, Item, ItemImpl, ItemMod, ItemTrait};
 
-impl<O: CliInput, S> CgData<O, S> {
+impl<O: CgCli, S> CgData<O, S> {
     pub fn add_local_package(&mut self, source: NodeIndex, package: LocalPackage) -> NodeIndex {
         let package_path = package.path.to_owned();
         let package_index = self.tree.add_node(NodeType::LocalPackage(package));

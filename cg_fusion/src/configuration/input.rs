@@ -2,47 +2,10 @@
 
 use clap::{Args, ValueEnum};
 use std::fmt::{self, Display};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::CgError;
-
-#[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
-#[value(rename_all = "kebab-case")]
-pub enum Mode {
-    /// Merge challenge src files with all of it's dependencies and create a new file.
-    /// To overwrite an existing output file use '--force'.
-    #[value(
-        help = "Merge challenge src files with all of it's dependencies and create a new file. \
-                To overwrite an existing output file use '--force'."
-    )]
-    Merge,
-
-    /// Updates existing output file with configured components. Falls back to 'merge' if no file exists.
-    #[value(
-        help = "Updates existing output file with configured components. Falls back to 'merge' if no file exists."
-    )]
-    Update,
-}
-
-impl FromStr for Mode {
-    type Err = CgError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "merge" => Ok(Self::Merge),
-            "update" => Ok(Self::Update),
-            _ => Err(CgError::NotAcceptedOutputMode),
-        }
-    }
-}
-
-impl Display for Mode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Mode::Merge => write!(f, "merge"),
-            Mode::Update => write!(f, "update"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "kebab-case")]
@@ -91,45 +54,64 @@ pub struct InputOptions {
     )]
     pub input: String,
 
-    /// Mode of file fusion.
-    #[arg(
-        short = 'o',
-        long,
-        default_value_t = Mode::Merge,
-        help = "Mode of file fusion.",
-    )]
-    pub mode: Mode,
+    /// Either include or exclude all impl items:
+    /// true:  include all impl items of all required impl blocks.
+    /// false: exclude all impl items of all required impl blocks, which are not explicitly
+    ///        required by challenge.
+    /// If not set (shown as None), this option is ignored.
+    ///
+    /// If in conflict with other impl options, the 'include' option always wins.
+    #[arg(short = 'r', long, help = "Either include or exclude all impl items.")]
+    pub process_all_impl_items: Option<bool>,
 
-    /// Select specific src files to update in already merged output file. Does only apply if
-    /// mode set to 'update'. Use this option multiple times to add multiple src files to update.
-    /// Use 'main' for main input file, 'challenge' for all src files of challenge crate, and
-    /// specific module names for specific module src files. You can also use the crate name of
-    /// a local library crate to add all dependencies of it to the update list.
-    /// If new dependencies are detected, which have yet not been merged into output file, they
-    /// will be merged as in 'merge' mode.
+    /// Select specific impl items of specific user defined types to include in challenge.
+    /// naming convention:
+    /// optional_crate_name::optional_module_name_i::user_defined_type_name::impl_item_name
+    /// Crate and module names are only required, if the name of the user defined type is
+    /// ambiguous.
+    ///
+    /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(
-        short,
+        short = 'j',
         long,
-        default_values = &["challenge"],
-        help = "Select specific src files to update in already merged output file.",
+        help = "Select specific impl items of specific user defined types to include in challenge."
     )]
-    pub update_components: Vec<String>,
+    pub include_impl_item: Vec<String>,
 
-    /// If the challenge crate depends upon a local crate library, you can use this option to block
-    /// unwanted indirect dependencies from the crate library. Library crates contain a lot of functions
-    /// in separate modules and these functions may depend upon further modules of the library. If these
-    /// modules are not referenced with a 'use' statement inside a challenge src file, they are called
-    /// indirect modules. Some of these indirect modules may not be required by the challenge code.
-    /// Block these unwanted indirect dependencies by using '-b name_of_module_to_block' as often as
-    /// needed. Namespace path of module is only required bijective names must be ensured.
-    /// This option increases speed of execution, since less unwanted code has to be purged by
-    /// blocked it in advance.
+    /// Select specific impl items of specific user defined types to exclude from challenge.
+    /// naming convention:
+    /// optional_crate_name::optional_module_name_i::user_defined_type_name::impl_item_name
+    /// Crate and module names are only required, if the name of the user defined type is
+    /// ambiguous.
+    ///
+    /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(
-        short,
+        short = 'x',
         long,
-        help = "Block unwanted indirect dependencies from library crate."
+        help = "Select specific impl items of specific user defined types to exclude from challenge."
     )]
-    pub block_indirect: Vec<String>,
+    pub exclude_impl_item: Vec<String>,
+
+    /// Path of config file in TOML format to configure included or excluded impl items of
+    /// specific user defined types in respectively from challenge.
+    /// file structure:
+    /// [impl_item]
+    /// include_impl_items = [include_item_1, include_item_2]
+    /// exclude_impl_items = [exclude_item_1, exclude_item_2]
+    ///
+    /// naming convention of items:
+    /// optional_crate_name::optional_module_name_i::user_defined_type_name::impl_item_name
+    /// Crate and module names are only required, if the name of the user defined type is
+    /// ambiguous.
+    ///
+    /// If in conflict with other impl options, the 'include' option always wins.
+    #[arg(
+        short = 't',
+        long,
+        help = "Path of config file in TOML format to configure included or excluded impl items of \
+                specific user defined types in respectively from challenge."
+    )]
+    pub impl_item_toml: Option<PathBuf>,
 
     /// Challenge platform the fusion is made for.
     #[arg(
@@ -153,11 +135,16 @@ pub struct InputOptions {
 impl Display for InputOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "input: {}", self.input)?;
-        writeln!(f, "mode: {}", self.mode)?;
-        writeln!(f, "update-components: {:?}", self.update_components)?;
-        writeln!(f, "block-indirect: {:?}", self.block_indirect)?;
+        writeln!(
+            f,
+            "process-all-impl-items: {:?}",
+            self.process_all_impl_items
+        )?;
+        writeln!(f, "include-impl-item: {:?}", self.include_impl_item)?;
+        writeln!(f, "exclude-impl-item: {:?}", self.exclude_impl_item)?;
+        writeln!(f, "impl-item-toml: {:?}", self.impl_item_toml)?;
         writeln!(f, "platform: {}", self.platform)?;
-        writeln!(f, "block-indirect: {:?}", self.block_indirect)
+        writeln!(f, "block-indirect: {:?}", self.exclude_impl_item)
     }
 }
 
@@ -166,9 +153,10 @@ impl Default for InputOptions {
     fn default() -> Self {
         Self {
             input: "main".into(),
-            mode: Mode::Merge,
-            update_components: Vec::new(),
-            block_indirect: Vec::new(),
+            process_all_impl_items: None,
+            include_impl_item: Vec::new(),
+            exclude_impl_item: Vec::new(),
+            impl_item_toml: None,
             platform: ChallengePlatform::Codingame,
             other_supported_crates: Vec::new(),
         }

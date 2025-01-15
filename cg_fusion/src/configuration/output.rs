@@ -15,38 +15,17 @@ pub struct OutputOptions {
         help = "Filename of merged challenge src file without rs extension."
     )]
     pub filename: Option<String>,
-
-    /// In debug mode temporary files are used for initial merged output file and for each
-    /// purge cycle. Analyze these files if you get unexpected results. If no error occurs,
-    /// these temporary files will be deleted.
-    #[arg(short, long, help = "Activate debug mode.")]
-    pub debug: bool,
-
-    /// Do not delete temporary fusion files, even if no error occurs.
-    #[arg(
-        short = 't',
-        long,
-        requires = "debug",
-        help = "Do not delete temporary fusion files, even if no error occurs. Requires debug mode."
-    )]
-    pub keep_tmp_file: bool,
 }
 
 impl Display for OutputOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "filename: {:?}", self.filename)?;
-        writeln!(f, "debug: {}", self.debug)?;
-        writeln!(f, "keep-tmp-file: {}", self.keep_tmp_file)
+        writeln!(f, "filename: {:?}", self.filename)
     }
 }
 
 #[cfg(test)]
 impl Default for OutputOptions {
     fn default() -> Self {
-        Self {
-            filename: None,
-            debug: false,
-            keep_tmp_file: false,
-        }
+        Self { filename: None }
     }
 }

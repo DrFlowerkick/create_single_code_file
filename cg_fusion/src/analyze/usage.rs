@@ -4,7 +4,7 @@ use super::{AnalyzeError, AnalyzeState};
 use crate::{
     add_context,
     challenge_tree::PathElement,
-    configuration::CliInput,
+    configuration::CgCli,
     error::CgResult,
     parsing::{ItemExtras, ItemName},
     CgData,
@@ -15,7 +15,7 @@ use quote::ToTokens;
 use std::collections::{HashMap, VecDeque};
 use syn::{Ident, Item, Visibility};
 
-impl<O: CliInput> CgData<O, AnalyzeState> {
+impl<O: CgCli> CgData<O, AnalyzeState> {
     pub fn expand_use_statements(&mut self) -> CgResult<()> {
         let mut use_groups_and_globs: VecDeque<(NodeIndex, ItemName)> = self
             .iter_crates()

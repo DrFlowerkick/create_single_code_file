@@ -368,7 +368,7 @@ mod tests {
 
     use crate::parsing::PathAnalysis;
 
-    use super::super::super::analyze::tests::setup_analyze_test;
+    use super::super::super::analyze::tests::setup_processing_test;
     use super::*;
 
     use syn::UseTree;
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_source_path_walker() {
         // preparation
-        let mut cg_data = setup_analyze_test();
+        let mut cg_data = setup_processing_test();
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();

@@ -6,13 +6,13 @@ use syn::{Ident, UseTree};
 
 use crate::parsing::{ItemName, PathAnalysis, SourcePath};
 
-use super::super::tests::setup_analyze_test;
+use super::super::tests::setup_processing_test;
 use super::*;
 
 #[test]
 fn test_expand_use_group() {
     // preparation
-    let mut cg_data = setup_analyze_test();
+    let mut cg_data = setup_processing_test();
     cg_data.add_challenge_dependencies().unwrap();
     cg_data.add_bin_src_files_of_challenge().unwrap();
     cg_data.add_lib_src_files().unwrap();
@@ -98,7 +98,7 @@ fn test_expand_use_group() {
 #[test]
 fn test_get_path_leaf() {
     // preparation
-    let mut cg_data = setup_analyze_test();
+    let mut cg_data = setup_processing_test();
     cg_data.add_challenge_dependencies().unwrap();
     cg_data.add_bin_src_files_of_challenge().unwrap();
     cg_data.add_lib_src_files().unwrap();
@@ -349,7 +349,7 @@ fn test_get_path_leaf() {
 #[test]
 fn test_is_visible_for_module() {
     // preparation
-    let mut cg_data = setup_analyze_test();
+    let mut cg_data = setup_processing_test();
     cg_data.add_challenge_dependencies().unwrap();
     cg_data.add_bin_src_files_of_challenge().unwrap();
     cg_data.add_lib_src_files().unwrap();
@@ -510,7 +510,7 @@ fn test_is_visible_for_module() {
 #[test]
 fn test_expand_use_glob() {
     // preparation
-    let mut cg_data = setup_analyze_test();
+    let mut cg_data = setup_processing_test();
     cg_data.add_challenge_dependencies().unwrap();
     cg_data.add_bin_src_files_of_challenge().unwrap();
     cg_data.add_lib_src_files().unwrap();
@@ -695,7 +695,7 @@ fn test_expand_use_glob() {
 #[test]
 fn test_expand_use_statements() {
     // preparation
-    let mut cg_data = setup_analyze_test();
+    let mut cg_data = setup_processing_test();
     cg_data.add_challenge_dependencies().unwrap();
     cg_data.add_bin_src_files_of_challenge().unwrap();
     cg_data.add_lib_src_files().unwrap();

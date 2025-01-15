@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     add_context,
-    configuration::CliInput,
+    configuration::CgCli,
     error::CgResult,
     parsing::{ItemName, PathAnalysis},
     CgData,
@@ -529,7 +529,7 @@ impl<O, S> CgData<O, S> {
     }
 }
 
-impl<O: CliInput, S> CgData<O, S> {
+impl<O: CgCli, S> CgData<O, S> {
     pub fn get_challenge_bin_name(&self) -> &str {
         if self.options.input().input == "main" {
             // if main, use crate name for bin name

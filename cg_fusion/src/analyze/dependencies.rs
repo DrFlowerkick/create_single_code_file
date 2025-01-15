@@ -3,7 +3,7 @@
 use super::{AnalyzeError, AnalyzeState};
 use crate::{
     challenge_tree::{BfsByEdgeType, BfsWalker, EdgeType, LocalPackage},
-    configuration::{ChallengePlatform, CliInput},
+    configuration::{CgCli, ChallengePlatform},
     metadata::MetaWrapper,
     utilities::CODINGAME_SUPPORTED_CRATES,
     CgData,
@@ -11,7 +11,7 @@ use crate::{
 
 use petgraph::graph::NodeIndex;
 
-impl<O: CliInput> CgData<O, AnalyzeState> {
+impl<O: CgCli> CgData<O, AnalyzeState> {
     pub fn add_challenge_dependencies(&mut self) -> Result<(), AnalyzeError> {
         // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = self
@@ -172,11 +172,11 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 #[cfg(test)]
 mod tests {
 
-    use super::super::tests::setup_analyze_test;
+    use super::super::tests::setup_processing_test;
 
     #[test]
     fn test_collecting_dependencies() {
-        let mut cg_data = setup_analyze_test();
+        let mut cg_data = setup_processing_test();
         cg_data.add_challenge_dependencies().unwrap();
         let dependencies: Vec<&str> = cg_data
             .iter_accepted_dependencies()

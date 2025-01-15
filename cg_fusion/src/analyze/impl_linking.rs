@@ -5,7 +5,7 @@
 use super::AnalyzeState;
 use crate::{
     challenge_tree::PathElement,
-    configuration::CliInput,
+    configuration::CgCli,
     error::CgResult,
     parsing::{ChallengeCollector, PathAnalysis, SourcePath},
     CgData,
@@ -13,7 +13,7 @@ use crate::{
 use petgraph::stable_graph::NodeIndex;
 use syn::{visit::Visit, Item};
 
-impl<O: CliInput> CgData<O, AnalyzeState> {
+impl<O: CgCli> CgData<O, AnalyzeState> {
     pub fn link_impl_blocks_with_corresponding_item(&mut self) -> CgResult<()> {
         // get indices of SynItem Nodes, which contain Impl Items
         let syn_impl_indices: Vec<(NodeIndex, Option<SourcePath>, Vec<SourcePath>)> = self
@@ -73,13 +73,13 @@ mod tests {
 
     use petgraph::Direction;
 
-    use super::super::tests::setup_analyze_test;
+    use super::super::tests::setup_processing_test;
     use crate::{challenge_tree::EdgeType, parsing::ItemName};
 
     #[test]
     fn test_link_impl_blocks() {
         // preparation
-        let mut cg_data = setup_analyze_test();
+        let mut cg_data = setup_processing_test();
         cg_data.add_challenge_dependencies().unwrap();
         cg_data.add_bin_src_files_of_challenge().unwrap();
         cg_data.add_lib_src_files().unwrap();

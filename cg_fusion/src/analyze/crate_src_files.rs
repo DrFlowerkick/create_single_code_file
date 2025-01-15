@@ -1,11 +1,11 @@
 // functions to to add src files of bin and lib crates to tree
 
 use super::AnalyzeState;
-use crate::{add_context, configuration::CliInput, error::CgResult, parsing::load_syntax, CgData};
+use crate::{add_context, configuration::CgCli, error::CgResult, parsing::load_syntax, CgData};
 use anyhow::Context;
 use petgraph::graph::NodeIndex;
 
-impl<O: CliInput> CgData<O, AnalyzeState> {
+impl<O: CgCli> CgData<O, AnalyzeState> {
     pub fn add_bin_src_files_of_challenge(&mut self) -> CgResult<()> {
         // get bin name
         let bin_name = self.get_challenge_bin_name();
@@ -56,12 +56,12 @@ impl<O: CliInput> CgData<O, AnalyzeState> {
 #[cfg(test)]
 mod tests {
 
-    use super::super::tests::setup_analyze_test;
+    use super::super::tests::setup_processing_test;
     use syn::Item;
 
     #[test]
     fn test_collecting_modules() {
-        let mut cg_data = setup_analyze_test();
+        let mut cg_data = setup_processing_test();
         cg_data.add_challenge_dependencies().unwrap();
 
         cg_data.add_bin_src_files_of_challenge().unwrap();
