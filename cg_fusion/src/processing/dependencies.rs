@@ -1,6 +1,6 @@
-// analysis of dependencies
+// processing of dependencies
 
-use super::{AnalyzeError, AnalyzeState};
+use super::{ProcessingError, ProcessingResult, ProcessingSrcFilesState};
 use crate::{
     challenge_tree::{BfsByEdgeType, BfsWalker, EdgeType, LocalPackage},
     configuration::{CgCli, ChallengePlatform},
@@ -11,8 +11,10 @@ use crate::{
 
 use petgraph::graph::NodeIndex;
 
-impl<O: CgCli> CgData<O, AnalyzeState> {
-    pub fn add_challenge_dependencies(&mut self) -> Result<(), AnalyzeError> {
+pub struct ProcessingDependenciesState;
+
+impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
+    pub fn add_challenge_dependencies(mut self) -> ProcessingResult<CgData<O, ProcessingSrcFilesState>> {
         // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = self
             .challenge_package()
@@ -34,7 +36,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
                     // found supported package, add to tree
                     self.add_external_supported_package(0.into(), dep_name);
                 } else {
-                    return Err(AnalyzeError::CodingameUnsupportedDependencyOfChallenge(
+                    return Err(ProcessingError::CodingameUnsupportedDependencyOfChallenge(
                         dep_name,
                     ));
                 }
@@ -61,10 +63,14 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
                 .run_cargo_clippy()?
                 .collect_cargo_clippy_messages()?;
         }
-        Ok(())
+        Ok(CgData {
+            state: ProcessingSrcFilesState,
+            tree: self.tree,
+            options: self.options,
+        })
     }
 
-    fn analyze_challenge_sub_dependencies(&mut self, node: NodeIndex) -> Result<(), AnalyzeError> {
+    fn analyze_challenge_sub_dependencies(&mut self, node: NodeIndex) -> ProcessingResult<()> {
         // check for root packages and get dependencies
         // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = match self.get_local_package(node)?.metadata.root_package() {
@@ -100,7 +106,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
                     if self.options.force() {
                         self.add_external_supported_package(node, dep_name);
                     } else {
-                        return Err(AnalyzeError::DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(
+                        return Err(ProcessingError::DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(
                             dep_name,
                         ));
                     }
@@ -119,7 +125,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
                             }
                         }
                     } else {
-                        return Err(AnalyzeError::CodingameUnsupportedDependencyOfLocalLibrary(
+                        return Err(ProcessingError::CodingameUnsupportedDependencyOfLocalLibrary(
                             dep_name,
                         ));
                     }
@@ -176,8 +182,9 @@ mod tests {
 
     #[test]
     fn test_collecting_dependencies() {
-        let mut cg_data = setup_processing_test();
-        cg_data.add_challenge_dependencies().unwrap();
+        let cg_data = setup_processing_test()
+            .add_challenge_dependencies()
+            .unwrap();
         let dependencies: Vec<&str> = cg_data
             .iter_accepted_dependencies()
             .map(|(_, n)| n)

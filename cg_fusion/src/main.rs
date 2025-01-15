@@ -22,7 +22,12 @@ fn run(options: CargoCli) -> CgResult<()> {
         .build()?
     {
         CgMode::Fusion(fusion) => {
-            fusion.analyze()?;
+            fusion
+                .add_challenge_dependencies()?
+                .add_src_files()?
+                .expand_use_statements()?
+                .link_impl_blocks_with_corresponding_item()?
+                .link_required_by_challenge()?;
         }
     }
     Ok(())

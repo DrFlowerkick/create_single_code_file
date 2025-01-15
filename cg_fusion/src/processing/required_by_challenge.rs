@@ -1,11 +1,10 @@
 // Linking all items, which are required by challenge
 
-use super::AnalyzeState;
+use super::{ProcessingResult, ProcessedState};
 use crate::{
     add_context,
     challenge_tree::{EdgeType, NodeType, PathElement, SourcePathWalker},
     configuration::CgCli,
-    error::CgResult,
     parsing::{ChallengeCollector, ItemName, PathAnalysis, SourcePath},
     CgData,
 };
@@ -14,14 +13,16 @@ use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
 use syn::{visit::Visit, Item};
 
-impl<O: CgCli> CgData<O, AnalyzeState> {
-    pub fn link_required_by_challenge(&mut self) -> CgResult<()> {
+pub struct ProcessingRequiredByChallengeState;
+
+impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
+    pub fn link_required_by_challenge(mut self) -> ProcessingResult<CgData<O, ProcessedState>> {
         self.link_required_by_challenge_via_parsing()?;
         self.link_required_by_challenge_via_dialog()?;
-        Ok(())
+        Ok(CgData { state:ProcessedState, options: self.options, tree: self.tree })
     }
 
-    fn link_required_by_challenge_via_parsing(&mut self) -> CgResult<()> {
+    fn link_required_by_challenge_via_parsing(&mut self) -> ProcessingResult<()> {
         // initialize linking of required items with main function of challenge bin crate
         let (challenge_bin_index, _) = self.get_challenge_bin_crate().unwrap();
         let (main_index, _) = self
@@ -72,7 +73,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
         Ok(())
     }
 
-    fn link_required_by_challenge_via_dialog(&mut self) -> CgResult<()> {
+    fn link_required_by_challenge_via_dialog(&mut self) -> ProcessingResult<()> {
         let mut seen_dialog_items: HashSet<NodeIndex> = HashSet::new();
         let mut seen_check_items: HashSet<NodeIndex> = self
             .iter_items_required_by_challenge()
@@ -125,7 +126,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
         &mut self,
         item_to_check: NodeIndex,
         seen_check_items: &mut HashSet<NodeIndex>,
-    ) -> CgResult<()> {
+    ) -> ProcessingResult<()> {
         if seen_check_items.insert(item_to_check) {
             let mut challenge_collector = ChallengeCollector::new();
             match self.tree.node_weight(item_to_check) {
@@ -219,12 +220,11 @@ mod tests {
     #[test]
     fn test_initial_challenge_linking() {
         // preparation
-        let mut cg_data = setup_processing_test();
-        cg_data.add_challenge_dependencies().unwrap();
-        cg_data.add_bin_src_files_of_challenge().unwrap();
-        cg_data.add_lib_src_files().unwrap();
-        cg_data.expand_use_statements().unwrap();
-        cg_data.link_impl_blocks_with_corresponding_item().unwrap();
+        let cg_data = setup_processing_test()
+        .add_challenge_dependencies().unwrap()
+        .add_src_files().unwrap()
+        .expand_use_statements().unwrap()
+        .link_impl_blocks_with_corresponding_item().unwrap();
 
         // action to test
         // initialize challenge linking with main function of challenge bin crate
@@ -270,13 +270,11 @@ mod tests {
     #[test]
     fn test_around_with_challenge_linking() {
         // preparation
-        let mut cg_data = setup_processing_test();
-        cg_data.add_challenge_dependencies().unwrap();
-        cg_data.add_bin_src_files_of_challenge().unwrap();
-        cg_data.add_lib_src_files().unwrap();
-        cg_data.expand_use_statements().unwrap();
-        cg_data.link_impl_blocks_with_corresponding_item().unwrap();
-
+        let mut cg_data = setup_processing_test()
+        .add_challenge_dependencies().unwrap()
+        .add_src_files().unwrap()
+        .expand_use_statements().unwrap()
+        .link_impl_blocks_with_corresponding_item().unwrap();
         // action to test
         cg_data.link_required_by_challenge_via_parsing().unwrap();
 

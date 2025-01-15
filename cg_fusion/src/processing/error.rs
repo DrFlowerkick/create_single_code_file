@@ -1,13 +1,15 @@
-// error definitions for analyze
+// error definitions for processing
 
-use crate::{challenge_tree::ChallengeTreeError, error::error_chain_fmt, metadata::MetadataError};
+use crate::{challenge_tree::ChallengeTreeError, parsing::ParsingError, error::error_chain_fmt, metadata::MetadataError};
+
+pub type ProcessingResult<T> = Result<T, ProcessingError>;
 
 #[derive(thiserror::Error)]
-pub enum AnalyzeError {
-    #[error("Some analyze error")]
-    SomeAnalyzeError,
+pub enum ProcessingError {
     #[error("Something went wrong with using Metadata of challenge crate.")]
     MetadataError(#[from] MetadataError),
+    #[error("Something went wrong with parsing a source file.")]
+    ParsingError(#[from] ParsingError),
     #[error("Something went wrong with using the challenge tree.")]
     ChallengeTreeError(#[from] ChallengeTreeError),
     #[error("Codingame does not support '{0}'.")]
@@ -25,7 +27,7 @@ pub enum AnalyzeError {
     UnexpectedError(#[from] anyhow::Error),
 }
 
-impl std::fmt::Debug for AnalyzeError {
+impl std::fmt::Debug for ProcessingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         error_chain_fmt(self, f)
     }

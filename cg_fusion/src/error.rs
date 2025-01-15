@@ -1,7 +1,7 @@
 // error and result definitions
 
 use crate::{
-    analyze::AnalyzeError, challenge_tree::ChallengeTreeError, metadata::MetadataError,
+    processing::ProcessingError, challenge_tree::ChallengeTreeError, metadata::MetadataError,
     parsing::ParsingError,
 };
 
@@ -24,8 +24,8 @@ pub fn error_chain_fmt(
 
 #[derive(thiserror::Error)]
 pub enum CgError {
-    #[error("Something went wrong during Analysis.")]
-    AnalyzeError(#[from] AnalyzeError),
+    #[error("Something went wrong during processing challenge and library src files.")]
+    ProcessingError(#[from] ProcessingError),
     #[error("Something went wrong with using Metadata of challenge crate.")]
     MetadataError(#[from] MetadataError),
     #[error("Something went wrong with the Challenge Tree.")]

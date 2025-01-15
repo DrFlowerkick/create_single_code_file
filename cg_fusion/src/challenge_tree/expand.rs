@@ -14,7 +14,7 @@ use quote::ToTokens;
 use syn::{token::Brace, Item, ItemImpl, ItemMod, ItemTrait};
 
 impl<O: CgCli, S> CgData<O, S> {
-    pub fn add_local_package(&mut self, source: NodeIndex, package: LocalPackage) -> NodeIndex {
+    pub(crate) fn add_local_package(&mut self, source: NodeIndex, package: LocalPackage) -> NodeIndex {
         let package_path = package.path.to_owned();
         let package_index = self.tree.add_node(NodeType::LocalPackage(package));
         self.tree
@@ -29,11 +29,11 @@ impl<O: CgCli, S> CgData<O, S> {
         package_index
     }
 
-    pub fn link_to_package(&mut self, source: NodeIndex, target: NodeIndex) {
+    pub(crate) fn link_to_package(&mut self, source: NodeIndex, target: NodeIndex) {
         self.tree.add_edge(source, target, EdgeType::Dependency);
     }
 
-    pub fn add_external_supported_package(
+    pub(crate) fn add_external_supported_package(
         &mut self,
         source: NodeIndex,
         package: String,
@@ -52,7 +52,7 @@ impl<O: CgCli, S> CgData<O, S> {
         package_index
     }
 
-    pub fn add_external_unsupported_package(
+    pub(crate) fn add_external_unsupported_package(
         &mut self,
         source: NodeIndex,
         package: String,
@@ -71,7 +71,7 @@ impl<O: CgCli, S> CgData<O, S> {
         package_index
     }
 
-    pub fn add_binary_crate_to_package(
+    pub(crate) fn add_binary_crate_to_package(
         &mut self,
         package_node_index: NodeIndex,
         name: String,
@@ -109,7 +109,7 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(crate_node_index)
     }
 
-    pub fn add_library_crate_to_package(
+    pub(crate) fn add_library_crate_to_package(
         &mut self,
         package_node_index: NodeIndex,
     ) -> TreeResult<Option<NodeIndex>> {
@@ -149,7 +149,7 @@ impl<O: CgCli, S> CgData<O, S> {
         }
     }
 
-    pub fn add_syn_item(
+    pub(crate) fn add_syn_item(
         &mut self,
         item: &Item,
         dir_path: &Utf8PathBuf,
@@ -296,7 +296,7 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(())
     }
 
-    pub fn add_implementation_link(
+    pub(crate) fn add_implementation_link(
         &mut self,
         source: NodeIndex,
         syn_impl_item_index: NodeIndex,
@@ -319,7 +319,7 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(())
     }
 
-    pub fn add_required_by_challenge_link(
+    pub(crate) fn add_required_by_challenge_link(
         &mut self,
         source: NodeIndex,
         target: NodeIndex,

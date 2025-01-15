@@ -9,13 +9,38 @@ use crate::parsing::{ItemName, PathAnalysis, SourcePath};
 use super::super::tests::setup_processing_test;
 use super::*;
 
+
+fn contains_use_group(item: &Item) -> bool {
+    if let Item::Use(item_use) = item {
+        let mut tree = &item_use.tree;
+        loop {
+            match tree {
+                UseTree::Path(use_path) => tree = use_path.tree.as_ref(),
+                UseTree::Group(_) => return true,
+                UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => return false,
+            }
+        }
+    }
+    false
+}
+
+fn is_use_glob(item: &Item) -> Option<&UseTree> {
+    if let Item::Use(item_use) = item {
+        return if let SourcePath::Glob(_) = item_use.tree.extract_path() {
+            Some(&item_use.tree)
+        } else {
+            None
+        };
+    }
+    None
+}
+
 #[test]
 fn test_expand_use_group() {
     // preparation
-    let mut cg_data = setup_processing_test();
-    cg_data.add_challenge_dependencies().unwrap();
-    cg_data.add_bin_src_files_of_challenge().unwrap();
-    cg_data.add_lib_src_files().unwrap();
+    let mut cg_data = setup_processing_test()
+    .add_challenge_dependencies().unwrap()
+    .add_src_files().unwrap();
 
     // number of use statements before expansion in challenge bin crate
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
@@ -28,7 +53,7 @@ fn test_expand_use_group() {
     );
     let (challenge_bin_crate_use_group_index, _) = cg_data
         .iter_syn_item_neighbors(challenge_bin_crate_index)
-        .find(|(_, i)| i.contains_use_group())
+        .find(|(_, i)| contains_use_group(i))
         .unwrap();
     // number of use statements before expansion in cg_fusion_lib_test lib crate
     let (cg_fusion_lib_test_index, _) = cg_data
@@ -44,7 +69,7 @@ fn test_expand_use_group() {
     );
     let (cg_fusion_lib_test_use_group_index, _) = cg_data
         .iter_syn_item_neighbors(cg_fusion_lib_test_index)
-        .find(|(_, i)| i.contains_use_group())
+        .find(|(_, i)| contains_use_group(i))
         .unwrap();
 
     // action to test: expand use groups
@@ -98,10 +123,9 @@ fn test_expand_use_group() {
 #[test]
 fn test_get_path_leaf() {
     // preparation
-    let mut cg_data = setup_processing_test();
-    cg_data.add_challenge_dependencies().unwrap();
-    cg_data.add_bin_src_files_of_challenge().unwrap();
-    cg_data.add_lib_src_files().unwrap();
+    let mut cg_data = setup_processing_test()
+    .add_challenge_dependencies().unwrap()
+    .add_src_files().unwrap();
 
     // get use entries from cg_fusion_lib_test
     let (cg_fusion_lib_test_index, _) = cg_data
@@ -112,7 +136,7 @@ fn test_get_path_leaf() {
     // expand use group in cg_fusion_lib_test for testing (see below MyMap2D and MapPoint)
     let (use_group_index, _) = cg_data
         .iter_syn_item_neighbors(cg_fusion_lib_test_index)
-        .find(|(_, i)| i.contains_use_group())
+        .find(|(_, i)| contains_use_group(i))
         .unwrap();
     cg_data.expand_use_group(use_group_index).unwrap();
 
@@ -349,10 +373,9 @@ fn test_get_path_leaf() {
 #[test]
 fn test_is_visible_for_module() {
     // preparation
-    let mut cg_data = setup_processing_test();
-    cg_data.add_challenge_dependencies().unwrap();
-    cg_data.add_bin_src_files_of_challenge().unwrap();
-    cg_data.add_lib_src_files().unwrap();
+    let cg_data = setup_processing_test()
+    .add_challenge_dependencies().unwrap()
+    .add_src_files().unwrap();
 
     // get module index of my_compass and my_map_point
     let (my_map_two_dim_mod_index, _) = cg_data
@@ -419,7 +442,7 @@ fn test_is_visible_for_module() {
         cg_data
             .iter_syn_item_neighbors(my_map_point_mod_index)
             .filter_map(|(n, i)| {
-                i.is_use_glob()
+                is_use_glob(i)
                     .and_then(|_| cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
             })
             .count(),
@@ -457,7 +480,7 @@ fn test_is_visible_for_module() {
         cg_data
             .iter_syn_item_neighbors(my_map_two_dim_mod_index)
             .filter_map(|(n, i)| {
-                i.is_use_glob()
+                is_use_glob(i)
                     .and_then(|_| cg_data.is_visible_for_module(n, my_compass_mod_index).ok())
             })
             .count(),
@@ -510,10 +533,9 @@ fn test_is_visible_for_module() {
 #[test]
 fn test_expand_use_glob() {
     // preparation
-    let mut cg_data = setup_processing_test();
-    cg_data.add_challenge_dependencies().unwrap();
-    cg_data.add_bin_src_files_of_challenge().unwrap();
-    cg_data.add_lib_src_files().unwrap();
+    let mut cg_data = setup_processing_test()
+    .add_challenge_dependencies().unwrap()
+    .add_src_files().unwrap();
 
     // get module index of cg_fusion_binary_test and action
     let (cg_fusion_binary_test_mod_index, _) = cg_data
@@ -537,13 +559,13 @@ fn test_expand_use_glob() {
     // get use glob in action and cg_fusion_binary_test
     let use_glob_of_action_index = cg_data
         .iter_syn_item_neighbors(action_mod_index)
-        .find(|(_, i)| i.is_use_glob().is_some())
+        .find(|(_, i)| is_use_glob(i).is_some())
         .unwrap()
         .0;
     let use_glob_of_cg_fusion_binary_test_pointing_to_action_index = cg_data
         .iter_syn_item_neighbors(cg_fusion_binary_test_mod_index)
         .find(|(_, i)| {
-            i.is_use_glob().is_some() && {
+            is_use_glob(i).is_some() && {
                 let path = i.get_item_use().unwrap().tree.extract_path();
                 if let SourcePath::Glob(segments) = path {
                     segments[1] == "action"
@@ -557,7 +579,7 @@ fn test_expand_use_glob() {
     let use_glob_of_cg_fusion_binary_test_pointing_to_my_map_two_dim_index = cg_data
         .iter_syn_item_neighbors(cg_fusion_binary_test_mod_index)
         .find(|(_, i)| {
-            i.is_use_glob().is_some() && {
+            is_use_glob(i).is_some() && {
                 let path = i.get_item_use().unwrap().tree.extract_path();
                 if let SourcePath::Glob(segments) = path {
                     segments[1] == "my_map_two_dim"
@@ -695,13 +717,11 @@ fn test_expand_use_glob() {
 #[test]
 fn test_expand_use_statements() {
     // preparation
-    let mut cg_data = setup_processing_test();
-    cg_data.add_challenge_dependencies().unwrap();
-    cg_data.add_bin_src_files_of_challenge().unwrap();
-    cg_data.add_lib_src_files().unwrap();
-
+    let cg_data = setup_processing_test()
+    .add_challenge_dependencies().unwrap()
+    .add_src_files().unwrap()
     // action to test
-    cg_data.expand_use_statements().unwrap();
+    .expand_use_statements().unwrap();
 
     // assert use statements after expansion of globs in challenge bin crate
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();

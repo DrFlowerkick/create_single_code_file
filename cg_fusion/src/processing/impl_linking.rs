@@ -2,19 +2,20 @@
 
 // ToDo: Delete this, if planed implementation for challenge linking will not require impl linking
 
-use super::AnalyzeState;
+use super::{ProcessingResult, ProcessingRequiredByChallengeState};
 use crate::{
     challenge_tree::PathElement,
     configuration::CgCli,
-    error::CgResult,
     parsing::{ChallengeCollector, PathAnalysis, SourcePath},
     CgData,
 };
 use petgraph::stable_graph::NodeIndex;
 use syn::{visit::Visit, Item};
 
-impl<O: CgCli> CgData<O, AnalyzeState> {
-    pub fn link_impl_blocks_with_corresponding_item(&mut self) -> CgResult<()> {
+pub struct ProcessingImplBlocksState;
+
+impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
+    pub fn link_impl_blocks_with_corresponding_item(mut self) -> ProcessingResult<CgData<O, ProcessingRequiredByChallengeState>> {
         // get indices of SynItem Nodes, which contain Impl Items
         let syn_impl_indices: Vec<(NodeIndex, Option<SourcePath>, Vec<SourcePath>)> = self
             .iter_crates()
@@ -45,14 +46,14 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
                 self.link_impl_block_by_path(syn_impl_index, impl_path)?;
             }
         }
-        Ok(())
+        Ok(CgData { state: ProcessingRequiredByChallengeState, options: self.options, tree: self.tree })
     }
 
     fn link_impl_block_by_path(
         &mut self,
         syn_impl_index: NodeIndex,
         path: &impl PathAnalysis,
-    ) -> CgResult<()> {
+    ) -> ProcessingResult<()> {
         let path_target = self.get_path_leaf(syn_impl_index, path)?;
         match path_target {
             PathElement::Item(item_index) => {
@@ -79,14 +80,12 @@ mod tests {
     #[test]
     fn test_link_impl_blocks() {
         // preparation
-        let mut cg_data = setup_processing_test();
-        cg_data.add_challenge_dependencies().unwrap();
-        cg_data.add_bin_src_files_of_challenge().unwrap();
-        cg_data.add_lib_src_files().unwrap();
-        cg_data.expand_use_statements().unwrap();
-
+        let cg_data = setup_processing_test()
+        .add_challenge_dependencies().unwrap()
+        .add_src_files().unwrap()
+        .expand_use_statements().unwrap()
         // action to test
-        cg_data.link_impl_blocks_with_corresponding_item().unwrap();
+        .link_impl_blocks_with_corresponding_item().unwrap();
 
         // test impl in cg_fusion_binary_test lib crate
         let (cg_fusion_binary_test_index, _) = cg_data

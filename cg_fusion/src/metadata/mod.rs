@@ -59,10 +59,6 @@ impl MetaWrapper {
             .to_owned())
     }
 
-    pub fn package_src_dir(&self) -> MetadataResult<Utf8PathBuf> {
-        Ok(self.package_root_dir()?.join("src"))
-    }
-
     pub fn get_binary_target_of_root_package(&self, bin_name: &str) -> MetadataResult<&Target> {
         self.root_package()?
             .targets

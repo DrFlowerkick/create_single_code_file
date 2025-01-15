@@ -131,7 +131,6 @@ impl<'ast> Visit<'ast> for VisitVerbatim {
 // path analysis
 pub trait PathAnalysis {
     fn extract_path(&self) -> SourcePath;
-    fn extract_path_root(&self) -> Option<Ident>;
 }
 
 #[derive(Debug, Clone)]
@@ -156,14 +155,6 @@ impl SourcePath {
 impl PathAnalysis for SourcePath {
     fn extract_path(&self) -> SourcePath {
         self.clone()
-    }
-    fn extract_path_root(&self) -> Option<Ident> {
-        match self {
-            SourcePath::Glob(segments)
-            | SourcePath::Name(segments)
-            | SourcePath::Rename(segments, _) => segments.first().cloned(),
-            SourcePath::Group => None,
-        }
     }
 }
 
@@ -190,25 +181,11 @@ impl PathAnalysis for UseTree {
             }
         }
     }
-
-    fn extract_path_root(&self) -> Option<Ident> {
-        match self {
-            UseTree::Path(use_path) => Some(use_path.ident.to_owned()),
-            UseTree::Group(_) | UseTree::Glob(_) => {
-                unreachable!("UseTree cannot start with group or glob.")
-            }
-            UseTree::Name(name) => Some(name.ident.to_owned()),
-            UseTree::Rename(rename) => Some(rename.rename.to_owned()),
-        }
-    }
 }
 
 impl PathAnalysis for Path {
     fn extract_path(&self) -> SourcePath {
         SourcePath::Name(self.segments.iter().map(|s| s.ident.to_owned()).collect())
-    }
-    fn extract_path_root(&self) -> Option<Ident> {
-        self.segments.first().map(|ps| ps.ident.to_owned())
     }
 }
 
@@ -243,29 +220,13 @@ impl UseTreeExtras for UseTree {
 }
 
 pub trait ItemExtras {
-    fn contains_use_group(&self) -> bool;
     fn get_use_items_of_use_group(&self) -> Vec<Item>;
     fn get_item_use(&self) -> Option<&ItemUse>;
-    fn is_use_glob(&self) -> Option<&UseTree>;
     fn extract_visibility(&self) -> Option<&Visibility>;
     fn replace_glob_with_name_ident(self, ident: Ident) -> Option<Item>;
 }
 
 impl ItemExtras for Item {
-    fn contains_use_group(&self) -> bool {
-        if let Item::Use(item_use) = self {
-            let mut tree = &item_use.tree;
-            loop {
-                match tree {
-                    UseTree::Path(use_path) => tree = use_path.tree.as_ref(),
-                    UseTree::Group(_) => return true,
-                    UseTree::Glob(_) | UseTree::Name(_) | UseTree::Rename(_) => return false,
-                }
-            }
-        }
-        false
-    }
-
     fn get_use_items_of_use_group(&self) -> Vec<Item> {
         if let Item::Use(item_use) = self {
             let new_items: Vec<Item> = item_use
@@ -286,17 +247,6 @@ impl ItemExtras for Item {
     fn get_item_use(&self) -> Option<&ItemUse> {
         if let Item::Use(item_use) = self {
             return Some(item_use);
-        }
-        None
-    }
-
-    fn is_use_glob(&self) -> Option<&UseTree> {
-        if let Item::Use(item_use) = self {
-            return if let SourcePath::Glob(_) = item_use.tree.extract_path() {
-                Some(&item_use.tree)
-            } else {
-                None
-            };
         }
         None
     }
@@ -374,14 +324,6 @@ impl ItemName {
         match self {
             Self::TypeStringAndIdent(_, ident) => Some(ident.to_owned()),
             Self::TypeStringAndRenamed(_, _, rename) => Some(rename.to_owned()),
-            _ => None,
-        }
-    }
-    pub fn get_name(&self) -> Option<String> {
-        match self {
-            Self::TypeStringAndIdent(_, ident) => Some(ident.to_string()),
-            Self::TypeStringAndRenamed(_, ident, _) => Some(ident.to_string()),
-            Self::TypeStringAndNameString(_, name) => Some(name.to_owned()),
             _ => None,
         }
     }
@@ -599,28 +541,5 @@ impl<'ast> Visit<'ast> for ChallengeCollector {
         }
         // recursive visit
         syn::visit::visit_expr_method_call(self, expr_method_call);
-    }
-}
-
-// Struct to visit syn items and check, if ident is used in item
-pub struct IdentVisitor {
-    pub ident: Ident,
-    pub found: bool,
-}
-
-impl IdentVisitor {
-    pub fn new(ident: Ident) -> Self {
-        Self {
-            ident,
-            found: false,
-        }
-    }
-}
-
-impl<'ast> Visit<'ast> for IdentVisitor {
-    fn visit_ident(&mut self, i: &'ast syn::Ident) {
-        if i == &self.ident {
-            self.found = true;
-        }
     }
 }

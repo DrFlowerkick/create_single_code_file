@@ -1,14 +1,14 @@
 // central library
 
-pub mod analyze;
-pub mod challenge_tree;
+pub mod processing;
+pub(crate) mod challenge_tree;
 pub mod configuration;
 pub mod error;
-pub mod metadata;
-pub mod parsing;
-pub mod utilities;
+pub(crate) mod metadata;
+pub(crate) mod parsing;
+pub(crate) mod utilities;
 
-use analyze::AnalyzeState;
+use processing::ProcessingDependenciesState;
 use challenge_tree::{ChallengeTree, LocalPackage, NodeType};
 use configuration::{CargoCli, FusionCli};
 use error::{CgError, CgResult};
@@ -18,7 +18,7 @@ use petgraph::stable_graph::StableDiGraph;
 
 // CgMode enum allows to extend cg-fusion for other user modes (e.G. a TUI) in the future
 pub enum CgMode {
-    Fusion(CgData<FusionCli, AnalyzeState>),
+    Fusion(CgData<FusionCli, ProcessingDependenciesState>),
 }
 
 pub struct NoOptions;
@@ -72,7 +72,7 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
         assert_eq!(tree.add_node(root_node_value), 0.into());
         match self.options {
             CargoCli::CgFusion(fusion_cli) => Ok(CgMode::Fusion(CgData {
-                _state: AnalyzeState,
+                state: ProcessingDependenciesState,
                 options: fusion_cli,
                 tree,
             })),
@@ -81,7 +81,8 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
 }
 
 pub struct CgData<O, S> {
-    _state: S,
+    #[allow(dead_code)]
+    state: S,
     options: O,
     tree: ChallengeTree,
 }

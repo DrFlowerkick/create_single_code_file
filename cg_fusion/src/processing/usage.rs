@@ -1,11 +1,10 @@
 // functions to analyze use statements in src files
 
-use super::{AnalyzeError, AnalyzeState};
+use super::{ProcessingError, ProcessingResult, ProcessingImplBlocksState};
 use crate::{
     add_context,
     challenge_tree::PathElement,
     configuration::CgCli,
-    error::CgResult,
     parsing::{ItemExtras, ItemName},
     CgData,
 };
@@ -15,8 +14,10 @@ use quote::ToTokens;
 use std::collections::{HashMap, VecDeque};
 use syn::{Ident, Item, Visibility};
 
-impl<O: CgCli> CgData<O, AnalyzeState> {
-    pub fn expand_use_statements(&mut self) -> CgResult<()> {
+pub struct ProcessingUsageState;
+
+impl<O: CgCli> CgData<O, ProcessingUsageState> {
+    pub fn expand_use_statements(mut self) -> ProcessingResult<CgData<O, ProcessingImplBlocksState>> {
         let mut use_groups_and_globs: VecDeque<(NodeIndex, ItemName)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
@@ -61,7 +62,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
                             let module = self
                                 .get_name_of_crate_or_module(use_statement_owning_module_index)
                                 .context(add_context!("Expected crate or module name."))?;
-                            Err(AnalyzeError::MaxAttemptsExpandingUseStatement(
+                            Err(ProcessingError::MaxAttemptsExpandingUseStatement(
                                 self.get_syn_use_tree(use_index)
                                     .context(add_context!("Expected syn use tree."))?
                                     .to_token_stream()
@@ -75,10 +76,10 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
                 _ => unreachable!("Filtering for groups and globs"),
             }
         }
-        Ok(())
+        Ok(CgData { state: ProcessingImplBlocksState, options: self.options, tree: self.tree })
     }
 
-    fn expand_use_group(&mut self, syn_use_group_index: NodeIndex) -> CgResult<Vec<NodeIndex>> {
+    fn expand_use_group(&mut self, syn_use_group_index: NodeIndex) -> ProcessingResult<Vec<NodeIndex>> {
         // get index of module of syn use item
         let module_index = self
             .get_syn_module_index(syn_use_group_index)
@@ -112,7 +113,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
         Ok(use_globs)
     }
 
-    fn expand_use_glob(&mut self, use_glob_index: NodeIndex) -> CgResult<bool> {
+    fn expand_use_glob(&mut self, use_glob_index: NodeIndex) -> ProcessingResult<bool> {
         // get index and name of module, which owns the use statement
         let use_statement_owning_module_index = self
             .get_syn_module_index(use_glob_index)
@@ -229,7 +230,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
         &self,
         item_index: NodeIndex,
         module_index: NodeIndex,
-    ) -> CgResult<bool> {
+    ) -> ProcessingResult<bool> {
         /*
         https://doc.rust-lang.org/reference/visibility-and-privacy.html
         With the notion of an item being either public or private, Rust allows item accesses in two cases:

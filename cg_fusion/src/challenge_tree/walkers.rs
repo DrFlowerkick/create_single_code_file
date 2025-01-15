@@ -67,58 +67,6 @@ impl BfsWalker for BfsByEdgeType {
     }
 }
 
-pub struct BfsModuleNameSpace {
-    walker: Bfs<NodeIndex, FixedBitSet>,
-    start: NodeIndex,
-}
-
-impl BfsModuleNameSpace {
-    pub fn new(graph: &ChallengeTree, start: NodeIndex) -> Self {
-        Self {
-            walker: Bfs::new(graph, start),
-            start,
-        }
-    }
-
-    pub fn into_iter(self, graph: &ChallengeTree) -> BfsIterator<'_, BfsModuleNameSpace> {
-        BfsIterator {
-            walker: self,
-            graph,
-        }
-    }
-}
-
-impl BfsWalker for BfsModuleNameSpace {
-    // code adapted from petgraph, see Bfs implementation of next()
-    fn next(&mut self, graph: &ChallengeTree) -> Option<NodeIndex> {
-        if let Some(node) = self.walker.stack.pop_front() {
-            let add_successors = matches!(
-                graph.node_weight(node),
-                Some(NodeType::SynItem(Item::Impl(_))) | Some(NodeType::SynItem(Item::Trait(_)))
-            ) || self.start == node;
-            // add only successors, which are connected by syn edge type and when add_successors is true
-            for successor in graph
-                .edges(node)
-                .filter(|e| add_successors && *e.weight() == EdgeType::Syn)
-                .map(|e| e.target())
-            {
-                // see trait VisitMap of petgraph for visit()
-                // return true, if first time visited
-                if !self.walker.discovered.put(successor.index()) {
-                    self.walker.stack.push_back(successor);
-                }
-            }
-
-            return Some(node);
-        }
-        None
-    }
-
-    fn stack_len(&self) -> usize {
-        self.walker.stack.len()
-    }
-}
-
 pub struct BfsIterator<'a, T: BfsWalker> {
     walker: T,
     graph: &'a ChallengeTree,
@@ -368,7 +316,7 @@ mod tests {
 
     use crate::parsing::PathAnalysis;
 
-    use super::super::super::analyze::tests::setup_processing_test;
+    use super::super::super::processing::tests::setup_processing_test;
     use super::*;
 
     use syn::UseTree;
@@ -376,10 +324,9 @@ mod tests {
     #[test]
     fn test_source_path_walker() {
         // preparation
-        let mut cg_data = setup_processing_test();
-        cg_data.add_challenge_dependencies().unwrap();
-        cg_data.add_bin_src_files_of_challenge().unwrap();
-        cg_data.add_lib_src_files().unwrap();
+        let cg_data = setup_processing_test()
+        .add_challenge_dependencies().unwrap()
+        .add_src_files().unwrap();
 
         // test case 1: test use statements of challenge
         let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();

@@ -1,12 +1,20 @@
 // functions to to add src files of bin and lib crates to tree
 
-use super::AnalyzeState;
-use crate::{add_context, configuration::CgCli, error::CgResult, parsing::load_syntax, CgData};
+use super::{ProcessingUsageState, ProcessingResult};
+use crate::{add_context, configuration::CgCli, parsing::load_syntax, CgData};
 use anyhow::Context;
 use petgraph::graph::NodeIndex;
 
-impl<O: CgCli> CgData<O, AnalyzeState> {
-    pub fn add_bin_src_files_of_challenge(&mut self) -> CgResult<()> {
+pub struct ProcessingSrcFilesState;
+
+impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
+    pub fn add_src_files(mut self) -> ProcessingResult<CgData<O, ProcessingUsageState>> {
+        self.add_bin_src_files_of_challenge()?;
+        self.add_lib_src_files()?;
+        Ok(CgData { state: ProcessingUsageState, options: self.options, tree: self.tree })
+    }
+
+    fn add_bin_src_files_of_challenge(&mut self) -> ProcessingResult<()> {
         // get bin name
         let bin_name = self.get_challenge_bin_name();
 
@@ -28,7 +36,7 @@ impl<O: CgCli> CgData<O, AnalyzeState> {
         Ok(())
     }
 
-    pub fn add_lib_src_files(&mut self) -> CgResult<()> {
+    fn add_lib_src_files(&mut self) -> ProcessingResult<()> {
         // collect package indices
         let package_indices: Vec<NodeIndex> = self.iter_local_packages().map(|(n, _)| n).collect();
         for index in package_indices {
@@ -61,15 +69,15 @@ mod tests {
 
     #[test]
     fn test_collecting_modules() {
-        let mut cg_data = setup_processing_test();
-        cg_data.add_challenge_dependencies().unwrap();
-
-        cg_data.add_bin_src_files_of_challenge().unwrap();
+        let cg_data = setup_processing_test()
+            .add_challenge_dependencies()
+            .unwrap()
+            .add_src_files()
+            .unwrap();
         let (bcf_index, bcf) = cg_data.get_challenge_bin_crate().unwrap();
         assert_eq!(bcf.name, "cg_fusion_binary_test");
         assert_eq!(cg_data.iter_syn_item_neighbors(bcf_index).count(), 4);
 
-        cg_data.add_lib_src_files().unwrap();
         let (lcf_index, lcf) = cg_data.get_challenge_lib_crate().unwrap();
         assert_eq!(lcf.name, "cg_fusion_binary_test");
         assert_eq!(cg_data.iter_syn_item_neighbors(lcf_index).count(), 12);
