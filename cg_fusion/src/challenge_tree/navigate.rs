@@ -182,7 +182,10 @@ impl<O, S> CgData<O, S> {
         })
     }
 
-    pub(crate) fn iter_syn_items(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, &Item)> {
+    pub(crate) fn iter_syn_items(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &Item)> {
         self.iter_syn(node).filter_map(|(n, w)| match w {
             NodeType::SynItem(syn_item) => Some((n, syn_item)),
             _ => None,
@@ -389,7 +392,9 @@ impl<O, S> CgData<O, S> {
             .any(|e| *e.weight() == EdgeType::RequiredByChallenge)
     }
 
-    pub(crate) fn iter_items_required_by_challenge(&self) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
+    pub(crate) fn iter_items_required_by_challenge(
+        &self,
+    ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
         self.iter_crates()
             .flat_map(|(n, _, _)| self.iter_syn(n))
             .filter(|(n, _)| self.is_required_by_challenge(*n))
@@ -407,7 +412,10 @@ impl<O, S> CgData<O, S> {
             .map_err(|err| err.into())
     }
 
-    pub(crate) fn get_use_item_leaf(&self, index_of_use_item: NodeIndex) -> TreeResult<PathElement> {
+    pub(crate) fn get_use_item_leaf(
+        &self,
+        index_of_use_item: NodeIndex,
+    ) -> TreeResult<PathElement> {
         if let Some(Item::Use(item_use)) = self.get_syn_item(index_of_use_item) {
             return self.get_path_leaf(index_of_use_item, &item_use.tree);
         }

@@ -11,7 +11,7 @@ pub use common::CommonOptions;
 pub use fusion::FusionCli;
 pub use input::{ChallengePlatform, InputOptions};
 pub use output::OutputOptions;
-pub use traits::CgCli;
+pub use traits::{CgCli, CgCliImplDialog};
 
 use clap::Parser;
 

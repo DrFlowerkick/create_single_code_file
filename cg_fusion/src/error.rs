@@ -1,8 +1,8 @@
 // error and result definitions
 
 use crate::{
-    processing::ProcessingError, challenge_tree::ChallengeTreeError, metadata::MetadataError,
-    parsing::ParsingError,
+    challenge_tree::ChallengeTreeError, metadata::MetadataError, parsing::ParsingError,
+    processing::ProcessingError,
 };
 
 use std::path::PathBuf;

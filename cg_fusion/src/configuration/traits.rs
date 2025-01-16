@@ -9,3 +9,5 @@ pub trait CgCli {
     fn input(&self) -> &InputOptions;
     fn output(&self) -> &OutputOptions;
 }
+
+pub trait CgCliImplDialog: CgCli {}

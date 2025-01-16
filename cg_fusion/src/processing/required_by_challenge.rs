@@ -1,28 +1,18 @@
 // Linking all items, which are required by challenge
 
-use super::{ProcessingResult, ProcessedState};
-use crate::{
-    add_context,
-    challenge_tree::{EdgeType, NodeType, PathElement, SourcePathWalker},
-    configuration::CgCli,
-    parsing::{ChallengeCollector, ItemName, PathAnalysis, SourcePath},
-    CgData,
-};
-use anyhow::{anyhow, Context};
+use super::{ProcessingImplItemDialogState, ProcessingResult};
+use crate::{add_context, challenge_tree::NodeType, configuration::CgCli, CgData};
+use anyhow::Context;
 use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
-use syn::{visit::Visit, Item};
+use syn::Item;
 
 pub struct ProcessingRequiredByChallengeState;
 
 impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
-    pub fn link_required_by_challenge(mut self) -> ProcessingResult<CgData<O, ProcessedState>> {
-        self.link_required_by_challenge_via_parsing()?;
-        self.link_required_by_challenge_via_dialog()?;
-        Ok(CgData { state:ProcessedState, options: self.options, tree: self.tree })
-    }
-
-    fn link_required_by_challenge_via_parsing(&mut self) -> ProcessingResult<()> {
+    pub fn link_required_by_challenge(
+        mut self,
+    ) -> ProcessingResult<CgData<O, ProcessingImplItemDialogState>> {
         // initialize linking of required items with main function of challenge bin crate
         let (challenge_bin_index, _) = self.get_challenge_bin_crate().unwrap();
         let (main_index, _) = self
@@ -70,144 +60,11 @@ impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
             self.add_required_by_challenge_link(trait_index, impl_with_trait_item_index)?;
             self.check_path_items_for_challenge(impl_with_trait_item_index, &mut seen_check_items)?;
         }
-        Ok(())
-    }
-
-    fn link_required_by_challenge_via_dialog(&mut self) -> ProcessingResult<()> {
-        let mut seen_dialog_items: HashSet<NodeIndex> = HashSet::new();
-        let mut seen_check_items: HashSet<NodeIndex> = self
-            .iter_items_required_by_challenge()
-            .map(|(n, _)| n)
-            .collect();
-        while let Some(dialog_item) =
-            self.find_impl_item_without_required_link_in_required_impl_block(&seen_dialog_items)
-        {
-            seen_dialog_items.insert(dialog_item);
-            let impl_block_index = self
-                .get_parent_index_by_edge_type(dialog_item, EdgeType::Syn)
-                .unwrap();
-            println!(
-                "Found '{}' of required '{}'.",
-                self.get_verbose_name_of_tree_node(dialog_item)?,
-                self.get_verbose_name_of_tree_node(impl_block_index)?
-            );
-            // ToDo: Dialog setup. We want to test dialogs with mock. Probably will use dialoguer
-            // Select for cmd dialog.
-            // Dialog prompt: Mark '{}' as required? ('Esc' or 'q' quits cg_fusion), dialog_item
-            // Options:
-            // yes
-            // no
-            // always yes for all remaining impl items of '{}', impl_block_index
-            // always no for all remaining impl items of '{}', impl_block_index
-            // show '{}', dialog_item
-            // show possible usage of '{}', dialog_item
-            // We need enum UserInput with Yes, No, AlwaysYes, AlwaysNo
-            // dialog returns Option<UserInput>; if None, quit cg_fusion with CgError::UserQuitDialog
-            // We need cli to skip dialog with either AlwaysYes or AlwaysNo; Both could be a
-            // Vec<String> with names of struct, enum, union. We check, if these names are unambiguous.
-            // If no, cg_fusion quits with message. name structure is
-            // crate_name::module_name_1::...::module_name_n::item_name
-            // no wild cards, crate_name and module_names are optional.
-            // We need cli option to save dialog results in a config file and an option to use config file
-            // for impl fn
-            // NEXT STEP: rework states of cg-fusion. Each major step of cg-fusion get's it's own state
-            // to secure right order of processing the challenge and library code. Although rename
-            // analyze to processing.
-            let user_input: bool = unimplemented!("Create dialog fn");
-            if user_input {
-                self.add_required_by_challenge_link(impl_block_index, dialog_item)?;
-                self.check_path_items_for_challenge(dialog_item, &mut seen_check_items)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn check_path_items_for_challenge(
-        &mut self,
-        item_to_check: NodeIndex,
-        seen_check_items: &mut HashSet<NodeIndex>,
-    ) -> ProcessingResult<()> {
-        if seen_check_items.insert(item_to_check) {
-            let mut challenge_collector = ChallengeCollector::new();
-            match self.tree.node_weight(item_to_check) {
-                Some(NodeType::SynItem(Item::Mod(_)))            // do not search path in these items, since
-                | Some(NodeType::SynItem(Item::Impl(_)))         // we will search in their sub items if they
-                | Some(NodeType::SynItem(Item::Trait(_))) => (), // are linked as required by challenge.
-                Some(NodeType::SynItem(Item::Use(item_use))) => {
-                    let source_path = item_use.tree.extract_path();
-                    match source_path {
-                        SourcePath::Glob(_) | SourcePath::Group => {
-                            return Err(anyhow!(format!(
-                                "{}",
-                                add_context!("Expected expanded use groups and 0globs")
-                            ))
-                            .into())
-                        }
-                        SourcePath::Name(_) | SourcePath::Rename(_, _) => {
-                            challenge_collector.paths.push(source_path)
-                        }
-                    }
-                }
-                Some(NodeType::SynItem(item)) => challenge_collector.visit_item(item),
-                Some(NodeType::SynImplItem(impl_item)) => challenge_collector.visit_impl_item(impl_item),
-                Some(NodeType::SynTraitItem(trait_item)) => {
-                    challenge_collector.visit_trait_item(trait_item)
-                }
-                _ => return Ok(()),
-            }
-            // check collected path elements
-            for path in challenge_collector.paths.iter() {
-                let mut path_walker =
-                    SourcePathWalker::new(path.extract_path(), self, item_to_check);
-                while let Some(path_element) = path_walker.next(self) {
-                    match path_element {
-                        PathElement::Glob(_) | PathElement::Group => unreachable!("syn::Path does not contain these elements and all use statements must be expanded."),
-                        PathElement::ExternalPackage => (),
-                        PathElement::PathCouldNotBeParsed => (), // ToDo: we will try later to analyze path to let statements
-                        PathElement::Item(item_index) | PathElement::ItemRenamed(item_index, _) => {
-                            if self.is_syn_impl_item(item_index) || self.is_syn_trait_item(item_index) {
-                                let impl_or_trait_index = self.get_parent_index_by_edge_type(item_index, EdgeType::Syn)
-                                    .context(add_context!("Expected impl or trait item."))?;
-                                if !self.is_required_by_challenge(impl_or_trait_index) {
-                                    self.add_required_by_challenge_link(item_to_check, impl_or_trait_index)?;
-                                }
-                            }
-                            self.add_required_by_challenge_link(item_to_check, item_index)?;
-                            self.check_path_items_for_challenge(item_index, seen_check_items)?;
-                        },
-                    }
-                }
-            }
-            // check collected method calls with self as receiver
-            if self.is_syn_impl_item(item_to_check) {
-                for method_id in challenge_collector.self_method_calls.iter() {
-                    let impl_method = self
-                        .get_parent_index_by_edge_type(item_to_check, EdgeType::Syn)
-                        .into_iter()
-                        .flat_map(|n| self.iter_syn_impl_item(n))
-                        .filter(|(n, _)| !self.is_required_by_challenge(*n))
-                        .find(|(_, i)| {
-                            if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
-                                name == *method_id
-                            } else {
-                                false
-                            }
-                        });
-                    if let Some((item_index, _)) = impl_method {
-                        self.add_required_by_challenge_link(item_to_check, item_index)?;
-                        self.check_path_items_for_challenge(item_index, seen_check_items)?;
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn find_impl_item_without_required_link_in_required_impl_block(
-        &self,
-        seen_dialog_items: &HashSet<NodeIndex>,
-    ) -> Option<NodeIndex> {
-        None
+        Ok(CgData {
+            state: ProcessingImplItemDialogState,
+            options: self.options,
+            tree: self.tree,
+        })
     }
 }
 
@@ -216,15 +73,24 @@ mod tests {
 
     use super::super::tests::setup_processing_test;
     use super::*;
+    use crate::{
+        challenge_tree::PathElement,
+        parsing::{ChallengeCollector, SourcePath},
+    };
+    use syn::visit::Visit;
 
     #[test]
     fn test_initial_challenge_linking() {
         // preparation
         let cg_data = setup_processing_test()
-        .add_challenge_dependencies().unwrap()
-        .add_src_files().unwrap()
-        .expand_use_statements().unwrap()
-        .link_impl_blocks_with_corresponding_item().unwrap();
+            .add_challenge_dependencies()
+            .unwrap()
+            .add_src_files()
+            .unwrap()
+            .expand_use_statements()
+            .unwrap()
+            .link_impl_blocks_with_corresponding_item()
+            .unwrap();
 
         // action to test
         // initialize challenge linking with main function of challenge bin crate
@@ -270,13 +136,18 @@ mod tests {
     #[test]
     fn test_around_with_challenge_linking() {
         // preparation
-        let mut cg_data = setup_processing_test()
-        .add_challenge_dependencies().unwrap()
-        .add_src_files().unwrap()
-        .expand_use_statements().unwrap()
-        .link_impl_blocks_with_corresponding_item().unwrap();
-        // action to test
-        cg_data.link_required_by_challenge_via_parsing().unwrap();
+        let cg_data = setup_processing_test()
+            .add_challenge_dependencies()
+            .unwrap()
+            .add_src_files()
+            .unwrap()
+            .expand_use_statements()
+            .unwrap()
+            .link_impl_blocks_with_corresponding_item()
+            .unwrap()
+            // action to test
+            .link_required_by_challenge()
+            .unwrap();
 
         // assertion
         let items_required_by_challenge: Vec<NodeIndex> = cg_data

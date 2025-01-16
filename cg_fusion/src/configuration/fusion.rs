@@ -1,6 +1,6 @@
 // fusion cli options
 
-use super::{CgCli, CommonOptions, InputOptions, OutputOptions};
+use super::{CgCli, CgCliImplDialog, CommonOptions, InputOptions, OutputOptions};
 
 use clap::Args;
 use std::fmt::{self, Display};
@@ -77,6 +77,8 @@ impl CgCli for FusionCli {
         &self.output_cli
     }
 }
+
+impl CgCliImplDialog for FusionCli {}
 
 #[cfg(test)]
 impl Default for FusionCli {

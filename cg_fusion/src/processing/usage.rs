@@ -1,6 +1,6 @@
 // functions to analyze use statements in src files
 
-use super::{ProcessingError, ProcessingResult, ProcessingImplBlocksState};
+use super::{ProcessingError, ProcessingImplBlocksState, ProcessingResult};
 use crate::{
     add_context,
     challenge_tree::PathElement,
@@ -17,7 +17,9 @@ use syn::{Ident, Item, Visibility};
 pub struct ProcessingUsageState;
 
 impl<O: CgCli> CgData<O, ProcessingUsageState> {
-    pub fn expand_use_statements(mut self) -> ProcessingResult<CgData<O, ProcessingImplBlocksState>> {
+    pub fn expand_use_statements(
+        mut self,
+    ) -> ProcessingResult<CgData<O, ProcessingImplBlocksState>> {
         let mut use_groups_and_globs: VecDeque<(NodeIndex, ItemName)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
@@ -76,10 +78,17 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 _ => unreachable!("Filtering for groups and globs"),
             }
         }
-        Ok(CgData { state: ProcessingImplBlocksState, options: self.options, tree: self.tree })
+        Ok(CgData {
+            state: ProcessingImplBlocksState,
+            options: self.options,
+            tree: self.tree,
+        })
     }
 
-    fn expand_use_group(&mut self, syn_use_group_index: NodeIndex) -> ProcessingResult<Vec<NodeIndex>> {
+    fn expand_use_group(
+        &mut self,
+        syn_use_group_index: NodeIndex,
+    ) -> ProcessingResult<Vec<NodeIndex>> {
         // get index of module of syn use item
         let module_index = self
             .get_syn_module_index(syn_use_group_index)

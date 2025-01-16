@@ -29,7 +29,9 @@ pub fn load_syntax(path: &Utf8PathBuf) -> ParsingResult<File> {
     };
     check_verbatim.visit_file(&syntax);
     if !check_verbatim.verbatim_tokens.is_empty() {
-        return Err(ParsingError::VerbatimError(check_verbatim.verbatim_tokens));
+        return Err(ParsingError::ContainsVerbatim(
+            check_verbatim.verbatim_tokens,
+        ));
     }
     // remove mod tests and macros without a name
     syntax.items.retain(|item| match item {
@@ -507,7 +509,10 @@ impl From<&TraitItem> for ItemName {
     }
 }
 
-// struct to collect syn::Path items as SourcePath
+// struct to collect
+// - syn::Path items as SourcePath
+// - ident of method calls from self
+// ToDo: try to extend to analyze local items
 
 pub struct ChallengeCollector {
     pub paths: Vec<SourcePath>,

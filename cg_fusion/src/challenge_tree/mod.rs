@@ -60,7 +60,7 @@ pub enum EdgeType {
     Crate,
     Syn,
     #[allow(dead_code)]
-    Usage,    // ToDo: check if really required
+    Usage, // ToDo: check if really required
     Implementation,
     RequiredByChallenge,
 }

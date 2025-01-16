@@ -1,6 +1,9 @@
 // error definitions for processing
 
-use crate::{challenge_tree::ChallengeTreeError, parsing::ParsingError, error::error_chain_fmt, metadata::MetadataError};
+use crate::{
+    challenge_tree::ChallengeTreeError, error::error_chain_fmt, metadata::MetadataError,
+    parsing::ParsingError,
+};
 
 pub type ProcessingResult<T> = Result<T, ProcessingError>;
 

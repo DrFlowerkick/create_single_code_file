@@ -1,18 +1,18 @@
 // central library
 
-pub mod processing;
 pub(crate) mod challenge_tree;
 pub mod configuration;
 pub mod error;
 pub(crate) mod metadata;
 pub(crate) mod parsing;
+pub mod processing;
 pub(crate) mod utilities;
 
-use processing::ProcessingDependenciesState;
 use challenge_tree::{ChallengeTree, LocalPackage, NodeType};
 use configuration::{CargoCli, FusionCli};
 use error::{CgError, CgResult};
 use metadata::MetadataError;
+use processing::ProcessingDependenciesState;
 
 use petgraph::stable_graph::StableDiGraph;
 

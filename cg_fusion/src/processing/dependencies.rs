@@ -14,7 +14,9 @@ use petgraph::graph::NodeIndex;
 pub struct ProcessingDependenciesState;
 
 impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
-    pub fn add_challenge_dependencies(mut self) -> ProcessingResult<CgData<O, ProcessingSrcFilesState>> {
+    pub fn add_challenge_dependencies(
+        mut self,
+    ) -> ProcessingResult<CgData<O, ProcessingSrcFilesState>> {
         // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = self
             .challenge_package()
@@ -125,9 +127,9 @@ impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
                             }
                         }
                     } else {
-                        return Err(ProcessingError::CodingameUnsupportedDependencyOfLocalLibrary(
-                            dep_name,
-                        ));
+                        return Err(
+                            ProcessingError::CodingameUnsupportedDependencyOfLocalLibrary(dep_name),
+                        );
                     }
                 }
             }

@@ -269,11 +269,13 @@ impl SourcePathWalker {
                         }
                         NodeType::SynItem(_) => {
                             self.current_node_index = item_index;
-                            if is_last && rename.is_some() {
-                                return Some(PathElement::ItemRenamed(
-                                    self.current_node_index,
-                                    rename.unwrap().to_owned(),
-                                ));
+                            if is_last {
+                                if let Some(renamed) = rename {
+                                    return Some(PathElement::ItemRenamed(
+                                        self.current_node_index,
+                                        renamed.to_owned(),
+                                    ));
+                                }
                             }
                             return Some(PathElement::Item(self.current_node_index));
                         }
@@ -325,8 +327,10 @@ mod tests {
     fn test_source_path_walker() {
         // preparation
         let cg_data = setup_processing_test()
-        .add_challenge_dependencies().unwrap()
-        .add_src_files().unwrap();
+            .add_challenge_dependencies()
+            .unwrap()
+            .add_src_files()
+            .unwrap();
 
         // test case 1: test use statements of challenge
         let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();

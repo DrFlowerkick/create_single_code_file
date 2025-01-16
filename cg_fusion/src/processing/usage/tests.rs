@@ -9,7 +9,6 @@ use crate::parsing::{ItemName, PathAnalysis, SourcePath};
 use super::super::tests::setup_processing_test;
 use super::*;
 
-
 fn contains_use_group(item: &Item) -> bool {
     if let Item::Use(item_use) = item {
         let mut tree = &item_use.tree;
@@ -39,8 +38,10 @@ fn is_use_glob(item: &Item) -> Option<&UseTree> {
 fn test_expand_use_group() {
     // preparation
     let mut cg_data = setup_processing_test()
-    .add_challenge_dependencies().unwrap()
-    .add_src_files().unwrap();
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap();
 
     // number of use statements before expansion in challenge bin crate
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();
@@ -124,8 +125,10 @@ fn test_expand_use_group() {
 fn test_get_path_leaf() {
     // preparation
     let mut cg_data = setup_processing_test()
-    .add_challenge_dependencies().unwrap()
-    .add_src_files().unwrap();
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap();
 
     // get use entries from cg_fusion_lib_test
     let (cg_fusion_lib_test_index, _) = cg_data
@@ -374,8 +377,10 @@ fn test_get_path_leaf() {
 fn test_is_visible_for_module() {
     // preparation
     let cg_data = setup_processing_test()
-    .add_challenge_dependencies().unwrap()
-    .add_src_files().unwrap();
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap();
 
     // get module index of my_compass and my_map_point
     let (my_map_two_dim_mod_index, _) = cg_data
@@ -534,8 +539,10 @@ fn test_is_visible_for_module() {
 fn test_expand_use_glob() {
     // preparation
     let mut cg_data = setup_processing_test()
-    .add_challenge_dependencies().unwrap()
-    .add_src_files().unwrap();
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap();
 
     // get module index of cg_fusion_binary_test and action
     let (cg_fusion_binary_test_mod_index, _) = cg_data
@@ -718,10 +725,13 @@ fn test_expand_use_glob() {
 fn test_expand_use_statements() {
     // preparation
     let cg_data = setup_processing_test()
-    .add_challenge_dependencies().unwrap()
-    .add_src_files().unwrap()
-    // action to test
-    .expand_use_statements().unwrap();
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap()
+        // action to test
+        .expand_use_statements()
+        .unwrap();
 
     // assert use statements after expansion of globs in challenge bin crate
     let (challenge_bin_crate_index, _) = cg_data.get_challenge_bin_crate().unwrap();

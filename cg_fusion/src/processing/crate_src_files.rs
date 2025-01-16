@@ -1,6 +1,6 @@
 // functions to to add src files of bin and lib crates to tree
 
-use super::{ProcessingUsageState, ProcessingResult};
+use super::{ProcessingResult, ProcessingUsageState};
 use crate::{add_context, configuration::CgCli, parsing::load_syntax, CgData};
 use anyhow::Context;
 use petgraph::graph::NodeIndex;
@@ -11,7 +11,11 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
     pub fn add_src_files(mut self) -> ProcessingResult<CgData<O, ProcessingUsageState>> {
         self.add_bin_src_files_of_challenge()?;
         self.add_lib_src_files()?;
-        Ok(CgData { state: ProcessingUsageState, options: self.options, tree: self.tree })
+        Ok(CgData {
+            state: ProcessingUsageState,
+            options: self.options,
+            tree: self.tree,
+        })
     }
 
     fn add_bin_src_files_of_challenge(&mut self) -> ProcessingResult<()> {

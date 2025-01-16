@@ -11,7 +11,7 @@ pub enum ParsingError {
     #[error("Something went wrong with parsing file content.")]
     ParsingFileContentError(#[from] syn::parse::Error),
     #[error("Parsed file contains verbatim elements:\n{0}")]
-    VerbatimError(String),
+    ContainsVerbatim(String),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

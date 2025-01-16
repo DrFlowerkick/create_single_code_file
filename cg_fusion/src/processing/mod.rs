@@ -3,27 +3,31 @@
 mod crate_src_files;
 mod dependencies;
 mod error;
+mod impl_item_dialog;
 mod impl_linking;
 mod required_by_challenge;
 mod usage;
 
-pub use error::{ProcessingError, ProcessingResult};
-pub use dependencies::ProcessingDependenciesState;
 pub use crate_src_files::ProcessingSrcFilesState;
-pub use usage::ProcessingUsageState;
+pub use dependencies::ProcessingDependenciesState;
+pub use error::{ProcessingError, ProcessingResult};
+pub use impl_item_dialog::ProcessingImplItemDialogState;
 pub use impl_linking::ProcessingImplBlocksState;
 pub use required_by_challenge::ProcessingRequiredByChallengeState;
+pub use usage::ProcessingUsageState;
 
 // final state of last processing step: maybe we do not need this, we just consume cg_data and that's it.
 pub struct ProcessedState;
-
 
 #[cfg(test)]
 pub mod tests {
 
     use super::*;
 
-    use crate::{configuration::{CargoCli, FusionCli}, CgDataBuilder, CgMode, CgData};
+    use crate::{
+        configuration::{CargoCli, FusionCli},
+        CgData, CgDataBuilder, CgMode,
+    };
 
     pub fn setup_processing_test() -> CgData<FusionCli, ProcessingDependenciesState> {
         let mut fusion_options = FusionCli::default();
