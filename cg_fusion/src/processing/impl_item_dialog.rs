@@ -22,6 +22,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             .iter_items_required_by_challenge()
             .map(|(n, _)| n)
             .collect();
+        let impl_options = self.map_impl_config_options_to_node_indices()?;
         while let Some(dialog_item) =
             self.find_impl_item_without_required_link_in_required_impl_block(&seen_dialog_items)
         {
@@ -70,6 +71,8 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         &self,
         seen_dialog_items: &HashSet<NodeIndex>,
     ) -> Option<NodeIndex> {
-        None
+        self.iter_impl_items_without_required_link_in_required_impl_block()
+            .filter_map(|(n, _)| (!seen_dialog_items.contains(&n)).then_some(n))
+            .next()
     }
 }

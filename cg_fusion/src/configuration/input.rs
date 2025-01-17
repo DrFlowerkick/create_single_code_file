@@ -60,15 +60,15 @@ pub struct InputOptions {
     ///        required by challenge.
     /// If not set (shown as None), this option is ignored.
     ///
-    /// If in conflict with other impl options, the 'include' option always wins.
+    /// If in conflict with other impl options, the option which 'include' the impl item always wins.
     #[arg(short = 'r', long, help = "Either include or exclude all impl items.")]
     pub process_all_impl_items: Option<bool>,
 
     /// Select specific impl items of specific user defined types to include in challenge.
-    /// naming convention:
-    /// optional_crate_name::optional_module_name_i::user_defined_type_name::impl_item_name
-    /// Crate and module names are only required, if the name of the user defined type is
-    /// ambiguous.
+    /// If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
+    /// information to the name as is required to make the name unique including the name of
+    /// the user defined type:
+    /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
     ///
     /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(
@@ -79,10 +79,10 @@ pub struct InputOptions {
     pub include_impl_item: Vec<String>,
 
     /// Select specific impl items of specific user defined types to exclude from challenge.
-    /// naming convention:
-    /// optional_crate_name::optional_module_name_i::user_defined_type_name::impl_item_name
-    /// Crate and module names are only required, if the name of the user defined type is
-    /// ambiguous.
+    /// If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
+    /// information to the name as is required to make the name unique including the name of
+    /// the user defined type:
+    /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
     ///
     /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(
@@ -99,10 +99,10 @@ pub struct InputOptions {
     /// include_impl_items = [include_item_1, include_item_2]
     /// exclude_impl_items = [exclude_item_1, exclude_item_2]
     ///
-    /// naming convention of items:
-    /// optional_crate_name::optional_module_name_i::user_defined_type_name::impl_item_name
-    /// Crate and module names are only required, if the name of the user defined type is
-    /// ambiguous.
+    /// If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
+    /// information to the name as is required to make the name unique including the name of
+    /// the user defined type:
+    /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
     ///
     /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(

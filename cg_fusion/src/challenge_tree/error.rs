@@ -9,8 +9,12 @@ pub type TreeResult<T> = Result<T, ChallengeTreeError>;
 pub enum ChallengeTreeError {
     #[error("Something went wrong with using Metadata of challenge crate.")]
     MetadataError(#[from] MetadataError),
+    #[error("Something went wrong with reading file content.")]
+    ReadFromFileError(#[from] std::io::Error),
     #[error("Something went wrong with parsing a source file.")]
     ParsingError(#[from] ParsingError),
+    #[error("Something went wrong with reading file content.")]
+    SerdeConvertError(#[from] toml::de::Error),
     #[error("Tree node does not contain index '{:?}'.", .0)]
     IndexError(NodeIndex),
     #[error("Tree node does not contain local package at index '{:?}'.", .0)]
@@ -21,6 +25,15 @@ pub enum ChallengeTreeError {
     NotLibraryCrate(NodeIndex),
     #[error("Tree node does not contain crate or syn items at index '{:?}'.", .0)]
     NotCrateOrSyn(NodeIndex),
+    #[error("Configured impl item '{0}' of input option does not exist.")]
+    NotExistingImplItemOfConfig(String),
+    #[error("Configured impl item '{0}' is not unique. Add more path information (see --help).")]
+    NotUniqueImplItemOfConfig(String),
+    #[error(
+        "Configured impl item '{0}' is not unique. Either rename it or move \
+             impl blocks with duplicate impl items in separate modules."
+    )]
+    NotUniqueImplItemPossible(String),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

@@ -99,4 +99,10 @@ impl FusionCli {
     pub fn set_manifest_path(&mut self, path: PathBuf) {
         self.common_cli.manifest.manifest_path = Some(path);
     }
+    pub fn set_impl_include(&mut self, impl_items: Vec<String>) {
+        self.input_cli.include_impl_item = impl_items;
+    }
+    pub fn set_impl_exclude(&mut self, impl_items: Vec<String>) {
+        self.input_cli.exclude_impl_item = impl_items;
+    }
 }

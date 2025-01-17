@@ -2,6 +2,8 @@
 
 mod error;
 mod expand;
+mod iterators;
+mod map_impl_options;
 mod navigate;
 mod walkers;
 
