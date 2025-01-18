@@ -70,6 +70,9 @@ pub struct InputOptions {
     /// the user defined type:
     /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
     ///
+    /// Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
+    /// given. E.g. 'user_defined_type_name::*' will include all impl items of 'user_defined_type_name'.
+    ///
     /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(
         short = 'j',
@@ -84,6 +87,9 @@ pub struct InputOptions {
     /// the user defined type:
     /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
     ///
+    /// Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
+    /// given. E.g. 'user_defined_type_name::*' will exclude all impl items of 'user_defined_type_name'.
+    ///
     /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(
         short = 'x',
@@ -95,7 +101,6 @@ pub struct InputOptions {
     /// Path of config file in TOML format to configure included or excluded impl items of
     /// specific user defined types in respectively from challenge.
     /// file structure:
-    /// [impl_item]
     /// include_impl_items = [include_item_1, include_item_2]
     /// exclude_impl_items = [exclude_item_1, exclude_item_2]
     ///
@@ -103,6 +108,10 @@ pub struct InputOptions {
     /// information to the name as is required to make the name unique including the name of
     /// the user defined type:
     /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
+    ///
+    /// Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
+    /// given. E.g. 'user_defined_type_name::*' will include or exclude all impl items of
+    /// 'user_defined_type_name'.
     ///
     /// If in conflict with other impl options, the 'include' option always wins.
     #[arg(

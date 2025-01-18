@@ -105,4 +105,7 @@ impl FusionCli {
     pub fn set_impl_exclude(&mut self, impl_items: Vec<String>) {
         self.input_cli.exclude_impl_item = impl_items;
     }
+    pub fn set_impl_item_toml(&mut self, impl_item_toml_path: PathBuf) {
+        self.input_cli.impl_item_toml = Some(impl_item_toml_path);
+    }
 }
