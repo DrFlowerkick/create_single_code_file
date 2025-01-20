@@ -1,6 +1,6 @@
 // functions to expand the challenge tree
 use super::{
-    ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType, PathElement, SourcePathWalker,
+    ChallengeTreeError, SrcFile, EdgeType, LocalPackage, NodeType, PathElement, SourcePathWalker,
     TreeResult,
 };
 use crate::{
@@ -98,9 +98,10 @@ impl<O: CgCli, S> CgData<O, S> {
         // get syntax of src file
         let syntax = load_syntax(&code)?;
         // generate node value
-        let crate_file = CrateFile {
+        let crate_file = SrcFile {
             name,
             path: path.to_owned(),
+            code,
             shebang: syntax.shebang,
             attrs: syntax.attrs,
         };
@@ -135,9 +136,10 @@ impl<O: CgCli, S> CgData<O, S> {
             // get syntax of src file
             let syntax = load_syntax(&code)?;
             // generate node value
-            let crate_file = CrateFile {
+            let crate_file = SrcFile {
                 name: target.name.to_owned(),
                 path: target.src_path.to_owned(),
+                code,
                 shebang: syntax.shebang,
                 attrs: syntax.attrs,
             };
@@ -243,15 +245,34 @@ impl<O: CgCli, S> CgData<O, S> {
                         Err(anyhow!(add_context!("Unexpected module file path error.")))?;
                     }
                 }
+                // add src file of module to tree
                 if self.options.verbose() {
                     println!(
-                        "Adding '{}' at path '{}' to tree.",
+                        "Adding module src file '{}' at path '{}' to tree.",
                         self.get_verbose_name_of_tree_node(item_mod_index)?,
-                        path
+                        path,
                     );
                 }
                 // get syntax of src file
-                let mod_syntax = load_syntax(&path)?;
+                let code = fs::read_to_string(&path)?;
+                let mod_syntax = load_syntax(&code)?;
+                let src_file = SrcFile {
+                    name: item_mod.ident.to_string(),
+                    path,
+                    code,
+                    shebang: mod_syntax.shebang.to_owned(),
+                    attrs: mod_syntax.attrs.to_owned(),
+                };
+                let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
+                self.tree.add_edge(item_mod_index, mod_node_index, EdgeType::Module);
+                
+                // add items of module src file to tree
+                if self.options.verbose() {
+                    println!(
+                        "Adding '{}' as internal module to tree.",
+                        self.get_verbose_name_of_tree_node(item_mod_index)?,
+                    );
+                }
                 for content_item in mod_syntax.items.iter() {
                     self.add_syn_item(content_item, &mod_dir, item_mod_index)?;
                 }

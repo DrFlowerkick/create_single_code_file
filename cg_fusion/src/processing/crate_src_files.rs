@@ -33,7 +33,7 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
             ))?
             .to_path_buf();
         // add syn items of bin crate to tree
-        let syntax = load_syntax(&binary_crate.path)?;
+        let syntax = load_syntax(&binary_crate.code)?;
         for item in syntax.items.to_owned().iter() {
             self.add_syn_item(item, &crate_dir, bin_crate_index)?;
         }
@@ -55,7 +55,7 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
                     ))?
                     .to_path_buf();
                 // add syn items of lib crate to tree
-                let syntax = load_syntax(&library_crate.path)?;
+                let syntax = load_syntax(&library_crate.code)?;
                 for item in syntax.items.to_owned().iter() {
                     self.add_syn_item(item, &crate_dir, lib_crate_index)?;
                 }

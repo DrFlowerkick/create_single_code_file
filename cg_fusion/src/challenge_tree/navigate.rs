@@ -2,7 +2,7 @@
 
 use super::{
     walkers::{PathElement, SourcePathWalker},
-    ChallengeTreeError, CrateFile, EdgeType, LocalPackage, NodeType, TreeResult,
+    ChallengeTreeError, SrcFile, EdgeType, LocalPackage, NodeType, TreeResult,
 };
 use crate::{
     add_context,
@@ -35,32 +35,32 @@ impl<O, S> CgData<O, S> {
         }
     }
 
-    pub(crate) fn get_binary_crate(&self, node: NodeIndex) -> TreeResult<&CrateFile> {
-        if let NodeType::BinCrate(crate_file) = self
+    pub(crate) fn get_binary_crate(&self, node: NodeIndex) -> TreeResult<&SrcFile> {
+        if let NodeType::BinCrate(src_file) = self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
         {
-            Ok(crate_file)
+            Ok(src_file)
         } else {
             Err(ChallengeTreeError::NotBinaryCrate(node))
         }
     }
 
-    pub(crate) fn get_library_crate(&self, node: NodeIndex) -> TreeResult<&CrateFile> {
-        if let NodeType::LibCrate(crate_file) = self
+    pub(crate) fn get_library_crate(&self, node: NodeIndex) -> TreeResult<&SrcFile> {
+        if let NodeType::LibCrate(src_file) = self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
         {
-            Ok(crate_file)
+            Ok(src_file)
         } else {
             Err(ChallengeTreeError::NotLibraryCrate(node))
         }
     }
 
     #[cfg(test)] // ToDo: check if we really need this
-    pub(crate) fn get_challenge_lib_crate(&self) -> Option<(NodeIndex, &CrateFile)> {
+    pub(crate) fn get_challenge_lib_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
         self.iter_package_crates(0.into())
             .filter_map(|(n, crate_type, cf)| if crate_type { Some((n, cf)) } else { None })
             .next()
@@ -112,8 +112,8 @@ impl<O, S> CgData<O, S> {
                     None
                 }
             }
-            NodeType::BinCrate(crate_file) | NodeType::LibCrate(crate_file) => {
-                Some(crate_file.name.to_owned())
+            NodeType::BinCrate(src_file) | NodeType::LibCrate(src_file) => {
+                Some(src_file.name.to_owned())
             }
             _ => None,
         })
@@ -149,8 +149,9 @@ impl<O, S> CgData<O, S> {
             NodeType::ExternalUnsupportedPackage(unsupported_package) => {
                 Ok(format!("{} (unsupported package)", unsupported_package))
             }
-            NodeType::BinCrate(crate_file) => Ok(format!("{} (binary crate)", crate_file.name)),
-            NodeType::LibCrate(crate_file) => Ok(format!("{} (library crate)", crate_file.name)),
+            NodeType::BinCrate(src_file) => Ok(format!("{} (binary crate)", src_file.name)),
+            NodeType::LibCrate(src_file) => Ok(format!("{} (library crate)", src_file.name)),
+            NodeType::Module(src_file) => Ok(format!("{} (module src file)", src_file.name)),
             NodeType::SynItem(item) => Ok(format!("{}", ItemName::from(item))),
             NodeType::SynImplItem(impl_item) => {
                 let syn_impl_item_index = self
@@ -279,7 +280,7 @@ impl<O: CgCli, S> CgData<O, S> {
         }
     }
 
-    pub(crate) fn get_challenge_bin_crate(&self) -> Option<(NodeIndex, &CrateFile)> {
+    pub(crate) fn get_challenge_bin_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
         let bin_name = self.get_challenge_bin_name();
         self.iter_package_crates(0.into())
             .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })

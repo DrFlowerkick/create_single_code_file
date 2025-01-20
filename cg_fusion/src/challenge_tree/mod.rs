@@ -22,8 +22,9 @@ pub enum NodeType {
     LocalPackage(LocalPackage),
     ExternalSupportedPackage(String),
     ExternalUnsupportedPackage(String),
-    BinCrate(CrateFile),
-    LibCrate(CrateFile),
+    BinCrate(SrcFile),
+    LibCrate(SrcFile),
+    Module(SrcFile),
     SynItem(Item),
     SynImplItem(ImplItem),
     SynTraitItem(TraitItem),
@@ -47,9 +48,10 @@ pub struct LocalPackage {
 }
 
 #[derive(Debug)]
-pub struct CrateFile {
+pub struct SrcFile {
     pub name: String,
     pub path: Utf8PathBuf,
+    pub code: String,
     #[allow(dead_code)]
     pub shebang: Option<String>, // ToDo: check if really required
     #[allow(dead_code)]
@@ -61,6 +63,7 @@ pub enum EdgeType {
     Dependency,
     Crate,
     Syn,
+    Module,
     #[allow(dead_code)]
     Usage, // ToDo: check if really required
     Implementation,

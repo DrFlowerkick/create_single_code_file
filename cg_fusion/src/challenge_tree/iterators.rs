@@ -1,6 +1,6 @@
 // iterator fn for the challenge tree
 
-use super::{BfsByEdgeType, CrateFile, EdgeType, LocalPackage, NodeType};
+use super::{BfsByEdgeType, SrcFile, EdgeType, LocalPackage, NodeType};
 use crate::CgData;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use syn::{ImplItem, Item, TraitItem};
@@ -58,7 +58,7 @@ impl<O, S> CgData<O, S> {
     pub(crate) fn iter_package_crates(
         &self,
         package_index: NodeIndex,
-    ) -> impl Iterator<Item = (NodeIndex, bool, &CrateFile)> {
+    ) -> impl Iterator<Item = (NodeIndex, bool, &SrcFile)> {
         BfsByEdgeType::new(&self.tree, package_index, EdgeType::Crate)
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
@@ -70,12 +70,12 @@ impl<O, S> CgData<O, S> {
             .fuse()
     }
 
-    pub(crate) fn iter_crates(&self) -> impl Iterator<Item = (NodeIndex, bool, &CrateFile)> {
+    pub(crate) fn iter_crates(&self) -> impl Iterator<Item = (NodeIndex, bool, &SrcFile)> {
         self.iter_local_packages()
             .flat_map(|(pi, _)| self.iter_package_crates(pi))
     }
 
-    pub(crate) fn iter_lib_crates(&self) -> impl Iterator<Item = (NodeIndex, &CrateFile)> {
+    pub(crate) fn iter_lib_crates(&self) -> impl Iterator<Item = (NodeIndex, &SrcFile)> {
         self.iter_local_packages().filter_map(|(n, _)| {
             self.iter_package_crates(n)
                 .filter_map(|(n, crate_type, cf)| if crate_type { Some((n, cf)) } else { None })
