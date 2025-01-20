@@ -5,21 +5,17 @@ pub use error::{ParsingError, ParsingResult};
 use syn::{Expr, TraitItem, UseName};
 
 use crate::add_context;
-use cargo_metadata::camino::Utf8PathBuf;
 use quote::ToTokens;
 use std::fmt::{Display, Write};
-use std::fs;
 use syn::{
     fold::Fold, visit::Visit, Attribute, ExprMethodCall, File, Ident, ImplItem, Item, ItemUse,
     Meta, Path, Type, UseTree, Visibility,
 };
 
 // load syntax from given file
-pub fn load_syntax(path: &Utf8PathBuf) -> ParsingResult<File> {
-    // load source code
-    let code = fs::read_to_string(path)?;
+pub fn load_syntax(code: &str) -> ParsingResult<File> {
     // Parse the source code into a syntax tree
-    let syntax: File = syn::parse_file(&code)?;
+    let syntax: File = syn::parse_file(code)?;
     // remove doc comments
     let mut remove_doc_comments = FoldRemoveAttrDocComments;
     let mut syntax = remove_doc_comments.fold_file(syntax);

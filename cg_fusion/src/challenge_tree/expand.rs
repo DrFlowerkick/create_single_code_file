@@ -15,6 +15,7 @@ use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::NodeIndex;
 use quote::ToTokens;
 use std::collections::HashSet;
+use std::fs;
 use syn::{token::Brace, visit::Visit, Item, ItemImpl, ItemMod, ItemTrait};
 
 impl<O: CgCli, S> CgData<O, S> {
@@ -92,8 +93,10 @@ impl<O: CgCli, S> CgData<O, S> {
             .src_path
             .to_owned();
 
+        // load source code
+        let code = fs::read_to_string(&path)?;
         // get syntax of src file
-        let syntax = load_syntax(&path)?;
+        let syntax = load_syntax(&code)?;
         // generate node value
         let crate_file = CrateFile {
             name,
@@ -127,8 +130,10 @@ impl<O: CgCli, S> CgData<O, S> {
             .metadata
             .get_library_target_of_root_package()?
         {
+            // load source code
+            let code = fs::read_to_string(&target.src_path)?;
             // get syntax of src file
-            let syntax = load_syntax(&target.src_path)?;
+            let syntax = load_syntax(&code)?;
             // generate node value
             let crate_file = CrateFile {
                 name: target.name.to_owned(),
