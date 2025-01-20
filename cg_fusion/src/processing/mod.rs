@@ -3,7 +3,7 @@
 mod crate_src_files;
 mod dependencies;
 mod error;
-mod impl_item_dialog;
+mod impl_block_check;
 mod impl_linking;
 mod required_by_challenge;
 mod usage;
@@ -11,7 +11,7 @@ mod usage;
 pub use crate_src_files::ProcessingSrcFilesState;
 pub use dependencies::ProcessingDependenciesState;
 pub use error::{ProcessingError, ProcessingResult};
-pub use impl_item_dialog::ProcessingImplItemDialogState;
+pub use impl_block_check::ProcessingImplItemDialogState;
 pub use impl_linking::ProcessingImplBlocksState;
 pub use required_by_challenge::ProcessingRequiredByChallengeState;
 pub use usage::ProcessingUsageState;
