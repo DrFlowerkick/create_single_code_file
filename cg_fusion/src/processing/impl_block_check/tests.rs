@@ -374,10 +374,66 @@ fn test_impl_item_dialog_show_item_and_include() {
 
     assert_eq!(test_result, true);
     let writer_content = String::from_utf8(mock.dialog.writer.into_inner()).unwrap();
-    dbg!(writer_content);
-    let impl_items_without_required_link: Vec<String> = cg_data
-        .iter_impl_items_without_required_link_in_required_impl_block()
-        .filter_map(|(n, _)| cg_data.get_verbose_name_of_tree_node(n).ok())
-        .collect();
-    dbg!(impl_items_without_required_link);
+    assert_eq!(
+        writer_content,
+        r#"
+C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\my_map_point.rs:61:5
+pub fn is_in_map(&self) -> bool {
+        self.x < X && self.y < Y
+    }
+
+"#)
+}
+
+#[test]
+fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
+    // preparation
+    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+
+    let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
+
+    // prepare mock for include
+    let mut mock = TestSelectionDialog::new();
+    mock.mock
+        .expect_select_option()
+        .times(1)
+        .with(eq(PROMPT), eq(""), eq(OPTIONS.to_owned()))
+        .return_once(|_, _, _| Ok(Some(OPTIONS[5].to_owned())));
+    mock.mock
+        .expect_select_option()
+        .times(1)
+        .with(eq(PROMPT), eq(""), eq(OPTIONS.to_owned()))
+        .return_once(|_, _, _| Ok(Some(OPTIONS[1].to_owned())));
+
+    // assert
+    let test_result = cg_data
+        .impl_item_dialog(
+            is_in_map_index,
+            map_point_impl_block_index,
+            &mut mock,
+            &mut seen_impl_items,
+        )
+        .unwrap();
+
+    assert_eq!(test_result, false);
+    let writer_content = String::from_utf8(mock.dialog.writer.into_inner()).unwrap();
+    assert_eq!(
+        writer_content,
+        r#"
+C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\my_map_point.rs:24:20
+pub fn new(x: usize, y: usize) -> Self {
+        if X == 0 {
+            panic!("line {}, minimum size of dimension X is 1", line!());
+        }
+        if Y == 0 {
+            panic!("line {}, minimum size of dimension Y is 1", line!());
+        }
+        let result = MapPoint { x, y };
+        if !result.is_in_map() {
+            panic!("line {}, coordinates are out of range", line!());
+        }
+        result
+    }
+
+"#)
 }

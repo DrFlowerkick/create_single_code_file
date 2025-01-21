@@ -264,8 +264,9 @@ impl<O: CgCli, S> CgData<O, S> {
                     attrs: mod_syntax.attrs.to_owned(),
                 };
                 let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
+                // ToDo: should we add link from crate to module?
                 self.tree
-                    .add_edge(item_mod_index, mod_node_index, EdgeType::Module);
+                    .add_edge(mod_node_index, item_mod_index, EdgeType::Module);
 
                 // add items of module src file to tree
                 if self.options.verbose() {

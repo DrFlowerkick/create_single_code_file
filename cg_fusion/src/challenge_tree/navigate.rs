@@ -13,7 +13,8 @@ use crate::{
 
 use anyhow::{anyhow, Context};
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
-use syn::{visit::Visit, Ident, ImplItem, Item, UseTree};
+use proc_macro2::Span;
+use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, UseTree};
 
 impl<O, S> CgData<O, S> {
     pub(crate) fn challenge_package(&self) -> &LocalPackage {
@@ -289,8 +290,8 @@ impl<O, S> CgData<O, S> {
     pub(crate) fn get_possible_usage_of_impl_item_in_required_items(
         &self,
         node: NodeIndex,
-    ) -> Vec<(NodeIndex, Ident)> {
-        let mut possible_usage: Vec<(NodeIndex, Ident)> = Vec::new();
+    ) -> Vec<(NodeIndex, Span, Ident)> {
+        let mut possible_usage: Vec<(NodeIndex, Span, Ident)> = Vec::new();
         let item_name = match self.tree.node_weight(node) {
             Some(NodeType::SynImplItem(impl_item)) => {
                 if let Some(name) = ItemName::from(impl_item).get_ident_in_name_space() {
@@ -310,21 +311,47 @@ impl<O, S> CgData<O, S> {
                 | NodeType::SynItem(Item::Trait(_)) => None,
                 NodeType::SynItem(item) => {
                     ident_collector.visit_item(item);
-                    ident_collector.extract_collector().map(|c| (n, c))
+                    ident_collector.extract_collector().map(|c| (n, item.span(), c))
                 }
                 NodeType::SynImplItem(impl_item) => {
                     ident_collector.visit_impl_item(impl_item);
-                    ident_collector.extract_collector().map(|c| (n, c))
+                    ident_collector.extract_collector().map(|c| (n, impl_item.span(), c))
                 }
                 NodeType::SynTraitItem(trait_item) => {
                     ident_collector.visit_trait_item(trait_item);
-                    ident_collector.extract_collector().map(|c| (n, c))
+                    ident_collector.extract_collector().map(|c| (n, trait_item.span(), c))
                 }
                 _ => None,
             })
-            .flat_map(|(n, c)| c.into_iter().map(move |i| (n, i)))
+            .flat_map(|(n, s, c)| c.into_iter().map(move |i| (n, s, i)))
             .collect();
         possible_usage
+    }
+
+    pub(crate) fn get_src_file_containing_item(&self, node: NodeIndex) -> Option<&SrcFile> {
+        self.get_syn_module_index(node).and_then(|module_or_crate| {
+            match self.tree.node_weight(module_or_crate) {
+                Some(NodeType::BinCrate(src_file)) | Some(NodeType::LibCrate(src_file)) => {
+                    Some(src_file)
+                }
+                Some(NodeType::SynItem(Item::Mod(_))) => {
+                    if let Some(module_src_node) =
+                        self.get_parent_index_by_edge_type(module_or_crate, EdgeType::Module)
+                    {
+                        if let Some(NodeType::Module(src_file)) =
+                            self.tree.node_weight(module_src_node)
+                        {
+                            Some(src_file)
+                        } else {
+                            None
+                        }
+                    } else {
+                        self.get_src_file_containing_item(module_or_crate)
+                    }
+                }
+                _ => None,
+            }
+        })
     }
 }
 

@@ -9,13 +9,13 @@ use anyhow::Result as AnyResult;
 use inquire::{ui::RenderConfig, Select};
 use mockall::{automock, predicate::*};
 use petgraph::stable_graph::NodeIndex;
-use syn::spanned::Spanned;
 use std::collections::hash_map::Entry;
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Display,
-    io::Write,
+    fmt::{Display, Write},
+    io,
 };
+use syn::spanned::Spanned;
 
 pub struct ProcessingImplItemDialogState;
 
@@ -104,15 +104,55 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                     return Ok(false);
                 }
                 UserSelection::ShowItem => {
-                    let some_test_string: String = "Some test string".into();
-                    // ToDo: get span of item and get spanned content from src file, which contains item
+                    let mut message = String::new();
+                    // extracting source code span of dialog item
                     if let Some(impl_item) = self.get_syn_impl_item(dialog_item) {
-                        let impl_item_span = impl_item.span();
-
+                        if let Some(src_file) = self.get_src_file_containing_item(dialog_item) {
+                            let span = impl_item.span();
+                            if let Some(impl_item_source) = span.source_text() {
+                                writeln!(&mut message,
+                                    "\n{}:{}:{}\n{}\n",
+                                    src_file.path,
+                                    span.start().line,
+                                    span.start().column + 1,
+                                    impl_item_source,
+                                )?;
+                            }
+                        }
                     }
-                    selection_handler.write_output(some_test_string)?;
+                    if message.is_empty() {
+                        message = format!(
+                            "Something went wrong with extracting source code span of '{}'",
+                            self.get_verbose_name_of_tree_node(dialog_item)?
+                        );
+                    }
+                    selection_handler.write_output(message)?;
                 }
-                UserSelection::ShowUsageOfItem => unimplemented!(),
+                UserSelection::ShowUsageOfItem => {
+                    let mut message = String::new();
+                    // extracting source code span of dialog item
+                    for (node_index, src_span, ident) in self.get_possible_usage_of_impl_item_in_required_items(dialog_item).iter() {
+                        if let Some(src_file) = self.get_src_file_containing_item(*node_index) {
+                            let span = ident.span();
+                            if let Some(usage_of_impl_item_source) = src_span.source_text() {
+                                writeln!(&mut message,
+                                    "\n{}:{}:{}\n{}\n",
+                                    src_file.path,
+                                    span.start().line,
+                                    span.start().column + 1,
+                                    usage_of_impl_item_source,
+                                )?;
+                            }
+                        }
+                    }
+                    if message.is_empty() {
+                        message = format!(
+                            "Something went wrong with extracting source code span using '{}'",
+                            self.get_verbose_name_of_tree_node(dialog_item)?
+                        );
+                    }
+                    selection_handler.write_output(message)?;
+                },
                 UserSelection::Quit => return Err(ProcessingError::UserCanceledDialog),
             }
         }
@@ -187,13 +227,13 @@ trait SelectionDialog<S: Display + 'static, M: Display + 'static> {
     fn write_output(&mut self, message: M) -> AnyResult<()>;
 }
 
-struct SelectionCli<W: Write, S: Display + 'static, M: Display + 'static> {
+struct SelectionCli<W: io::Write, S: Display + 'static, M: Display + 'static> {
     writer: W,
     _select_display_type: std::marker::PhantomData<S>,
     _message_display_type: std::marker::PhantomData<M>,
 }
 
-impl<W: Write> SelectionCli<W, String, String> {
+impl<W: io::Write> SelectionCli<W, String, String> {
     fn new(writer: W) -> Self {
         Self {
             writer,
@@ -203,7 +243,7 @@ impl<W: Write> SelectionCli<W, String, String> {
     }
 }
 
-impl<S: Display + 'static, M: Display + 'static, W: Write> SelectionDialog<S, M>
+impl<S: Display + 'static, M: Display + 'static, W: io::Write> SelectionDialog<S, M>
     for SelectionCli<W, S, M>
 {
     fn select_option(&self, prompt: &str, help: &str, options: Vec<S>) -> AnyResult<Option<S>> {

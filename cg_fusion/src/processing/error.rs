@@ -13,6 +13,8 @@ pub enum ProcessingError {
     MetadataError(#[from] MetadataError),
     #[error("Something went wrong with parsing a source file.")]
     ParsingError(#[from] ParsingError),
+    #[error("Something went wrong with fmt.")]
+    FmtError(#[from] std::fmt::Error),
     #[error("Something went wrong with using the challenge tree.")]
     ChallengeTreeError(#[from] ChallengeTreeError),
     #[error("Codingame does not support '{0}'.")]
