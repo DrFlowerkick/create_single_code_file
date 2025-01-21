@@ -103,22 +103,22 @@ pub struct SourcePathWalker {
 }
 
 impl SourcePathWalker {
-    pub fn new<O, S>(
-        source_path: SourcePath,
-        graph: &CgData<O, S>,
-        path_item_index: NodeIndex,
-    ) -> Self {
-        let (current_node_index, walker_finished) =
-            if let Some(index) = graph.get_syn_module_index(path_item_index) {
-                (index, false)
-            } else {
-                (0.into(), true)
-            };
+    pub fn new(source_path: SourcePath, path_item_index: NodeIndex) -> Self {
         Self {
             source_path,
-            current_node_index,
+            current_node_index: path_item_index,
             current_index: 0,
-            walker_finished,
+            walker_finished: false,
+        }
+    }
+
+    fn set_current_node_to_module_of_it<O, S>(&mut self, graph: &CgData<O, S>) -> bool {
+        if let Some(crate_index) = graph.get_syn_module_index(self.current_node_index) {
+            self.current_node_index = crate_index;
+            false
+        } else {
+            self.walker_finished = true;
+            true
         }
     }
 
@@ -133,7 +133,9 @@ impl SourcePathWalker {
             }
             SourcePath::Glob(ref segments) => (segments, true, None),
             SourcePath::Name(ref segments) => (segments, false, None),
-            SourcePath::Rename(ref segments, ref renamed) => (segments, false, Some(renamed)),
+            SourcePath::Rename(ref segments, ref renamed) => {
+                (segments, false, Some(renamed.to_owned()))
+            }
         };
         if self.current_index == segments.len() {
             // if last segment of glob points toward reimported module, we now return the index of this module
@@ -141,12 +143,30 @@ impl SourcePathWalker {
             self.walker_finished = true;
             return Some(PathElement::Glob(self.current_node_index));
         }
-        let segment = &segments[self.current_index];
+        let segment = segments[self.current_index].to_owned();
         let is_first = self.current_index == 0;
         let is_last = self.current_index == segments.len() - 1;
         self.walker_finished = is_last && !glob;
         self.current_index += 1;
         match segment.to_string().as_str() {
+            "Self" => {
+                // referencing Self of impl fn or in trait fn
+                if graph.is_syn_impl_item(self.current_node_index) {
+                    if let Some(self_type_index) =
+                        graph.get_syn_impl_item_self_type_node(self.current_node_index)
+                    {
+                        self.current_node_index = self_type_index;
+                        return Some(PathElement::Item(self.current_node_index));
+                    }
+                    self.walker_finished = true;
+                    return Some(PathElement::PathCouldNotBeParsed);
+                } else {
+                    // In trait fn it is not possible to identify Self. This is only possible,
+                    // if trait is impl by a type
+                    self.walker_finished = true;
+                    return Some(PathElement::PathCouldNotBeParsed);
+                }
+            }
             "crate" => {
                 // module of current crate
                 self.current_node_index =
@@ -159,38 +179,47 @@ impl SourcePathWalker {
                 return Some(PathElement::Item(self.current_node_index));
             }
             "self" => {
-                // current module, do nothing
+                // set current node to module of item
+                if self.set_current_node_to_module_of_it(graph) {
+                    return Some(PathElement::PathCouldNotBeParsed);
+                };
                 return Some(PathElement::Item(self.current_node_index));
             }
             "super" => {
                 // super module
-                self.current_node_index = if let Some(super_module_index) =
-                    graph.get_syn_module_index(self.current_node_index)
-                {
-                    super_module_index
-                } else {
-                    self.walker_finished = true;
+                if is_first {
+                    // if is first, set current node to module of item
+                    if self.set_current_node_to_module_of_it(graph) {
+                        return Some(PathElement::PathCouldNotBeParsed);
+                    };
+                }
+                // get module of current node
+                if self.set_current_node_to_module_of_it(graph) {
                     return Some(PathElement::PathCouldNotBeParsed);
                 };
                 return Some(PathElement::Item(self.current_node_index));
             }
             _ => {
                 if is_first {
+                    // check if path starts with external dependency
                     if graph
                         .iter_external_dependencies()
                         .any(|dep_name| segment == dep_name)
                     {
-                        // module points to external or local package dependency
                         self.walker_finished = true;
                         return Some(PathElement::ExternalPackage);
                     }
+                    // check if path starts with local package dependency
                     if let Some((local_package_index, _)) =
-                        graph.iter_lib_crates().find(|(_, cf)| *segment == cf.name)
+                        graph.iter_lib_crates().find(|(_, cf)| segment == cf.name)
                     {
-                        // module points to local package
                         self.current_node_index = local_package_index;
                         return Some(PathElement::Item(self.current_node_index));
                     }
+                    // if none of above set current node to module of item
+                    if self.set_current_node_to_module_of_it(graph) {
+                        return Some(PathElement::PathCouldNotBeParsed);
+                    };
                 }
                 // if node of current_node_index is a struct, enum, or union AND if
                 // one or more impl for this node exists, search items of these impl
@@ -211,7 +240,7 @@ impl SourcePathWalker {
                                     _ => None,
                                 })
                         })
-                        .find(|(_, _, id)| id == segment)
+                        .find(|(_, _, id)| *id == segment)
                 } else {
                     // iter all syn neighbors, which can although be trait items
                     graph
@@ -225,7 +254,7 @@ impl SourcePathWalker {
                                 .map(|id| (n, nt, id)),
                             _ => None,
                         })
-                        .find(|(_, _, id)| id == segment)
+                        .find(|(_, _, id)| *id == segment)
                 };
 
                 if let Some((item_index, node_type, _)) = next_item {
@@ -343,7 +372,7 @@ mod tests {
             .filter_map(|(n, i)| match i {
                 Item::Use(item_use) => {
                     let source_path = item_use.tree.extract_path();
-                    let walker = SourcePathWalker::new(source_path, &cg_data, *n);
+                    let walker = SourcePathWalker::new(source_path, *n);
                     walker.into_iter(&cg_data).last()
                 }
                 _ => unreachable!("use statement expected"),
@@ -406,7 +435,6 @@ mod tests {
             .0;
         let path_elements_of_use_glob_my_compass: Vec<PathElement> = SourcePathWalker::new(
             use_glob_tree_my_compass.extract_path(),
-            &cg_data,
             *use_glob_index_my_compass,
         )
         .into_iter(&cg_data)
@@ -447,7 +475,6 @@ mod tests {
             .unwrap();
         let path_elements_of_use_glob_my_map_two_dim: Vec<PathElement> = SourcePathWalker::new(
             use_glob_tree_my_map_two_dim.extract_path(),
-            &cg_data,
             *use_glob_index_my_map_two_dim,
         )
         .into_iter(&cg_data)

@@ -1,6 +1,6 @@
 // iterator fn for the challenge tree
 
-use super::{BfsByEdgeType, SrcFile, EdgeType, LocalPackage, NodeType};
+use super::{BfsByEdgeType, EdgeType, LocalPackage, NodeType, SrcFile};
 use crate::CgData;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use syn::{ImplItem, Item, TraitItem};
@@ -177,8 +177,12 @@ impl<O, S> CgData<O, S> {
                     .flatten()
             })
             .flat_map(|n| {
-                self.iter_syn_impl_item(n)
-                    .filter(|(n, _)| !self.is_required_by_challenge(*n))
+                self.iter_syn_impl_item(n).filter(|(n, _)| {
+                    !self.is_required_by_challenge(*n)
+                        && !self
+                            .get_possible_usage_of_impl_item_in_required_items(*n)
+                            .is_empty()
+                })
             })
     }
 }

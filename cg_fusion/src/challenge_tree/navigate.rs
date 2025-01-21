@@ -2,18 +2,18 @@
 
 use super::{
     walkers::{PathElement, SourcePathWalker},
-    ChallengeTreeError, SrcFile, EdgeType, LocalPackage, NodeType, TreeResult,
+    ChallengeTreeError, EdgeType, LocalPackage, NodeType, SrcFile, TreeResult,
 };
 use crate::{
     add_context,
     configuration::CgCli,
-    parsing::{ItemName, PathAnalysis},
+    parsing::{IdentCollector, ItemName, PathAnalysis},
     CgData,
 };
 
 use anyhow::{anyhow, Context};
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
-use syn::{Item, UseTree};
+use syn::{visit::Visit, Ident, ImplItem, Item, UseTree};
 
 impl<O, S> CgData<O, S> {
     pub(crate) fn challenge_package(&self) -> &LocalPackage {
@@ -92,6 +92,13 @@ impl<O, S> CgData<O, S> {
     pub(crate) fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {
         self.tree.node_weight(node).and_then(|w| match w {
             NodeType::SynItem(item) => Some(item),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn get_syn_impl_item(&self, node: NodeIndex) -> Option<&ImplItem> {
+        self.tree.node_weight(node).and_then(|w| match w {
+            NodeType::SynImplItem(impl_item) => Some(impl_item),
             _ => None,
         })
     }
@@ -222,6 +229,16 @@ impl<O, S> CgData<O, S> {
         false
     }
 
+    pub(crate) fn get_syn_impl_item_self_type_node(&self, node: NodeIndex) -> Option<NodeIndex> {
+        if !self.is_syn_impl_item(node) {
+            return None;
+        }
+        if let Some(impl_block_index) = self.get_parent_index_by_edge_type(node, EdgeType::Syn) {
+            return self.get_parent_index_by_edge_type(impl_block_index, EdgeType::Implementation);
+        }
+        None
+    }
+
     pub(crate) fn is_item_descendant_of_or_same_module(
         &self,
         item_index: NodeIndex,
@@ -252,7 +269,7 @@ impl<O, S> CgData<O, S> {
         path_item_index: NodeIndex,
         path: &impl PathAnalysis,
     ) -> TreeResult<PathElement> {
-        SourcePathWalker::new(path.extract_path(), self, path_item_index)
+        SourcePathWalker::new(path.extract_path(), path_item_index)
             .into_iter(self)
             .last()
             .context(add_context!("Expected path target."))
@@ -267,6 +284,47 @@ impl<O, S> CgData<O, S> {
             return self.get_path_leaf(index_of_use_item, &item_use.tree);
         }
         Err(anyhow!(add_context!("Expected syn use item")).into())
+    }
+
+    pub(crate) fn get_possible_usage_of_impl_item_in_required_items(
+        &self,
+        node: NodeIndex,
+    ) -> Vec<(NodeIndex, Ident)> {
+        let mut possible_usage: Vec<(NodeIndex, Ident)> = Vec::new();
+        let item_name = match self.tree.node_weight(node) {
+            Some(NodeType::SynImplItem(impl_item)) => {
+                if let Some(name) = ItemName::from(impl_item).get_ident_in_name_space() {
+                    name.to_string()
+                } else {
+                    return possible_usage;
+                }
+            }
+            _ => return possible_usage,
+        };
+        let mut ident_collector = IdentCollector::new(item_name);
+        possible_usage = self
+            .iter_items_required_by_challenge()
+            .filter_map(|(n, nt)| match nt {
+                NodeType::SynItem(Item::Impl(_))
+                | NodeType::SynItem(Item::Mod(_))
+                | NodeType::SynItem(Item::Trait(_)) => None,
+                NodeType::SynItem(item) => {
+                    ident_collector.visit_item(item);
+                    ident_collector.extract_collector().map(|c| (n, c))
+                }
+                NodeType::SynImplItem(impl_item) => {
+                    ident_collector.visit_impl_item(impl_item);
+                    ident_collector.extract_collector().map(|c| (n, c))
+                }
+                NodeType::SynTraitItem(trait_item) => {
+                    ident_collector.visit_trait_item(trait_item);
+                    ident_collector.extract_collector().map(|c| (n, c))
+                }
+                _ => None,
+            })
+            .flat_map(|(n, c)| c.into_iter().map(move |i| (n, i)))
+            .collect();
+        possible_usage
     }
 }
 

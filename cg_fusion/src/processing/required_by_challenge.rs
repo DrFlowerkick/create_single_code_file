@@ -79,6 +79,7 @@ mod tests {
     };
     use syn::visit::Visit;
 
+    // ToDo: this test is more for debugging and playing around. Delete it later.
     #[test]
     fn test_initial_challenge_linking() {
         // preparation
@@ -134,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn test_around_with_challenge_linking() {
+    fn test_link_required_by_challenge() {
         // preparation
         let cg_data = setup_processing_test()
             .add_challenge_dependencies()
@@ -203,6 +204,8 @@ mod tests {
                 "my_map_two_dim (library crate)",
                 "my_map_two_dim (library crate)::Default for MyMap2D (Impl)",
                 "my_map_two_dim (library crate)::Default for MyMap2D (Impl)::default (Impl Fn)",
+                "my_map_two_dim (library crate)::MyMap2D (Impl)",
+                "my_map_two_dim (library crate)::MyMap2D (Impl)::new (Impl Fn)",
                 "my_map_two_dim (library crate)::MyMap2D (Struct)",
                 "my_map_two_dim (library crate)::my_map_point (Mod)",
             ]

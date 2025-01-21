@@ -544,3 +544,31 @@ impl<'ast> Visit<'ast> for ChallengeCollector {
         syn::visit::visit_expr_method_call(self, expr_method_call);
     }
 }
+
+pub struct IdentCollector {
+    pub ident_name: String,
+    pub ident_collector: Vec<Ident>,
+}
+
+impl IdentCollector {
+    pub fn new(ident_name: String) -> Self {
+        Self {
+            ident_name,
+            ident_collector: Vec::new(),
+        }
+    }
+    pub fn extract_collector(&mut self) -> Option<Vec<Ident>> {
+        if self.ident_collector.is_empty() {
+            return None;
+        }
+        Some(std::mem::take(&mut self.ident_collector))
+    }
+}
+
+impl<'ast> Visit<'ast> for IdentCollector {
+    fn visit_ident(&mut self, ident: &'ast Ident) {
+        if *ident == self.ident_name {
+            self.ident_collector.push(ident.to_owned());
+        }
+    }
+}

@@ -1,6 +1,6 @@
 // functions to expand the challenge tree
 use super::{
-    ChallengeTreeError, SrcFile, EdgeType, LocalPackage, NodeType, PathElement, SourcePathWalker,
+    ChallengeTreeError, EdgeType, LocalPackage, NodeType, PathElement, SourcePathWalker, SrcFile,
     TreeResult,
 };
 use crate::{
@@ -264,8 +264,9 @@ impl<O: CgCli, S> CgData<O, S> {
                     attrs: mod_syntax.attrs.to_owned(),
                 };
                 let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
-                self.tree.add_edge(item_mod_index, mod_node_index, EdgeType::Module);
-                
+                self.tree
+                    .add_edge(item_mod_index, mod_node_index, EdgeType::Module);
+
                 // add items of module src file to tree
                 if self.options.verbose() {
                     println!(
@@ -447,8 +448,7 @@ impl<O: CgCli, S> CgData<O, S> {
             }
             // check collected path elements
             for path in challenge_collector.paths.iter() {
-                let mut path_walker =
-                    SourcePathWalker::new(path.extract_path(), self, item_to_check);
+                let mut path_walker = SourcePathWalker::new(path.extract_path(), item_to_check);
                 while let Some(path_element) = path_walker.next(self) {
                     match path_element {
                         PathElement::Glob(_) | PathElement::Group => unreachable!("syn::Path does not contain these elements and all use statements must be expanded."),

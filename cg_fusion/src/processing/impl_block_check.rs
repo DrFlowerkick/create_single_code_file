@@ -9,6 +9,7 @@ use anyhow::Result as AnyResult;
 use inquire::{ui::RenderConfig, Select};
 use mockall::{automock, predicate::*};
 use petgraph::stable_graph::NodeIndex;
+use syn::spanned::Spanned;
 use std::collections::hash_map::Entry;
 use std::{
     collections::{HashMap, HashSet},
@@ -104,8 +105,13 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 }
                 UserSelection::ShowItem => {
                     let some_test_string: String = "Some test string".into();
+                    // ToDo: get span of item and get spanned content from src file, which contains item
+                    if let Some(impl_item) = self.get_syn_impl_item(dialog_item) {
+                        let impl_item_span = impl_item.span();
+
+                    }
                     selection_handler.write_output(some_test_string)?;
-                },
+                }
                 UserSelection::ShowUsageOfItem => unimplemented!(),
                 UserSelection::Quit => return Err(ProcessingError::UserCanceledDialog),
             }
