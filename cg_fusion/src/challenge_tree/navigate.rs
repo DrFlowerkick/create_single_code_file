@@ -185,6 +185,13 @@ impl<O, S> CgData<O, S> {
         }
     }
 
+    pub(crate) fn is_crate(&self, node: NodeIndex) -> bool {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            return matches!(node_weight, NodeType::BinCrate(_) | NodeType::LibCrate(_));
+        }
+        false
+    }
+
     pub(crate) fn is_crate_or_module(&self, node: NodeIndex) -> bool {
         if let Some(node_weight) = self.tree.node_weight(node) {
             return matches!(
@@ -311,15 +318,21 @@ impl<O, S> CgData<O, S> {
                 | NodeType::SynItem(Item::Trait(_)) => None,
                 NodeType::SynItem(item) => {
                     ident_collector.visit_item(item);
-                    ident_collector.extract_collector().map(|c| (n, item.span(), c))
+                    ident_collector
+                        .extract_collector()
+                        .map(|c| (n, item.span(), c))
                 }
                 NodeType::SynImplItem(impl_item) => {
                     ident_collector.visit_impl_item(impl_item);
-                    ident_collector.extract_collector().map(|c| (n, impl_item.span(), c))
+                    ident_collector
+                        .extract_collector()
+                        .map(|c| (n, impl_item.span(), c))
                 }
                 NodeType::SynTraitItem(trait_item) => {
                     ident_collector.visit_trait_item(trait_item);
-                    ident_collector.extract_collector().map(|c| (n, trait_item.span(), c))
+                    ident_collector
+                        .extract_collector()
+                        .map(|c| (n, trait_item.span(), c))
                 }
                 _ => None,
             })

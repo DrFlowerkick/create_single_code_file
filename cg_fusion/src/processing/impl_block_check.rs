@@ -2,22 +2,51 @@
 // the impl item, a dialog prompts the user to decide, if the impl item should be
 // include in or exclude from the challenge.
 
+mod inquire_dialog;
+
 use super::{ProcessedState, ProcessingError, ProcessingResult};
-use crate::{add_context, challenge_tree::EdgeType, configuration::CgCliImplDialog, CgData};
-use anyhow::anyhow;
-use anyhow::Result as AnyResult;
-use inquire::{ui::RenderConfig, Select};
-use mockall::{automock, predicate::*};
+use crate::{
+    add_context,
+    challenge_tree::EdgeType,
+    configuration::CgCliImplDialog,
+    utilities::{clean_absolute_utf8, current_dir_utf8, get_relative_path},
+    CgData,
+};
+use anyhow::Context;
+use cargo_metadata::camino::Utf8PathBuf;
+use inquire_dialog::{CgDialog, DialogCli, UserSelection};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::hash_map::Entry;
 use std::{
     collections::{HashMap, HashSet},
-    fmt::{Display, Write},
-    io,
+    fmt::Write as FmtWrite,
+    fs,
+    io::Write,
 };
 use syn::spanned::Spanned;
+use toml_edit::{value, Array, DocumentMut};
 
 pub struct ProcessingImplItemDialogState;
+
+const IMPL_CONFIG_TOML_TEMPLATE: &str = r#"# impl config file in TOML format to configure included or excluded impl items of
+# specific user defined types in respectively from challenge.
+# file structure:
+# include_impl_items = [include_item_1, include_item_2]
+# exclude_impl_items = [exclude_item_1, exclude_item_2]
+#
+# If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
+# information to the name as is required to make the name unique including the name of
+# the user defined type:
+# path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
+#
+# Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
+# given. E.g. 'user_defined_type_name::*' will include or exclude all impl items of
+# 'user_defined_type_name'.
+#
+# If in conflict with other impl options, the 'include' option always wins.
+include_impl_items = []
+exclude_impl_items = []
+"#;
 
 impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
     pub fn check_impl_blocks_required_by_challenge(
@@ -29,6 +58,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             .map(|(n, _)| n)
             .collect();
         let impl_options = self.map_impl_config_options_to_node_indices()?;
+        let mut dialog_handler = DialogCli::new(std::io::stdout());
         while let Some(impl_item) = {
             let next_item_option = self
                 .iter_impl_items_without_required_link_in_required_impl_block()
@@ -52,11 +82,10 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 seen_impl_items.insert(impl_item, *include);
                 continue;
             }
-            let mut selection_handler = SelectionCli::new(std::io::stdout());
             let user_input = self.impl_item_dialog(
                 impl_item,
                 impl_block,
-                &mut selection_handler,
+                &mut dialog_handler,
                 &mut seen_impl_items,
             )?;
             if user_input {
@@ -64,6 +93,13 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 self.check_path_items_for_challenge(impl_item, &mut seen_check_items)?;
             }
             seen_impl_items.insert(impl_item, user_input);
+        }
+        if let Some((toml_path, toml_content)) =
+            self.impl_config_toml_dialog(&mut dialog_handler, &mut seen_impl_items)?
+        {
+            // ToDo: at the moment an existing config file is overwritten. Combine this with --force or a confirmation dialog
+            let mut file = fs::File::create(toml_path)?;
+            file.write_all(toml_content.as_bytes())?;
         }
         Ok(CgData {
             state: ProcessedState,
@@ -76,11 +112,11 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         &self,
         dialog_item: NodeIndex,
         impl_block: NodeIndex,
-        selection_handler: &mut impl SelectionDialog<String, String>,
+        dialog_handler: &mut impl CgDialog<String, String>,
         seen_impl_items: &mut HashMap<NodeIndex, bool>,
     ) -> ProcessingResult<bool> {
         loop {
-            match self.impl_item_selection(dialog_item, impl_block, selection_handler)? {
+            match self.impl_item_selection(dialog_item, impl_block, dialog_handler)? {
                 UserSelection::IncludeItem => return Ok(true),
                 UserSelection::ExcludeItem => return Ok(false),
                 UserSelection::IncludeAllItemsOfImplBlock => {
@@ -110,7 +146,8 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                         if let Some(src_file) = self.get_src_file_containing_item(dialog_item) {
                             let span = impl_item.span();
                             if let Some(impl_item_source) = span.source_text() {
-                                writeln!(&mut message,
+                                writeln!(
+                                    &mut message,
                                     "\n{}:{}:{}\n{}\n",
                                     src_file.path,
                                     span.start().line,
@@ -126,16 +163,20 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                             self.get_verbose_name_of_tree_node(dialog_item)?
                         );
                     }
-                    selection_handler.write_output(message)?;
+                    dialog_handler.write_output(message)?;
                 }
                 UserSelection::ShowUsageOfItem => {
                     let mut message = String::new();
                     // extracting source code span of dialog item
-                    for (node_index, src_span, ident) in self.get_possible_usage_of_impl_item_in_required_items(dialog_item).iter() {
+                    for (node_index, src_span, ident) in self
+                        .get_possible_usage_of_impl_item_in_required_items(dialog_item)
+                        .iter()
+                    {
                         if let Some(src_file) = self.get_src_file_containing_item(*node_index) {
                             let span = ident.span();
                             if let Some(usage_of_impl_item_source) = src_span.source_text() {
-                                writeln!(&mut message,
+                                writeln!(
+                                    &mut message,
                                     "\n{}:{}:{}\n{}\n",
                                     src_file.path,
                                     span.start().line,
@@ -151,8 +192,8 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                             self.get_verbose_name_of_tree_node(dialog_item)?
                         );
                     }
-                    selection_handler.write_output(message)?;
-                },
+                    dialog_handler.write_output(message)?;
+                }
                 UserSelection::Quit => return Err(ProcessingError::UserCanceledDialog),
             }
         }
@@ -162,7 +203,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         &self,
         dialog_item: NodeIndex,
         impl_block: NodeIndex,
-        selection_handler: &mut impl SelectionDialog<String, String>,
+        dialog_handler: &mut impl CgDialog<String, String>,
     ) -> ProcessingResult<UserSelection> {
         let dialog_item_name = self.get_verbose_name_of_tree_node(dialog_item)?;
         let impl_block_name = self.get_verbose_name_of_tree_node(impl_block)?;
@@ -178,84 +219,70 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             format!("Show code of '{}'.", dialog_item_name),
             format!("Show usage of '{}'.", dialog_item_name),
         ];
-        if let Some(selection) = selection_handler.select_option(&prompt, "", options.clone())? {
+        if let Some(selection) = dialog_handler.select_option(
+            &prompt,
+            "↑↓ to move, enter to select, type to filter, and esc to quit.",
+            options.clone(),
+        )? {
             let user_selection =
                 UserSelection::try_from(options.iter().position(|o| *o == selection))?;
             return Ok(user_selection);
         }
         Ok(UserSelection::Quit)
     }
-}
 
-#[derive(Debug, PartialEq, Eq)]
-enum UserSelection {
-    IncludeItem,
-    ExcludeItem,
-    IncludeAllItemsOfImplBlock,
-    ExcludeAllItemsOfImplBlock,
-    ShowItem,
-    ShowUsageOfItem,
-    Quit,
-}
-
-impl TryFrom<Option<usize>> for UserSelection {
-    type Error = anyhow::Error;
-
-    fn try_from(value: Option<usize>) -> Result<Self, Self::Error> {
-        if let Some(selection) = value {
-            match selection {
-                0 => Ok(UserSelection::IncludeItem),
-                1 => Ok(UserSelection::ExcludeItem),
-                2 => Ok(UserSelection::IncludeAllItemsOfImplBlock),
-                3 => Ok(UserSelection::ExcludeAllItemsOfImplBlock),
-                4 => Ok(UserSelection::ShowItem),
-                5 => Ok(UserSelection::ShowUsageOfItem),
-                _ => Err(anyhow!(
-                    "{}",
-                    add_context!("Expected selection in range of UserSelection.")
-                )),
-            }
+    fn impl_config_toml_dialog(
+        &self,
+        dialog_handler: &mut impl CgDialog<String, String>,
+        seen_impl_items: &HashMap<NodeIndex, bool>,
+    ) -> ProcessingResult<Option<(Utf8PathBuf, String)>> {
+        let toml_config_path = self.get_impl_config_toml_path()?;
+        let initial_value: String = if let Some(ref toml_path) = toml_config_path {
+            toml_path.as_str().into()
         } else {
-            Ok(UserSelection::Quit)
+            let default_cg_fusion_config_toml = self
+                .challenge_package()
+                .path
+                .join("./cg-fusion_config.toml");
+            let current_dir = current_dir_utf8()?;
+            let relative_path = get_relative_path(&current_dir, &default_cg_fusion_config_toml)?;
+            relative_path.as_str().into()
+        };
+        // convert relative path to posix path
+        let initial_value = initial_value.replace('\\', "/");
+        if let Some(file_path) = dialog_handler.text_file_path(
+            "Enter file path relative to crate dir to save impl config...",
+            "tab to autocomplete, non existing file path will be created, esc to skip saving.",
+            &initial_value,
+        )? {
+            // check if returning path is relative to challenge
+            self.verify_path_points_inside_challenge_dir(&file_path)?;
+            let full_file_path = clean_absolute_utf8(&file_path)?;
+            let dir_file_path = full_file_path
+                .parent()
+                .context(add_context!("Expected dir of impl config toml file."))?;
+            fs::create_dir_all(dir_file_path)?;
+            let toml_str = if let Some(ref toml_path) = toml_config_path {
+                fs::read_to_string(toml_path)?
+            } else {
+                IMPL_CONFIG_TOML_TEMPLATE.into()
+            };
+            let mut doc = toml_str.parse::<DocumentMut>()?;
+            let impl_config = self.map_node_indices_to_impl_config_options(seen_impl_items)?;
+            let mut include_impl_items = Array::new();
+            for include_impl_item in impl_config.include_impl_items.iter() {
+                include_impl_items.push(include_impl_item);
+            }
+            let mut exclude_impl_items = Array::new();
+            for exclude_impl_item in impl_config.exclude_impl_items.iter() {
+                exclude_impl_items.push(exclude_impl_item);
+            }
+            doc["include_impl_items"] = value(include_impl_items);
+            doc["exclude_impl_items"] = value(exclude_impl_items);
+
+            return Ok(Some((file_path, doc.to_string())));
         }
-    }
-}
-
-#[automock]
-trait SelectionDialog<S: Display + 'static, M: Display + 'static> {
-    fn select_option(&self, prompt: &str, help: &str, options: Vec<S>) -> AnyResult<Option<S>>;
-    fn write_output(&mut self, message: M) -> AnyResult<()>;
-}
-
-struct SelectionCli<W: io::Write, S: Display + 'static, M: Display + 'static> {
-    writer: W,
-    _select_display_type: std::marker::PhantomData<S>,
-    _message_display_type: std::marker::PhantomData<M>,
-}
-
-impl<W: io::Write> SelectionCli<W, String, String> {
-    fn new(writer: W) -> Self {
-        Self {
-            writer,
-            _select_display_type: std::marker::PhantomData,
-            _message_display_type: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<S: Display + 'static, M: Display + 'static, W: io::Write> SelectionDialog<S, M>
-    for SelectionCli<W, S, M>
-{
-    fn select_option(&self, prompt: &str, help: &str, options: Vec<S>) -> AnyResult<Option<S>> {
-        let selected_item = Select::new(prompt, options)
-            .with_render_config(RenderConfig::default_colored())
-            .with_help_message(help)
-            .prompt_skippable()?;
-        Ok(selected_item)
-    }
-    fn write_output(&mut self, message: M) -> AnyResult<()> {
-        write!(self.writer, "{}", message)?;
-        Ok(())
+        Ok(None)
     }
 }
 

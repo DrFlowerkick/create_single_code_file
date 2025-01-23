@@ -15,6 +15,10 @@ pub enum ProcessingError {
     ParsingError(#[from] ParsingError),
     #[error("Something went wrong with fmt.")]
     FmtError(#[from] std::fmt::Error),
+    #[error("Something went wrong with io.")]
+    IoError(#[from] std::io::Error),
+    #[error("Something went wrong with toml editing.")]
+    TomlError(#[from] toml_edit::TomlError),
     #[error("Something went wrong with using the challenge tree.")]
     ChallengeTreeError(#[from] ChallengeTreeError),
     #[error("Codingame does not support '{0}'.")]

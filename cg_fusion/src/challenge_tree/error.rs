@@ -1,6 +1,7 @@
 // error definitions for challenge tree
 
 use crate::{error::error_chain_fmt, metadata::MetadataError, parsing::ParsingError};
+use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::graph::NodeIndex;
 
 pub type TreeResult<T> = Result<T, ChallengeTreeError>;
@@ -15,6 +16,8 @@ pub enum ChallengeTreeError {
     ParsingError(#[from] ParsingError),
     #[error("Something went wrong with reading file content.")]
     SerdeConvertError(#[from] toml::de::Error),
+    #[error("Something went wrong converting PathBuf to Utf8PathBuf")]
+    FromPathBufError(#[from] cargo_metadata::camino::FromPathBufError),
     #[error("Tree node does not contain index '{:?}'.", .0)]
     IndexError(NodeIndex),
     #[error("Tree node does not contain local package at index '{:?}'.", .0)]
@@ -34,6 +37,8 @@ pub enum ChallengeTreeError {
              impl blocks with duplicate impl items in separate modules."
     )]
     NotUniqueImplItemPossible(String),
+    #[error("Path '{:?}' is not inside challenge dir.", .0)]
+    NotInsideChallengeDir(Utf8PathBuf),
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

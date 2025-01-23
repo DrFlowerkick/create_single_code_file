@@ -1,10 +1,16 @@
 // fn to map impl options from config to node indices of impl items
 
-use super::{ChallengeTreeError, TreeResult};
+use super::{ChallengeTreeError, EdgeType, TreeResult};
 
 use crate::parsing::ItemName;
-use crate::{add_context, configuration::CgCli, CgData};
-use anyhow::anyhow;
+use crate::{
+    add_context,
+    configuration::CgCli,
+    utilities::{current_dir_utf8, get_relative_path, is_inside_dir},
+    CgData,
+};
+use anyhow::{anyhow, Context};
+use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::NodeIndex;
 use serde::Deserialize;
 use std::collections::hash_map::Entry;
@@ -13,13 +19,13 @@ use std::fs;
 use syn::Item;
 
 #[derive(Debug, Deserialize, Default)]
-struct ImplOptions {
-    include_impl_items: Vec<String>,
-    exclude_impl_items: Vec<String>,
+pub(crate) struct ImplOptions {
+    pub include_impl_items: Vec<String>,
+    pub exclude_impl_items: Vec<String>,
 }
 
 #[derive(Debug)]
-enum NameParsingState {
+enum ParsingState {
     CheckForCrate,
     CheckForModule,
     NextModule,
@@ -27,7 +33,7 @@ enum NameParsingState {
     ImplItem,
 }
 
-impl NameParsingState {
+impl ParsingState {
     fn next_module_or_user_defined_type(
         &mut self,
         num_path_elements: usize,
@@ -35,8 +41,8 @@ impl NameParsingState {
     ) {
         assert!(num_path_elements > index_path_element);
         *self = match num_path_elements - index_path_element {
-            3.. => NameParsingState::NextModule,
-            2 => NameParsingState::UserDefinedType,
+            3.. => ParsingState::NextModule,
+            2 => ParsingState::UserDefinedType,
             ..=1 => panic!(
                 "{}",
                 add_context!("Expected num_path_elements to be >= index_path_element + 2")
@@ -51,13 +57,53 @@ enum ProcessOption {
     Exclude,
 }
 
+impl From<bool> for ProcessOption {
+    fn from(value: bool) -> Self {
+        if value {
+            ProcessOption::Include
+        } else {
+            ProcessOption::Exclude
+        }
+    }
+}
+
+impl From<&bool> for ProcessOption {
+    fn from(value: &bool) -> Self {
+        ProcessOption::from(*value)
+    }
+}
+
 impl<O: CgCli, S> CgData<O, S> {
+    pub(crate) fn get_impl_config_toml_path(&self) -> TreeResult<Option<Utf8PathBuf>> {
+        if let Some(ref toml_config_path) = self.options.input().impl_item_toml {
+            let toml_config_path = Utf8PathBuf::try_from(toml_config_path.to_owned())?;
+            self.verify_path_points_inside_challenge_dir(&toml_config_path)?;
+            let current_dir = current_dir_utf8()?;
+            let relative_toml_config_path = get_relative_path(&current_dir, &toml_config_path)?;
+            Ok(Some(relative_toml_config_path))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(crate) fn verify_path_points_inside_challenge_dir(
+        &self,
+        path: &Utf8PathBuf,
+    ) -> TreeResult<()> {
+        let challenge_dir = &self.challenge_package().path;
+        if !is_inside_dir(&challenge_dir, &path)? {
+            return Err(ChallengeTreeError::NotInsideChallengeDir(path.to_owned()));
+        }
+        Ok(())
+    }
+
     pub(crate) fn map_impl_config_options_to_node_indices(
         &self,
     ) -> TreeResult<HashMap<NodeIndex, bool>> {
-        let mut impl_options: HashMap<NodeIndex, bool> = HashMap::new();
+        let mut impl_options_map: HashMap<NodeIndex, bool> = HashMap::new();
         // load config file if existing
-        let impl_config = if let Some(ref toml_config_path) = self.options.input().impl_item_toml {
+        let impl_config = if let Some(toml_config_path) = self.get_impl_config_toml_path()? {
+            dbg!(&toml_config_path);
             let toml_string = fs::read_to_string(toml_config_path)?;
             let toml_options: ImplOptions = toml::from_str(&toml_string)?;
             toml_options
@@ -82,30 +128,132 @@ impl<O: CgCli, S> CgData<O, S> {
                     .map(|ii| (ii, ProcessOption::Exclude)),
             )
         {
-            self.collect_impl_config_option_indices(impl_item, process_option, &mut impl_options)?;
+            for impl_item_index in self.collect_impl_config_option_indices(impl_item)? {
+                self.process_impl_item_index(
+                    impl_item_index,
+                    &process_option,
+                    &mut impl_options_map,
+                )?;
+            }
         }
-        Ok(impl_options)
+        Ok(impl_options_map)
     }
 
-    fn collect_impl_config_option_indices(
+    pub(crate) fn map_node_indices_to_impl_config_options(
         &self,
-        impl_item: &str,
-        process_option: ProcessOption,
-        impl_options: &mut HashMap<NodeIndex, bool>,
-    ) -> TreeResult<()> {
+        impl_options_map: &HashMap<NodeIndex, bool>,
+    ) -> TreeResult<ImplOptions> {
+        let mut include_impl_items: Vec<String> = Vec::new();
+        let mut exclude_impl_items: Vec<String> = Vec::new();
+        for (item_index, process_option) in impl_options_map
+            .iter()
+            .map(|(k, v)| (k, ProcessOption::from(v)))
+        {
+            let mut current_index = item_index.to_owned();
+            let mut item_path = String::new();
+            let mut path_parsing_mode = ParsingState::ImplItem;
+            loop {
+                match path_parsing_mode {
+                    ParsingState::ImplItem => {
+                        item_path = if let Some(impl_item) = self.get_syn_impl_item(current_index) {
+                            ItemName::from(impl_item)
+                                .get_ident_in_name_space()
+                                .context(add_context!("Expected impl item ident in name space"))?
+                                .to_string()
+                        } else {
+                            return Err(anyhow!("{}", add_context!("Expected impl item")).into());
+                        };
+                        match self.collect_impl_config_option_indices(&item_path) {
+                            Ok(_) => break,
+                            Err(_) => {
+                                current_index = self
+                                    .get_parent_index_by_edge_type(current_index, EdgeType::Syn)
+                                    .context(add_context!("Expected node of impl block."))?;
+                                path_parsing_mode = ParsingState::UserDefinedType;
+                            }
+                        }
+                    }
+                    ParsingState::UserDefinedType => {
+                        let type_node = self
+                            .get_parent_index_by_edge_type(current_index, EdgeType::Implementation)
+                            .context(add_context!(
+                                "Expected node of user defined type referenced by impl block."
+                            ))?;
+                        let type_name = if let Some(item) = self.get_syn_item(type_node) {
+                            ItemName::from(item)
+                                .get_ident_in_name_space()
+                                .context(add_context!("Expected item ident in name space"))?
+                                .to_string()
+                        } else {
+                            return Err(anyhow!(
+                                "{}",
+                                add_context!("Expected user defined type item")
+                            )
+                            .into());
+                        };
+                        item_path = format!("{}::{}", type_name, item_path);
+                        match self.collect_impl_config_option_indices(&item_path) {
+                            Ok(_) => break,
+                            Err(_) => {
+                                current_index = self.get_syn_module_index(current_index).context(
+                                    add_context!(
+                                        "Expected crate or module node containing impl block."
+                                    ),
+                                )?;
+                                path_parsing_mode = ParsingState::NextModule;
+                            }
+                        }
+                    }
+                    ParsingState::NextModule => {
+                        let module_or_crate_name = self
+                            .get_name_of_crate_or_module(current_index)
+                            .context(add_context!("Expected name of crate or module."))?;
+                        item_path = format!("{}::{}", module_or_crate_name, item_path);
+                        match self.collect_impl_config_option_indices(&item_path) {
+                            Ok(_) => break,
+                            Err(err) => {
+                                if self.is_crate(current_index) {
+                                    return Err(err);
+                                }
+                                current_index = self
+                                    .get_syn_module_index(current_index)
+                                    .context(add_context!("Expected crate or module node."))?;
+                                path_parsing_mode = ParsingState::NextModule;
+                            }
+                        }
+                    }
+                    ParsingState::CheckForCrate | ParsingState::CheckForModule => {
+                        unreachable!("Unused states")
+                    }
+                }
+            }
+            match process_option {
+                ProcessOption::Include => include_impl_items.push(item_path),
+                ProcessOption::Exclude => exclude_impl_items.push(item_path),
+            }
+        }
+        include_impl_items.sort();
+        exclude_impl_items.sort();
+        Ok(ImplOptions {
+            include_impl_items,
+            exclude_impl_items,
+        })
+    }
+
+    fn collect_impl_config_option_indices(&self, impl_item: &str) -> TreeResult<Vec<NodeIndex>> {
         let impl_item_path_elements: Vec<&str> = impl_item.split("::").collect();
         let mut name_parsing_mode = match impl_item_path_elements.len() {
             0 => Err(anyhow!(add_context!("Expected name of impl item.")))?,
-            1 => NameParsingState::ImplItem,
-            2 => NameParsingState::UserDefinedType,
-            3.. => NameParsingState::CheckForCrate,
+            1 => ParsingState::ImplItem,
+            2 => ParsingState::UserDefinedType,
+            3.. => ParsingState::CheckForCrate,
         };
         let mut current_node_index: Option<NodeIndex> = None;
         let mut index_path_element = 0;
         loop {
             if let Some(&path_element) = impl_item_path_elements.get(index_path_element) {
                 match name_parsing_mode {
-                    NameParsingState::CheckForCrate => {
+                    ParsingState::CheckForCrate => {
                         if let Some((crate_index, _, _)) = self
                             .iter_crates()
                             .find(|(_, _, cf)| cf.name == *path_element)
@@ -117,10 +265,10 @@ impl<O: CgCli, S> CgData<O, S> {
                                 index_path_element,
                             );
                         } else {
-                            name_parsing_mode = NameParsingState::CheckForModule;
+                            name_parsing_mode = ParsingState::CheckForModule;
                         }
                     }
-                    NameParsingState::CheckForModule => {
+                    ParsingState::CheckForModule => {
                         let modules: Vec<NodeIndex> = self
                             .iter_crates()
                             .flat_map(|(n, _, _)| self.iter_syn_items(n))
@@ -153,7 +301,7 @@ impl<O: CgCli, S> CgData<O, S> {
                             }
                         }
                     }
-                    NameParsingState::NextModule => {
+                    ParsingState::NextModule => {
                         if let Some(module_index) = current_node_index {
                             if let Some((next_module_index, _)) = self
                                 .iter_syn_item_neighbors(module_index)
@@ -176,7 +324,7 @@ impl<O: CgCli, S> CgData<O, S> {
                             unreachable!("Expected module index.");
                         }
                     }
-                    NameParsingState::UserDefinedType => {
+                    ParsingState::UserDefinedType => {
                         if let Some(module_index) = current_node_index {
                             // search in all impl blocks of current module for impl items with given impl name
                             let impl_item_indices: Vec<NodeIndex> = self
@@ -208,26 +356,15 @@ impl<O: CgCli, S> CgData<O, S> {
                                 .collect();
 
                             if impl_item_path_elements[index_path_element + 1] == "*" {
-                                for impl_item_index in impl_item_indices {
-                                    self.process_impl_item_index(
-                                        impl_item_index,
-                                        &process_option,
-                                        impl_options,
-                                    )?;
-                                }
+                                return Ok(impl_item_indices);
                             } else {
                                 let impl_item_index = get_index_from_collected_impl_item_indices(
                                     impl_item_indices,
                                     true,
                                     impl_item,
                                 )?;
-                                self.process_impl_item_index(
-                                    impl_item_index,
-                                    &process_option,
-                                    impl_options,
-                                )?;
+                                return Ok(vec![impl_item_index]);
                             }
-                            return Ok(());
                         } else {
                             // search in all impl blocks of all crates and modules for impl items with given impl name
                             let impl_item_indices: Vec<NodeIndex> = self
@@ -259,29 +396,18 @@ impl<O: CgCli, S> CgData<O, S> {
                                 })
                                 .collect();
                             if impl_item_path_elements[index_path_element + 1] == "*" {
-                                for impl_item_index in impl_item_indices {
-                                    self.process_impl_item_index(
-                                        impl_item_index,
-                                        &process_option,
-                                        impl_options,
-                                    )?;
-                                }
+                                return Ok(impl_item_indices);
                             } else {
                                 let impl_item_index = get_index_from_collected_impl_item_indices(
                                     impl_item_indices,
                                     true,
                                     impl_item,
                                 )?;
-                                self.process_impl_item_index(
-                                    impl_item_index,
-                                    &process_option,
-                                    impl_options,
-                                )?;
+                                return Ok(vec![impl_item_index]);
                             }
-                            return Ok(());
                         }
                     }
-                    NameParsingState::ImplItem => {
+                    ParsingState::ImplItem => {
                         if path_element == "*" {
                             return Err(ChallengeTreeError::NotUniqueImplItemOfConfig(
                                 impl_item.to_owned(),
@@ -309,12 +435,7 @@ impl<O: CgCli, S> CgData<O, S> {
                             true,
                             impl_item,
                         )?;
-                        self.process_impl_item_index(
-                            impl_item_index,
-                            &process_option,
-                            impl_options,
-                        )?;
-                        return Ok(());
+                        return Ok(vec![impl_item_index]);
                     }
                 }
             }
@@ -325,7 +446,7 @@ impl<O: CgCli, S> CgData<O, S> {
         &self,
         impl_item_index: NodeIndex,
         process_option: &ProcessOption,
-        impl_options: &mut HashMap<NodeIndex, bool>,
+        impl_options_map: &mut HashMap<NodeIndex, bool>,
     ) -> TreeResult<()> {
         match process_option {
             ProcessOption::Include => {
@@ -335,10 +456,10 @@ impl<O: CgCli, S> CgData<O, S> {
                         self.get_verbose_name_of_tree_node(impl_item_index)?
                     );
                 }
-                impl_options.insert(impl_item_index, true);
+                impl_options_map.insert(impl_item_index, true);
             }
             ProcessOption::Exclude => {
-                if let Entry::Vacant(entry) = impl_options.entry(impl_item_index) {
+                if let Entry::Vacant(entry) = impl_options_map.entry(impl_item_index) {
                     if self.options.verbose() {
                         println!(
                             "Setting exclude option for '{}'.",
@@ -380,6 +501,9 @@ fn get_index_from_collected_impl_item_indices(
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
+    use petgraph::stable_graph::NodeIndex;
     use syn::Item;
 
     use crate::parsing::ItemName;
@@ -387,7 +511,7 @@ mod tests {
     use super::super::super::processing::tests::setup_processing_test;
 
     #[test]
-    fn test_read_impl_item_options() {
+    fn test_map_impl_config_options_to_node_indices() {
         // preparation
         let mut cg_data = setup_processing_test()
             .add_challenge_dependencies()
@@ -410,9 +534,10 @@ mod tests {
         ];
         cg_data.options.set_impl_include(include_items);
         cg_data.options.set_impl_exclude(exclude_items);
+
         cg_data
             .options
-            .set_impl_item_toml("./test/text_impl_config.toml".into());
+            .set_impl_item_toml("../cg_fusion_binary_test/test/text_impl_config.toml".into());
         let mapping = cg_data.map_impl_config_options_to_node_indices().unwrap();
 
         // check impl items of my_map_two_dim
@@ -632,5 +757,116 @@ mod tests {
                 Some(&(item_name == "new" || item_name == "set"))
             );
         }
+    }
+
+    #[test]
+    fn test_map_node_indices_to_impl_config_options() {
+        // preparation
+        let cg_data = setup_processing_test()
+            .add_challenge_dependencies()
+            .unwrap()
+            .add_src_files()
+            .unwrap()
+            .expand_use_statements()
+            .unwrap()
+            .link_impl_blocks_with_corresponding_item()
+            .unwrap()
+            .link_required_by_challenge()
+            .unwrap();
+
+        // get some node indices of impl items
+        let (my_map_two_dim_crate_index, _, _) = cg_data
+            .iter_crates()
+            .find(|(_, _, cf)| cf.name == "my_map_two_dim")
+            .unwrap();
+        let (my_map_two_dim_impl_index, _) = cg_data
+            .iter_syn_item_neighbors(my_map_two_dim_crate_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_none(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+                    name == "MyMap2D"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        let (my_map_two_dim_get_index, _) = cg_data
+            .iter_syn_impl_item(my_map_two_dim_impl_index)
+            .find(|(_, i)| {
+                if let Some(id) = ItemName::from(*i).get_ident_in_name_space() {
+                    id == "get"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        let (my_map_two_dim_set_index, _) = cg_data
+            .iter_syn_impl_item(my_map_two_dim_impl_index)
+            .find(|(_, i)| {
+                if let Some(id) = ItemName::from(*i).get_ident_in_name_space() {
+                    id == "set"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        let (cg_fusion_binary_test_lib_crate_index, _, _) = cg_data
+            .iter_crates()
+            .find(|(_, lib, cf)| *lib && cf.name == "cg_fusion_binary_test")
+            .unwrap();
+        let (action_module_index, _) = cg_data
+            .iter_syn_item_neighbors(cg_fusion_binary_test_lib_crate_index)
+            .filter(|(_, i)| matches!(i, Item::Mod(_)))
+            .find(|(_, i)| {
+                if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
+                    name == "action"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        let (action_impl_index, _) = cg_data
+            .iter_syn_item_neighbors(action_module_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_none(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+                    name == "Action"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        let (action_set_black_index, _) = cg_data
+            .iter_syn_impl_item(action_impl_index)
+            .find(|(_, i)| {
+                if let Some(id) = ItemName::from(*i).get_ident_in_name_space() {
+                    id == "set_black"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+
+        let mut mapping: HashMap<NodeIndex, bool> = HashMap::new();
+        mapping.insert(my_map_two_dim_get_index, true);
+        mapping.insert(my_map_two_dim_set_index, true);
+        mapping.insert(action_set_black_index, false);
+
+        // assert
+        let mut impl_options = cg_data
+            .map_node_indices_to_impl_config_options(&mapping)
+            .unwrap();
+        impl_options.include_impl_items.sort();
+        assert_eq!(
+            impl_options.include_impl_items,
+            ["MyMap2D::get", "MyMap2D::set"]
+        );
+        assert_eq!(impl_options.exclude_impl_items, ["set_black"]);
     }
 }

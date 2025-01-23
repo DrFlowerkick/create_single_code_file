@@ -1,3 +1,0 @@
-# test config file for impl options, see src/challenge_tree/map_impl_options.rs
-include_impl_items = ["MyArray::new", "MyArray::set"]
-exclude_impl_items = ["MyArray::*"]
