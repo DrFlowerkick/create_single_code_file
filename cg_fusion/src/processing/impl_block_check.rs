@@ -254,6 +254,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             "Enter file path relative to crate dir to save impl config...",
             "tab to autocomplete, non existing file path will be created, esc to skip saving.",
             &initial_value,
+            self.challenge_package().path.to_owned(),
         )? {
             // check if returning path is relative to challenge
             self.verify_path_points_inside_challenge_dir(&file_path)?;

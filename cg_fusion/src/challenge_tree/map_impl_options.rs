@@ -103,7 +103,6 @@ impl<O: CgCli, S> CgData<O, S> {
         let mut impl_options_map: HashMap<NodeIndex, bool> = HashMap::new();
         // load config file if existing
         let impl_config = if let Some(toml_config_path) = self.get_impl_config_toml_path()? {
-            dbg!(&toml_config_path);
             let toml_string = fs::read_to_string(toml_config_path)?;
             let toml_options: ImplOptions = toml::from_str(&toml_string)?;
             toml_options

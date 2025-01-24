@@ -1,6 +1,6 @@
 // inquire dialog helper functions
 
-use crate::add_context;
+use crate::{add_context, utilities::is_inside_dir};
 use anyhow::anyhow;
 pub use anyhow::Result as AnyResult;
 use cargo_metadata::camino::Utf8PathBuf;
@@ -9,6 +9,7 @@ use fuzzy_matcher::FuzzyMatcher;
 use inquire::{
     autocompletion::{Autocomplete, Replacement},
     ui::RenderConfig,
+    validator::{ErrorMessage, StringValidator, Validation},
     CustomUserError, Select, Text,
 };
 use mockall::automock;
@@ -16,6 +17,7 @@ use std::{
     fmt::Display,
     fs,
     io::{ErrorKind, Write},
+    str::FromStr,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,6 +62,7 @@ pub trait CgDialog<S: Display + 'static, M: Display + 'static> {
         prompt: &str,
         help: &str,
         initial_value: &str,
+        base_dir: Utf8PathBuf,
     ) -> AnyResult<Option<Utf8PathBuf>>;
     fn write_output(&mut self, message: M) -> AnyResult<()>;
 }
@@ -94,13 +97,14 @@ impl<S: Display + 'static, M: Display + 'static, W: Write> CgDialog<S, M> for Di
         prompt: &str,
         help: &str,
         initial_value: &str,
+        base_dir: Utf8PathBuf,
     ) -> AnyResult<Option<Utf8PathBuf>> {
         let file_path = Text::new(prompt)
             .with_render_config(RenderConfig::default_colored())
             .with_help_message(help)
             .with_initial_value(initial_value)
             .with_autocomplete(FilePathCompleter::default())
-            //.with_validators(validators) ToDo: validate for now white space and file ending on .toml
+            .with_validator(ConfigFilePathValidator { base_dir })
             .prompt_skippable()?
             .map(|fp| Utf8PathBuf::from(fp));
         Ok(file_path)
@@ -146,9 +150,13 @@ impl FilePathCompleter {
             fallback_parent.clone()
         };
 
-        let entries = match fs::read_dir(scan_dir) {
+        let entries = match fs::read_dir(&scan_dir) {
             Ok(read_dir) => Ok(read_dir),
-            Err(err) if err.kind() == ErrorKind::NotFound => fs::read_dir(fallback_parent),
+            Err(err) if err.kind() == ErrorKind::NotFound => match fs::read_dir(&fallback_parent) {
+                Ok(read_dir) => Ok(read_dir),
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(()), // we accept non existing dirs
+                Err(err) => Err(err),
+            },
             Err(err) => Err(err),
         }?
         .collect::<Result<Vec<_>, _>>()?;
@@ -208,5 +216,75 @@ impl Autocomplete for FilePathCompleter {
                 .map(|(path, _)| Replacement::Some(path.clone()))
                 .unwrap_or(Replacement::None)
         })
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct ConfigFilePathValidator {
+    pub base_dir: Utf8PathBuf,
+}
+
+impl StringValidator for ConfigFilePathValidator {
+    fn validate(&self, input: &str) -> Result<Validation, CustomUserError> {
+        let input_path = Utf8PathBuf::from_str(input.trim());
+        let input_path = input_path?;
+
+        // validate extension is toml
+        match input_path.extension() {
+            Some(ex) => {
+                if ex != "toml" {
+                    return Ok(Validation::Invalid(ErrorMessage::Custom(
+                        "Config file path must end on '.toml'.".into(),
+                    )));
+                }
+            }
+            None => {
+                return Ok(Validation::Invalid(ErrorMessage::Custom(
+                    "Config file path must end on '.toml' with non-empty filename.".into(),
+                )))
+            }
+        }
+
+        // validate filename
+        match input_path.file_stem() {
+            Some(name) => {
+                if name.chars().any(char::is_whitespace) {
+                    return Ok(Validation::Invalid(ErrorMessage::Custom(
+                        "Config file name must not contain whitespace.".into(),
+                    )));
+                }
+                if name
+                    .chars()
+                    .any(|c| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
+                {
+                    return Ok(Validation::Invalid(ErrorMessage::Custom(
+                        "Config file name must only contain alphanumeric letters or '-' or '_'."
+                            .into(),
+                    )));
+                }
+                if !name.chars().next().map_or(false, |c| c.is_alphanumeric())
+                    || !name.chars().last().map_or(false, |c| c.is_alphanumeric())
+                {
+                    return Ok(Validation::Invalid(ErrorMessage::Custom(
+                        "Config file name must start and end with alphanumeric letter.".into(),
+                    )));
+                }
+            }
+            None => {
+                return Ok(Validation::Invalid(ErrorMessage::Custom(
+                    "Config file name must not be empty.".into(),
+                )))
+            }
+        }
+
+        // validate path is inside base dir
+        if !is_inside_dir(&self.base_dir, &input_path)? {
+            return Ok(Validation::Invalid(ErrorMessage::Custom(format!(
+                "Config file path must be inside challenge dir '{}'.",
+                self.base_dir
+            ))));
+        }
+
+        Ok(Validation::Valid)
     }
 }

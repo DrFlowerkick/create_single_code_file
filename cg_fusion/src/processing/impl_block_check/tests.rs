@@ -52,8 +52,10 @@ impl<S: Display + 'static, M: Display + 'static> CgDialog<S, M> for TestCgDialog
         prompt: &str,
         help: &str,
         initial_value: &str,
+        base_dir: Utf8PathBuf,
     ) -> AnyResult<Option<Utf8PathBuf>> {
-        self.mock.text_file_path(prompt, help, initial_value)
+        self.mock
+            .text_file_path(prompt, help, initial_value, base_dir)
     }
 
     fn write_output(&mut self, message: M) -> AnyResult<()> {
@@ -464,6 +466,7 @@ fn test_impl_config_toml_dialog() {
         .unwrap()
         .link_required_by_challenge()
         .unwrap();
+    let base_dir = cg_data.challenge_package().path.to_owned();
 
     // get impl item index not required by challenge
     let set_and_get_mapping: HashMap<NodeIndex, bool> = cg_data
@@ -502,8 +505,9 @@ fn test_impl_config_toml_dialog() {
             eq("Enter file path relative to crate dir to save impl config..."),
             eq("tab to autocomplete, non existing file path will be created, esc to skip saving."),
             eq("../cg_fusion_binary_test/cg-fusion_config.toml"),
+            eq(base_dir.clone()),
         )
-        .return_once(|_, _, _| {
+        .return_once(|_, _, _, _| {
             Ok(Some(Utf8PathBuf::from(
                 "../cg_fusion_binary_test/cg-fusion_config.toml",
             )))
@@ -516,8 +520,9 @@ fn test_impl_config_toml_dialog() {
             eq("Enter file path relative to crate dir to save impl config..."),
             eq("tab to autocomplete, non existing file path will be created, esc to skip saving."),
             eq("../cg_fusion_binary_test/cg-fusion_config.toml"),
+            eq(base_dir.clone()),
         )
-        .return_once(|_, _, _| Ok(Some(Utf8PathBuf::from("./cg-fusion_config.toml"))));
+        .return_once(|_, _, _, _| Ok(Some(Utf8PathBuf::from("./cg-fusion_config.toml"))));
     // skipping saving of toml file
     mock.mock
         .expect_text_file_path()
@@ -526,8 +531,9 @@ fn test_impl_config_toml_dialog() {
             eq("Enter file path relative to crate dir to save impl config..."),
             eq("tab to autocomplete, non existing file path will be created, esc to skip saving."),
             eq("../cg_fusion_binary_test/cg-fusion_config.toml"),
+            eq(base_dir),
         )
-        .return_once(|_, _, _| Ok(None));
+        .return_once(|_, _, _, _| Ok(None));
 
     // assert
     // returning new toml file path and content
@@ -564,8 +570,13 @@ exclude_impl_items = ["MyArray::get", "MyArray::set"]
 
     // returning error because of invalid path
     let test_result = cg_data.impl_config_toml_dialog(&mut mock, &set_and_get_mapping);
-    assert!(matches!(test_result, Err(ProcessingError::ChallengeTreeError(ChallengeTreeError::NotInsideChallengeDir(_)))));
-    
+    assert!(matches!(
+        test_result,
+        Err(ProcessingError::ChallengeTreeError(
+            ChallengeTreeError::NotInsideChallengeDir(_)
+        ))
+    ));
+
     // returning Ok(None) if user skips file path dialog
     let test_result = cg_data
         .impl_config_toml_dialog(&mut mock, &set_and_get_mapping)
