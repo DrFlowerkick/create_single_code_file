@@ -9,12 +9,12 @@ use crate::{
     add_context,
     challenge_tree::EdgeType,
     configuration::CgCliImplDialog,
-    utilities::{clean_absolute_utf8, current_dir_utf8, get_relative_path},
+    utilities::{clean_absolute_utf8, current_dir_utf8, get_relative_path, CgDialog, DialogCli},
     CgData,
 };
 use anyhow::Context;
 use cargo_metadata::camino::Utf8PathBuf;
-use inquire_dialog::{CgDialog, DialogCli, UserSelection};
+use inquire_dialog::{ConfigFilePathValidator, UserSelection};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::hash_map::Entry;
 use std::{
@@ -97,9 +97,19 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         if let Some((toml_path, toml_content)) =
             self.impl_config_toml_dialog(&mut dialog_handler, &seen_impl_items)?
         {
-            // ToDo: at the moment an existing config file is overwritten. Combine this with --force or a confirmation dialog
-            let mut file = fs::File::create(toml_path)?;
-            file.write_all(toml_content.as_bytes())?;
+            let confirmation = if toml_path.exists() {
+                let prompt = format!("Overwriting existing impl config file '{}'?", toml_path);
+                let help = "Default is not overwriting (N).";
+                dialog_handler.confirm(&prompt, help, false)?
+            } else {
+                true
+            };
+            if confirmation {
+                let mut file = fs::File::create(toml_path)?;
+                file.write_all(toml_content.as_bytes())?;
+            } else if self.options.verbose() {
+                println!("Skipping saving impl config to '{}'.", toml_path);
+            }
         }
         Ok(CgData {
             state: ProcessedState,
@@ -254,7 +264,9 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             "Enter file path relative to crate dir to save impl config...",
             "tab to autocomplete, non existing file path will be created, esc to skip saving.",
             &initial_value,
-            self.challenge_package().path.to_owned(),
+            ConfigFilePathValidator {
+                base_dir: self.challenge_package().path.to_owned(),
+            },
         )? {
             // check if returning path is relative to challenge
             self.verify_path_points_inside_challenge_dir(&file_path)?;

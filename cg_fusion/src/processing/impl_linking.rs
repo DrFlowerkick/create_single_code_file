@@ -1,7 +1,5 @@
 // Tools to link Impl Items to their corresponding struct or enum
 
-// ToDo: Delete this, if planed implementation for challenge linking will not require impl linking
-
 use super::{ProcessingRequiredByChallengeState, ProcessingResult};
 use crate::{
     challenge_tree::PathElement,

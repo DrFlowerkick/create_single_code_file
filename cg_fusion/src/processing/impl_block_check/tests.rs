@@ -1,14 +1,18 @@
 // testing selection and dialog
 
-use crate::challenge_tree::{ChallengeTreeError, NodeType};
-use crate::configuration::FusionCli;
-use crate::parsing::ItemName;
+use crate::{
+    challenge_tree::{ChallengeTreeError, NodeType},
+    configuration::FusionCli,
+    parsing::ItemName,
+    utilities::MockCgDialog,
+};
 
 use super::super::tests::setup_processing_test;
-use super::inquire_dialog::{AnyResult, MockCgDialog};
 use super::*;
 
+use anyhow::Result;
 use cargo_metadata::camino::Utf8PathBuf;
+use inquire::validator::StringValidator;
 use mockall::predicate::*;
 use once_cell::sync::Lazy;
 use std::{fmt::Display, io::Cursor};
@@ -43,22 +47,26 @@ impl TestCgDialog<String, String> {
 }
 
 impl<S: Display + 'static, M: Display + 'static> CgDialog<S, M> for TestCgDialog<S, M> {
-    fn select_option(&self, prompt: &str, help: &str, options: Vec<S>) -> AnyResult<Option<S>> {
+    fn select_option(&self, prompt: &str, help: &str, options: Vec<S>) -> Result<Option<S>> {
         self.mock.select_option(prompt, help, options)
     }
 
-    fn text_file_path(
+    fn text_file_path<V: StringValidator + 'static>(
         &self,
         prompt: &str,
         help: &str,
         initial_value: &str,
-        base_dir: Utf8PathBuf,
-    ) -> AnyResult<Option<Utf8PathBuf>> {
+        validator: V,
+    ) -> Result<Option<Utf8PathBuf>> {
         self.mock
-            .text_file_path(prompt, help, initial_value, base_dir)
+            .text_file_path(prompt, help, initial_value, validator)
     }
 
-    fn write_output(&mut self, message: M) -> AnyResult<()> {
+    fn confirm(&self, prompt: &str, help: &str, default_value: bool) -> Result<bool> {
+        self.mock.confirm(prompt, help, default_value)
+    }
+
+    fn write_output(&mut self, message: M) -> Result<()> {
         self.dialog.write_output(message)
     }
 }
@@ -497,6 +505,7 @@ fn test_impl_config_toml_dialog() {
 
     // prepare mock for include
     let mut mock = TestCgDialog::new();
+    let validator = ConfigFilePathValidator { base_dir };
     // returning valid path
     mock.mock
         .expect_text_file_path()
@@ -505,7 +514,7 @@ fn test_impl_config_toml_dialog() {
             eq("Enter file path relative to crate dir to save impl config..."),
             eq("tab to autocomplete, non existing file path will be created, esc to skip saving."),
             eq("../cg_fusion_binary_test/cg-fusion_config.toml"),
-            eq(base_dir.clone()),
+            eq(validator.clone()),
         )
         .return_once(|_, _, _, _| {
             Ok(Some(Utf8PathBuf::from(
@@ -520,7 +529,7 @@ fn test_impl_config_toml_dialog() {
             eq("Enter file path relative to crate dir to save impl config..."),
             eq("tab to autocomplete, non existing file path will be created, esc to skip saving."),
             eq("../cg_fusion_binary_test/cg-fusion_config.toml"),
-            eq(base_dir.clone()),
+            eq(validator.clone()),
         )
         .return_once(|_, _, _, _| Ok(Some(Utf8PathBuf::from("./cg-fusion_config.toml"))));
     // skipping saving of toml file
@@ -531,7 +540,7 @@ fn test_impl_config_toml_dialog() {
             eq("Enter file path relative to crate dir to save impl config..."),
             eq("tab to autocomplete, non existing file path will be created, esc to skip saving."),
             eq("../cg_fusion_binary_test/cg-fusion_config.toml"),
-            eq(base_dir),
+            eq(validator),
         )
         .return_once(|_, _, _, _| Ok(None));
 

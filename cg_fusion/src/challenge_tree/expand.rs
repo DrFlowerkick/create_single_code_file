@@ -16,7 +16,7 @@ use petgraph::stable_graph::NodeIndex;
 use quote::ToTokens;
 use std::collections::HashSet;
 use std::fs;
-use syn::{token::Brace, visit::Visit, Item, ItemImpl, ItemMod, ItemTrait};
+use syn::{visit::Visit, Item, ItemImpl, ItemMod, ItemTrait};
 
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn add_local_package(
@@ -261,30 +261,12 @@ impl<O: CgCli, S> CgData<O, S> {
                     attrs: mod_syntax.attrs.to_owned(),
                 };
                 let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
-                // ToDo: should we add link from crate to module?
                 self.tree
                     .add_edge(mod_node_index, item_mod_index, EdgeType::Module);
 
                 // add items of module src file to tree
-                if self.options.verbose() {
-                    println!(
-                        "Adding '{}' as internal module to tree.",
-                        self.get_verbose_name_of_tree_node(item_mod_index)?,
-                    );
-                }
                 for content_item in mod_syntax.items.iter() {
                     self.add_syn_item(content_item, &mod_dir, item_mod_index)?;
-                }
-                // change mod item in tree to inline module
-                // ToDo: do we need to do this at this state of execution? Or should we do this during merging?
-                let mut inline_mod = item_mod.to_owned();
-                let inline_items: Vec<Item> = self
-                    .iter_syn_item_neighbors(item_mod_index)
-                    .map(|(_, i)| i.to_owned())
-                    .collect();
-                inline_mod.content = Some((Brace::default(), inline_items));
-                if let Some(node_weight) = self.tree.node_weight_mut(item_mod_index) {
-                    *node_weight = NodeType::SynItem(Item::Mod(inline_mod));
                 }
             }
         }

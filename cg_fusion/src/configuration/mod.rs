@@ -4,6 +4,7 @@ mod common;
 mod fusion;
 mod input;
 mod output;
+mod processing;
 mod traits;
 
 use cargo_metadata::MetadataCommand;
@@ -11,6 +12,7 @@ pub use common::CommonOptions;
 pub use fusion::FusionCli;
 pub use input::{ChallengePlatform, InputOptions};
 pub use output::OutputOptions;
+pub use processing::ProcessingOptions;
 pub use traits::{CgCli, CgCliImplDialog};
 
 use clap::Parser;

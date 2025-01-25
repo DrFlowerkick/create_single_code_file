@@ -75,7 +75,7 @@ impl From<&bool> for ProcessOption {
 
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn get_impl_config_toml_path(&self) -> TreeResult<Option<Utf8PathBuf>> {
-        if let Some(ref toml_config_path) = self.options.input().impl_item_toml {
+        if let Some(ref toml_config_path) = self.options.processing().impl_item_toml {
             let toml_config_path = Utf8PathBuf::try_from(toml_config_path.to_owned())?;
             self.verify_path_points_inside_challenge_dir(&toml_config_path)?;
             let current_dir = current_dir_utf8()?;
@@ -113,14 +113,14 @@ impl<O: CgCli, S> CgData<O, S> {
         // If index is already in include, include wins.
         for (impl_item, process_option) in self
             .options
-            .input()
+            .processing()
             .include_impl_item
             .iter()
             .chain(impl_config.include_impl_items.iter())
             .map(|ii| (ii, ProcessOption::Include))
             .chain(
                 self.options
-                    .input()
+                    .processing()
                     .exclude_impl_item
                     .iter()
                     .chain(impl_config.exclude_impl_items.iter())

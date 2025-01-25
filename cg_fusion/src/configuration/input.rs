@@ -2,7 +2,6 @@
 
 use clap::{Args, ValueEnum};
 use std::fmt::{self, Display};
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::CgError;
@@ -54,74 +53,6 @@ pub struct InputOptions {
     )]
     pub input: String,
 
-    /// Either include or exclude all impl items:
-    /// true:  include all impl items of all required impl blocks.
-    /// false: exclude all impl items of all required impl blocks, which are not explicitly
-    ///        required by challenge.
-    /// If not set (shown as None), this option is ignored.
-    ///
-    /// If in conflict with other impl options, the option which 'include' the impl item always wins.
-    #[arg(short = 'r', long, help = "Either include or exclude all impl items.")]
-    pub process_all_impl_items: Option<bool>,
-
-    /// Select specific impl items of specific user defined types to include in challenge.
-    /// If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
-    /// information to the name as is required to make the name unique including the name of
-    /// the user defined type:
-    /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
-    ///
-    /// Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
-    /// given. E.g. 'user_defined_type_name::*' will include all impl items of 'user_defined_type_name'.
-    ///
-    /// If in conflict with other impl options, the 'include' option always wins.
-    #[arg(
-        short = 'j',
-        long,
-        help = "Select specific impl items of specific user defined types to include in challenge."
-    )]
-    pub include_impl_item: Vec<String>,
-
-    /// Select specific impl items of specific user defined types to exclude from challenge.
-    /// If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
-    /// information to the name as is required to make the name unique including the name of
-    /// the user defined type:
-    /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
-    ///
-    /// Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
-    /// given. E.g. 'user_defined_type_name::*' will exclude all impl items of 'user_defined_type_name'.
-    ///
-    /// If in conflict with other impl options, the 'include' option always wins.
-    #[arg(
-        short = 'x',
-        long,
-        help = "Select specific impl items of specific user defined types to exclude from challenge."
-    )]
-    pub exclude_impl_item: Vec<String>,
-
-    /// Path of config file in TOML format to configure included or excluded impl items of
-    /// specific user defined types in respectively from challenge.
-    /// file structure:
-    /// include_impl_items = [include_item_1, include_item_2]
-    /// exclude_impl_items = [exclude_item_1, exclude_item_2]
-    ///
-    /// If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
-    /// information to the name as is required to make the name unique including the name of
-    /// the user defined type:
-    /// path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
-    ///
-    /// Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
-    /// given. E.g. 'user_defined_type_name::*' will include or exclude all impl items of
-    /// 'user_defined_type_name'.
-    ///
-    /// If in conflict with other impl options, the 'include' option always wins.
-    #[arg(
-        short = 't',
-        long,
-        help = "Path of config file in TOML format to configure included or excluded impl items of \
-                specific user defined types in respectively from challenge."
-    )]
-    pub impl_item_toml: Option<PathBuf>,
-
     /// Challenge platform the fusion is made for.
     #[arg(
         short = 'p',
@@ -144,16 +75,12 @@ pub struct InputOptions {
 impl Display for InputOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "input: {}", self.input)?;
+        writeln!(f, "platform: {}", self.platform)?;
         writeln!(
             f,
-            "process-all-impl-items: {:?}",
-            self.process_all_impl_items
-        )?;
-        writeln!(f, "include-impl-item: {:?}", self.include_impl_item)?;
-        writeln!(f, "exclude-impl-item: {:?}", self.exclude_impl_item)?;
-        writeln!(f, "impl-item-toml: {:?}", self.impl_item_toml)?;
-        writeln!(f, "platform: {}", self.platform)?;
-        writeln!(f, "block-indirect: {:?}", self.exclude_impl_item)
+            "other-supported-crates: {:?}",
+            self.other_supported_crates
+        )
     }
 }
 
@@ -162,10 +89,6 @@ impl Default for InputOptions {
     fn default() -> Self {
         Self {
             input: "main".into(),
-            process_all_impl_items: None,
-            include_impl_item: Vec::new(),
-            exclude_impl_item: Vec::new(),
-            impl_item_toml: None,
             platform: ChallengePlatform::Codingame,
             other_supported_crates: Vec::new(),
         }

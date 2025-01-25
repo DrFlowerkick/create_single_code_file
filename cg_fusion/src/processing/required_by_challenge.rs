@@ -73,66 +73,6 @@ mod tests {
 
     use super::super::tests::setup_processing_test;
     use super::*;
-    use crate::{
-        challenge_tree::PathElement,
-        parsing::{ChallengeCollector, SourcePath},
-    };
-    use syn::visit::Visit;
-
-    // ToDo: this test is more for debugging and playing around. Delete it later.
-    #[test]
-    fn test_initial_challenge_linking() {
-        // preparation
-        let cg_data = setup_processing_test()
-            .add_challenge_dependencies()
-            .unwrap()
-            .add_src_files()
-            .unwrap()
-            .expand_use_statements()
-            .unwrap()
-            .link_impl_blocks_with_corresponding_item()
-            .unwrap();
-
-        // action to test
-        // initialize challenge linking with main function of challenge bin crate
-        let (challenge_bin_index, _) = cg_data.get_challenge_bin_crate().unwrap();
-        let (main_index, main_fn) = cg_data
-            .iter_syn_item_neighbors(challenge_bin_index)
-            .filter_map(|(n, i)| match i {
-                Item::Fn(fn_item) => {
-                    if fn_item.sig.ident == "main" {
-                        Some((n, i.to_owned()))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-            .next()
-            .context(add_context!("Expected main fn of challenge bin crate."))
-            .unwrap();
-        let mut challenge_collector = ChallengeCollector::new();
-        challenge_collector.visit_item(&main_fn);
-        let path_leafs: Vec<(&SourcePath, PathElement, String)> = challenge_collector
-            .paths
-            .iter()
-            .filter_map(|sp| {
-                cg_data
-                    .get_path_leaf(main_index, sp)
-                    .ok()
-                    .map(|pe| (sp, pe))
-            })
-            .filter_map(|(sp, pe)| match pe {
-                PathElement::Item(item_index) | PathElement::ItemRenamed(item_index, _) => Some((
-                    sp,
-                    pe,
-                    cg_data.get_verbose_name_of_tree_node(item_index).unwrap(),
-                )),
-                _ => Some((sp, pe, "".into())),
-            })
-            .collect();
-        dbg!(&path_leafs);
-    }
 
     #[test]
     fn test_link_required_by_challenge() {

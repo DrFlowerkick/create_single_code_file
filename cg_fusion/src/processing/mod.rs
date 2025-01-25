@@ -3,6 +3,7 @@
 mod crate_src_files;
 mod dependencies;
 mod error;
+mod fuse_challenge;
 mod impl_block_check;
 mod impl_linking;
 mod required_by_challenge;

@@ -85,7 +85,11 @@ mod tests {
         assert_eq!(bcf.name, "cg_fusion_binary_test");
         assert_eq!(cg_data.iter_syn_item_neighbors(bcf_index).count(), 4);
 
-        let (lcf_index, lcf) = cg_data.get_challenge_lib_crate().unwrap();
+        // index 0 is challenge package
+        let (lcf_index, lcf) = cg_data
+            .iter_package_crates(0.into())
+            .find_map(|(n, crate_type, cf)| if crate_type { Some((n, cf)) } else { None })
+            .unwrap();
         assert_eq!(lcf.name, "cg_fusion_binary_test");
         assert_eq!(cg_data.iter_syn_item_neighbors(lcf_index).count(), 12);
 

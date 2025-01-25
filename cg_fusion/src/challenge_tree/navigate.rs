@@ -60,13 +60,6 @@ impl<O, S> CgData<O, S> {
         }
     }
 
-    #[cfg(test)] // ToDo: check if we really need this
-    pub(crate) fn get_challenge_lib_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
-        self.iter_package_crates(0.into())
-            .filter_map(|(n, crate_type, cf)| if crate_type { Some((n, cf)) } else { None })
-            .next()
-    }
-
     pub(crate) fn get_parent_index_by_edge_type(
         &self,
         node: NodeIndex,
@@ -211,14 +204,6 @@ impl<O, S> CgData<O, S> {
                     | NodeType::SynItem(_)
                     | NodeType::SynImplItem(_)
             );
-        }
-        false
-    }
-
-    #[allow(dead_code)] // ToDo: check if we really need this
-    pub(crate) fn is_syn_item(&self, node: NodeIndex) -> bool {
-        if let Some(node_weight) = self.tree.node_weight(node) {
-            return matches!(node_weight, NodeType::SynItem(_));
         }
         false
     }

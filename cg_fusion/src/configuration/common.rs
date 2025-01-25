@@ -12,13 +12,12 @@ pub struct CommonOptions {
     #[command(flatten)]
     pub manifest: clap_cargo::Manifest,
 
-    /// Force overwriting existing output file. Force although fusion of challenge src files
-    /// in case of missing dependencies from crate.io of a local library crate in challenge
-    /// crate manifest.
+    /// Force although fusion of challenge src files in case of missing dependencies from
+    /// crate.io of a local library crate in challenge crate manifest.
     #[arg(
         short,
         long,
-        help = "Force fusion and overwriting existing output file."
+        help = "Force fusion in case of missing dependencies from crate.io."
     )]
     pub force: bool,
 }

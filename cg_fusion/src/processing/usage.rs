@@ -28,9 +28,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                     .filter(|(_, i)| matches!(i, ItemName::Glob | ItemName::Group))
             })
             .collect();
-        // ToDo: move max_attempts to options
-        let max_attempts: usize = 5;
-        let mut use_attempts: HashMap<NodeIndex, usize> = HashMap::new();
+        let mut use_attempts: HashMap<NodeIndex, u8> = HashMap::new();
         // expand use statements and link to target
         while let Some((use_index, use_item_name)) = use_groups_and_globs.pop_front() {
             match use_item_name {
@@ -53,7 +51,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                             .entry(use_index)
                             .and_modify(|attempts| *attempts += 1)
                             .or_insert(1)
-                            >= max_attempts
+                            >= self.options.processing().glob_expansion_max_attempts
                         {
                             // too many attempts to expand use statement
                             // get index and name of module, which owns the use statement

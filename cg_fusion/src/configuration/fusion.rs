@@ -1,6 +1,8 @@
 // fusion cli options
 
-use super::{CgCli, CgCliImplDialog, CommonOptions, InputOptions, OutputOptions};
+use super::{
+    CgCli, CgCliImplDialog, CommonOptions, InputOptions, OutputOptions, ProcessingOptions,
+};
 
 use clap::Args;
 use std::fmt::{self, Display};
@@ -49,6 +51,9 @@ pub struct FusionCli {
     input_cli: InputOptions,
 
     #[command(flatten)]
+    processing_cli: ProcessingOptions,
+
+    #[command(flatten)]
     output_cli: OutputOptions,
 }
 
@@ -73,6 +78,9 @@ impl CgCli for FusionCli {
     fn input(&self) -> &InputOptions {
         &self.input_cli
     }
+    fn processing(&self) -> &ProcessingOptions {
+        &self.processing_cli
+    }
     fn output(&self) -> &OutputOptions {
         &self.output_cli
     }
@@ -86,6 +94,7 @@ impl Default for FusionCli {
         Self {
             common_cli: CommonOptions::default(),
             input_cli: InputOptions::default(),
+            processing_cli: ProcessingOptions::default(),
             output_cli: OutputOptions::default(),
         }
     }
@@ -100,12 +109,12 @@ impl FusionCli {
         self.common_cli.manifest.manifest_path = Some(path);
     }
     pub fn set_impl_include(&mut self, impl_items: Vec<String>) {
-        self.input_cli.include_impl_item = impl_items;
+        self.processing_cli.include_impl_item = impl_items;
     }
     pub fn set_impl_exclude(&mut self, impl_items: Vec<String>) {
-        self.input_cli.exclude_impl_item = impl_items;
+        self.processing_cli.exclude_impl_item = impl_items;
     }
     pub fn set_impl_item_toml(&mut self, impl_item_toml_path: PathBuf) {
-        self.input_cli.impl_item_toml = Some(impl_item_toml_path);
+        self.processing_cli.impl_item_toml = Some(impl_item_toml_path);
     }
 }
