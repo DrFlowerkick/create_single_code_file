@@ -4,6 +4,7 @@ use super::{ProcessingResult, ProcessingUsageState};
 use crate::{add_context, configuration::CgCli, parsing::load_syntax, CgData};
 use anyhow::Context;
 use petgraph::graph::NodeIndex;
+use std::fs;
 
 pub struct ProcessingSrcFilesState;
 
@@ -33,7 +34,8 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
             ))?
             .to_path_buf();
         // add syn items of bin crate to tree
-        let syntax = load_syntax(&binary_crate.code)?;
+        let code = fs::read_to_string(&binary_crate.path)?;
+        let syntax = load_syntax(&code)?;
         for item in syntax.items.to_owned().iter() {
             self.add_syn_item(item, &crate_dir, bin_crate_index)?;
         }
@@ -55,7 +57,8 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
                     ))?
                     .to_path_buf();
                 // add syn items of lib crate to tree
-                let syntax = load_syntax(&library_crate.code)?;
+                let code = fs::read_to_string(&library_crate.path)?;
+                let syntax = load_syntax(&code)?;
                 for item in syntax.items.to_owned().iter() {
                     self.add_syn_item(item, &crate_dir, lib_crate_index)?;
                 }

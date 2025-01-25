@@ -95,7 +95,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             seen_impl_items.insert(impl_item, user_input);
         }
         if let Some((toml_path, toml_content)) =
-            self.impl_config_toml_dialog(&mut dialog_handler, &mut seen_impl_items)?
+            self.impl_config_toml_dialog(&mut dialog_handler, &seen_impl_items)?
         {
             // ToDo: at the moment an existing config file is overwritten. Combine this with --force or a confirmation dialog
             let mut file = fs::File::create(toml_path)?;
@@ -282,6 +282,9 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             doc["exclude_impl_items"] = value(exclude_impl_items);
 
             return Ok(Some((file_path, doc.to_string())));
+        }
+        if self.options.verbose() {
+            println!("Skipping saving impl config.");
         }
         Ok(None)
     }

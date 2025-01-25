@@ -106,7 +106,7 @@ impl<S: Display + 'static, M: Display + 'static, W: Write> CgDialog<S, M> for Di
             .with_autocomplete(FilePathCompleter::default())
             .with_validator(ConfigFilePathValidator { base_dir })
             .prompt_skippable()?
-            .map(|fp| Utf8PathBuf::from(fp));
+            .map(Utf8PathBuf::from);
         Ok(file_path)
     }
 
@@ -136,7 +136,7 @@ impl FilePathCompleter {
         let fallback_parent = input_path
             .parent()
             .map(|p| {
-                if p.to_string() == "" {
+                if *p == "" {
                     Utf8PathBuf::from(".")
                 } else {
                     p.to_owned()

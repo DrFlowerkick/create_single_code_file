@@ -101,7 +101,6 @@ impl<O: CgCli, S> CgData<O, S> {
         let crate_file = SrcFile {
             name,
             path: path.to_owned(),
-            code,
             shebang: syntax.shebang,
             attrs: syntax.attrs,
         };
@@ -139,7 +138,6 @@ impl<O: CgCli, S> CgData<O, S> {
             let crate_file = SrcFile {
                 name: target.name.to_owned(),
                 path: target.src_path.to_owned(),
-                code,
                 shebang: syntax.shebang,
                 attrs: syntax.attrs,
             };
@@ -259,7 +257,6 @@ impl<O: CgCli, S> CgData<O, S> {
                 let src_file = SrcFile {
                     name: item_mod.ident.to_string(),
                     path,
-                    code,
                     shebang: mod_syntax.shebang.to_owned(),
                     attrs: mod_syntax.attrs.to_owned(),
                 };

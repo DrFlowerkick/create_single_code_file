@@ -51,7 +51,6 @@ pub struct LocalPackage {
 pub struct SrcFile {
     pub name: String,
     pub path: Utf8PathBuf,
-    pub code: String,
     #[allow(dead_code)]
     pub shebang: Option<String>, // ToDo: check if really required
     #[allow(dead_code)]
