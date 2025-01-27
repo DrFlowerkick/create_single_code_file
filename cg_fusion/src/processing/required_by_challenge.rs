@@ -31,7 +31,7 @@ impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
         self.add_required_by_challenge_link(challenge_bin_index, main_index)?;
         // a seen cache to make sure, that every required item is only checked once for path statements
         let mut seen_check_items: HashSet<NodeIndex> = HashSet::new();
-        self.check_path_items_for_challenge(main_index, &mut seen_check_items)?;
+        self.add_challenge_links_for_referenced_nodes_of_item(main_index, &mut seen_check_items)?;
         // mark all trait items of required trait as required by challenge
         let trait_items: Vec<(NodeIndex, NodeIndex)> = self
             .iter_items_required_by_challenge()
@@ -44,7 +44,7 @@ impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
             .collect();
         for (trait_item_index, trait_index) in trait_items {
             self.add_required_by_challenge_link(trait_index, trait_item_index)?;
-            self.check_path_items_for_challenge(trait_item_index, &mut seen_check_items)?;
+            self.add_challenge_links_for_referenced_nodes_of_item(trait_item_index, &mut seen_check_items)?;
         }
         // mark all impl items of required impl with trait as required by challenge
         let impl_with_trait_items: Vec<(NodeIndex, NodeIndex)> = self
@@ -58,7 +58,7 @@ impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
             .collect();
         for (impl_with_trait_item_index, trait_index) in impl_with_trait_items {
             self.add_required_by_challenge_link(trait_index, impl_with_trait_item_index)?;
-            self.check_path_items_for_challenge(impl_with_trait_item_index, &mut seen_check_items)?;
+            self.add_challenge_links_for_referenced_nodes_of_item(impl_with_trait_item_index, &mut seen_check_items)?;
         }
         Ok(CgData {
             state: ProcessingImplItemDialogState,

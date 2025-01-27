@@ -1,4 +1,4 @@
-// functions to visit the challenge tree
+// functions to walk the challenge tree
 
 use petgraph::{
     stable_graph::NodeIndex,
@@ -13,7 +13,7 @@ use crate::{
     CgData,
 };
 
-use super::{ChallengeTree, EdgeType, NodeType};
+use super::{VariableReferences, ChallengeTree, EdgeType, NodeType};
 
 pub trait BfsWalker {
     fn next(&mut self, graph: &ChallengeTree) -> Option<NodeIndex>;
@@ -99,6 +99,7 @@ pub struct SourcePathWalker {
     source_path: SourcePath,
     current_node_index: NodeIndex,
     current_index: usize,
+    variables: VariableReferences,
     walker_finished: bool,
 }
 
@@ -108,6 +109,21 @@ impl SourcePathWalker {
             source_path,
             current_node_index: path_item_index,
             current_index: 0,
+            variables: VariableReferences::default(),
+            walker_finished: false,
+        }
+    }
+
+    pub fn with_variables(
+        source_path: SourcePath,
+        path_item_index: NodeIndex,
+        variables: VariableReferences,
+    ) -> Self {
+        Self {
+            source_path,
+            current_node_index: path_item_index,
+            current_index: 0,
+            variables,
             walker_finished: false,
         }
     }
@@ -201,6 +217,11 @@ impl SourcePathWalker {
             }
             _ => {
                 if is_first {
+                    // check if path starts with a variable name
+                    if let Some(variable_node) = self.variables.get_node_index(&segment) {
+                        self.current_node_index = variable_node;
+                        return Some(PathElement::Item(self.current_node_index));
+                    }
                     // check if path starts with external dependency
                     if graph
                         .iter_external_dependencies()
@@ -321,7 +342,7 @@ impl SourcePathWalker {
         Some(PathElement::PathCouldNotBeParsed)
     }
 
-    pub fn into_iter<O, S>(self, graph: &CgData<O, S>) -> SourcePathIterator<'_, O, S> {
+    pub fn into_iter<'a, O, S>(self, graph: &'a CgData<O, S>) -> SourcePathIterator<'a, O, S> {
         SourcePathIterator {
             walker: self,
             graph,

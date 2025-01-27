@@ -1,13 +1,9 @@
 // Tools to link Impl Items to their corresponding struct or enum
 
 use super::{ProcessingRequiredByChallengeState, ProcessingResult};
-use crate::{
-    challenge_tree::PathElement,
-    configuration::CgCli,
-    parsing::{ChallengeCollector, PathAnalysis, SourcePath},
-    CgData,
-};
+use crate::{challenge_tree::SynReferenceMapper, configuration::CgCli, CgData};
 use petgraph::stable_graph::NodeIndex;
+use std::collections::HashSet;
 use syn::{visit::Visit, Item};
 
 pub struct ProcessingImplBlocksState;
@@ -17,33 +13,26 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
         mut self,
     ) -> ProcessingResult<CgData<O, ProcessingRequiredByChallengeState>> {
         // get indices of SynItem Nodes, which contain Impl Items
-        let syn_impl_indices: Vec<(NodeIndex, Option<SourcePath>, Vec<SourcePath>)> = self
+        let syn_impl_indices: Vec<(NodeIndex, HashSet<NodeIndex>)> = self
             .iter_crates()
             .flat_map(|(n, _, _)| {
                 self.iter_syn_items(n).filter_map(|(n, i)| {
                     if let Item::Impl(item_impl) = i {
-                        let trait_path = if let Some((_, trait_path, _)) = item_impl.trait_.as_ref()
-                        {
-                            Some(trait_path.extract_path())
-                        } else {
-                            None
+                        let mut leaf_collector = SynReferenceMapper::new(&self, n);
+                        if let Some((_, trait_path, _)) = item_impl.trait_.as_ref() {
+                            leaf_collector.visit_path(trait_path);
                         };
-                        let mut path_collector = ChallengeCollector::new();
-                        path_collector.visit_type(item_impl.self_ty.as_ref());
-                        if !path_collector.paths.is_empty() {
-                            Some((n, trait_path, path_collector.paths))
-                        } else {
-                            None
-                        }
+                        leaf_collector.visit_type(item_impl.self_ty.as_ref());
+                        Some((n, leaf_collector.leaf_nodes))
                     } else {
                         None
                     }
                 })
             })
             .collect();
-        for (syn_impl_index, trait_path, impl_paths) in syn_impl_indices {
-            for impl_path in impl_paths.iter().chain(trait_path.iter()) {
-                self.link_impl_block_by_path(syn_impl_index, impl_path)?;
+        for (syn_impl_index, leave_nodes) in syn_impl_indices {
+            for item_index in leave_nodes.iter() {
+                self.add_implementation_link(*item_index, syn_impl_index)?;
             }
         }
         Ok(CgData {
@@ -51,25 +40,6 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
             options: self.options,
             tree: self.tree,
         })
-    }
-
-    fn link_impl_block_by_path(
-        &mut self,
-        syn_impl_index: NodeIndex,
-        path: &impl PathAnalysis,
-    ) -> ProcessingResult<()> {
-        let path_target = self.get_path_leaf(syn_impl_index, path)?;
-        match path_target {
-            PathElement::Item(item_index) => {
-                self.add_implementation_link(item_index, syn_impl_index)?;
-            }
-            PathElement::Glob(_) | PathElement::Group | PathElement::ItemRenamed(_, _) => {
-                unreachable!("Impl path cannot be glob or group or renamed item.")
-            }
-            PathElement::ExternalPackage | // external type or trait
-            PathElement::PathCouldNotBeParsed => (), // could be traits like 'Default'
-        }
-        Ok(())
     }
 }
 

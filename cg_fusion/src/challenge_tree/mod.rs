@@ -5,9 +5,11 @@ mod expand;
 mod iterators;
 mod map_impl_options;
 mod navigate;
+mod visitors;
 mod walkers;
 
 pub use error::{ChallengeTreeError, TreeResult};
+pub use visitors::{SynReferenceMapper, VariableReferences};
 pub use walkers::{BfsByEdgeType, BfsWalker, PathElement, SourcePathWalker};
 
 use crate::metadata::MetaWrapper;

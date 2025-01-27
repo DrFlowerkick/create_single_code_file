@@ -1,12 +1,11 @@
 // functions to expand the challenge tree
 use super::{
-    ChallengeTreeError, EdgeType, LocalPackage, NodeType, PathElement, SourcePathWalker, SrcFile,
-    TreeResult,
+    ChallengeTreeError, EdgeType, LocalPackage, NodeType, SrcFile, SynReferenceMapper, TreeResult,
 };
 use crate::{
     add_context,
     configuration::CgCli,
-    parsing::{load_syntax, ChallengeCollector, ItemName, PathAnalysis, SourcePath},
+    parsing::{load_syntax, ItemName},
     CgData,
 };
 
@@ -393,32 +392,18 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(())
     }
 
-    pub(crate) fn check_path_items_for_challenge(
+    pub(crate) fn add_challenge_links_for_referenced_nodes_of_item(
         &mut self,
         item_to_check: NodeIndex,
         seen_check_items: &mut HashSet<NodeIndex>,
     ) -> TreeResult<()> {
         if seen_check_items.insert(item_to_check) {
-            let mut challenge_collector = ChallengeCollector::new();
+            let mut challenge_collector = SynReferenceMapper::new(&self, item_to_check);
             match self.tree.node_weight(item_to_check) {
-                Some(NodeType::SynItem(Item::Mod(_)))            // do not search path in these items, since
-                | Some(NodeType::SynItem(Item::Impl(_)))         // we will search in their sub items if they
+                Some(NodeType::SynItem(Item::Mod(_)))            // do not reference nodes in these items, since
+                | Some(NodeType::SynItem(Item::Impl(_)))         // we will process their sub items if they
                 | Some(NodeType::SynItem(Item::Trait(_))) => (), // are linked as required by challenge.
-                Some(NodeType::SynItem(Item::Use(item_use))) => {
-                    let source_path = item_use.tree.extract_path();
-                    match source_path {
-                        SourcePath::Glob(_) | SourcePath::Group => {
-                            return Err(anyhow!(format!(
-                                "{}",
-                                add_context!("Expected expanded use groups and 0globs")
-                            ))
-                            .into())
-                        }
-                        SourcePath::Name(_) | SourcePath::Rename(_, _) => {
-                            challenge_collector.paths.push(source_path)
-                        }
-                    }
-                }
+                Some(NodeType::SynItem(Item::Use(_))) => challenge_collector.reference_use_tree_nodes()?,
                 Some(NodeType::SynItem(item)) => challenge_collector.visit_item(item),
                 Some(NodeType::SynImplItem(impl_item)) => challenge_collector.visit_impl_item(impl_item),
                 Some(NodeType::SynTraitItem(trait_item)) => {
@@ -426,48 +411,19 @@ impl<O: CgCli, S> CgData<O, S> {
                 }
                 _ => return Ok(()),
             }
-            // check collected path elements
-            for path in challenge_collector.paths.iter() {
-                let mut path_walker = SourcePathWalker::new(path.extract_path(), item_to_check);
-                while let Some(path_element) = path_walker.next(self) {
-                    match path_element {
-                        PathElement::Glob(_) | PathElement::Group => unreachable!("syn::Path does not contain these elements and all use statements must be expanded."),
-                        PathElement::ExternalPackage => (),
-                        PathElement::PathCouldNotBeParsed => (), // ToDo: we will try later to analyze path to let statements
-                        PathElement::Item(item_index) | PathElement::ItemRenamed(item_index, _) => {
-                            if self.is_syn_impl_item(item_index) || self.is_syn_trait_item(item_index) {
-                                let impl_or_trait_index = self.get_parent_index_by_edge_type(item_index, EdgeType::Syn)
-                                    .context(add_context!("Expected impl or trait item."))?;
-                                if !self.is_required_by_challenge(impl_or_trait_index) {
-                                    self.add_required_by_challenge_link(item_to_check, impl_or_trait_index)?;
-                                }
-                            }
-                            self.add_required_by_challenge_link(item_to_check, item_index)?;
-                            self.check_path_items_for_challenge(item_index, seen_check_items)?;
-                        },
+            // check collected node references
+            for node_reference in challenge_collector.referenced_nodes.iter() {
+                if self.is_syn_impl_item(*node_reference) || self.is_syn_trait_item(*node_reference)
+                {
+                    let impl_or_trait_index = self
+                        .get_parent_index_by_edge_type(*node_reference, EdgeType::Syn)
+                        .context(add_context!("Expected impl or trait item."))?;
+                    if !self.is_required_by_challenge(impl_or_trait_index) {
+                        self.add_required_by_challenge_link(item_to_check, impl_or_trait_index)?;
                     }
                 }
-            }
-            // check collected method calls with self as receiver
-            if self.is_syn_impl_item(item_to_check) {
-                for method_id in challenge_collector.self_method_calls.iter() {
-                    let impl_method = self
-                        .get_parent_index_by_edge_type(item_to_check, EdgeType::Syn)
-                        .into_iter()
-                        .flat_map(|n| self.iter_syn_impl_item(n))
-                        .filter(|(n, _)| !self.is_required_by_challenge(*n))
-                        .find(|(_, i)| {
-                            if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
-                                name == *method_id
-                            } else {
-                                false
-                            }
-                        });
-                    if let Some((item_index, _)) = impl_method {
-                        self.add_required_by_challenge_link(item_to_check, item_index)?;
-                        self.check_path_items_for_challenge(item_index, seen_check_items)?;
-                    }
-                }
+                self.add_required_by_challenge_link(item_to_check, *node_reference)?;
+                self.add_challenge_links_for_referenced_nodes_of_item(*node_reference, seen_check_items)?;
             }
         }
         Ok(())

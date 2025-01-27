@@ -72,7 +72,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             if let Some(include) = impl_options.get(&impl_item) {
                 if *include {
                     self.add_required_by_challenge_link(impl_block, impl_item)?;
-                    self.check_path_items_for_challenge(impl_item, &mut seen_check_items)?;
+                    self.add_challenge_links_for_referenced_nodes_of_item(impl_item, &mut seen_check_items)?;
                 } else if self.options.verbose() {
                     println!(
                         "Excluding impl item '{}'",
@@ -90,7 +90,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             )?;
             if user_input {
                 self.add_required_by_challenge_link(impl_block, impl_item)?;
-                self.check_path_items_for_challenge(impl_item, &mut seen_check_items)?;
+                self.add_challenge_links_for_referenced_nodes_of_item(impl_item, &mut seen_check_items)?;
             }
             seen_impl_items.insert(impl_item, user_input);
         }

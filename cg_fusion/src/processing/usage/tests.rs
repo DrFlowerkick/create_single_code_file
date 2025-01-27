@@ -177,13 +177,13 @@ fn test_get_path_leaf() {
     // test path target of use items, which point to lib crates
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_map_two_dim, *use_tree_my_map_two_dim)
+            .get_path_leaf(*use_index_my_map_two_dim, *use_tree_my_map_two_dim,)
             .unwrap(),
         PathElement::Item(my_map_two_dim_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_array, *use_tree_my_array)
+            .get_path_leaf(*use_index_my_array, *use_tree_my_array,)
             .unwrap(),
         PathElement::Item(my_array_mod_index)
     );
@@ -251,13 +251,13 @@ fn test_get_path_leaf() {
     // test path target of use items, which point to items in modules
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_array_struct, *use_tree_my_array_struct)
+            .get_path_leaf(*use_index_my_array_struct, *use_tree_my_array_struct,)
             .unwrap(),
         PathElement::Item(my_array_item_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_map_2d_struct, *use_tree_my_map_2d_struct)
+            .get_path_leaf(*use_index_my_map_2d_struct, *use_tree_my_map_2d_struct,)
             .unwrap(),
         PathElement::Item(my_map_2d_item_index)
     );
@@ -265,7 +265,7 @@ fn test_get_path_leaf() {
         cg_data
             .get_path_leaf(
                 *use_index_my_map_point_struct,
-                *use_tree_my_map_point_struct
+                *use_tree_my_map_point_struct,
             )
             .unwrap(),
         PathElement::Item(my_map_point_item_index)
@@ -318,19 +318,19 @@ fn test_get_path_leaf() {
     // test path target of use items, which point to use globs
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_map_point, *use_glob_tree_my_map_point)
+            .get_path_leaf(*use_glob_index_my_map_point, *use_glob_tree_my_map_point,)
             .unwrap(),
         PathElement::Glob(my_map_point_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_array, *use_glob_tree_my_array)
+            .get_path_leaf(*use_glob_index_my_array, *use_glob_tree_my_array,)
             .unwrap(),
         PathElement::Glob(my_array_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass)
+            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass,)
             .unwrap(),
         PathElement::Glob(my_compass_mod_index)
     );
@@ -361,13 +361,13 @@ fn test_get_path_leaf() {
         .unwrap();
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_extern_ordering, *use_tree_extern_ordering)
+            .get_path_leaf(*use_extern_ordering, *use_tree_extern_ordering,)
             .unwrap(),
         PathElement::ExternalPackage
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass)
+            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass,)
             .unwrap(),
         PathElement::Glob(my_compass_mod_index)
     );

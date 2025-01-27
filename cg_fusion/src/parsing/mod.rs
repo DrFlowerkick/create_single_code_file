@@ -2,14 +2,13 @@
 
 mod error;
 pub use error::{ParsingError, ParsingResult};
-use syn::{Expr, TraitItem, UseName};
 
 use crate::add_context;
 use quote::ToTokens;
 use std::fmt::{Display, Write};
 use syn::{
-    fold::Fold, visit::Visit, Attribute, ExprMethodCall, File, Ident, ImplItem, Item, ItemUse,
-    Meta, Path, Type, UseTree, Visibility,
+    fold::Fold, visit::Visit, Attribute, File, Ident, ImplItem, Item, ItemUse, Meta, Path,
+    TraitItem, Type, UseName, UseTree, Visibility,
 };
 
 // load syntax from given file
@@ -505,46 +504,7 @@ impl From<&TraitItem> for ItemName {
     }
 }
 
-// struct to collect
-// - syn::Path items as SourcePath
-// - ident of method calls from self
-// ToDo: try to extend to analyze local items
-
-pub struct ChallengeCollector {
-    pub paths: Vec<SourcePath>,
-    pub self_method_calls: Vec<Ident>,
-}
-
-impl ChallengeCollector {
-    pub fn new() -> Self {
-        ChallengeCollector {
-            paths: Vec::new(),
-            self_method_calls: Vec::new(),
-        }
-    }
-}
-
-impl<'ast> Visit<'ast> for ChallengeCollector {
-    fn visit_path(&mut self, node: &'ast Path) {
-        self.paths.push(node.extract_path());
-        // recursive visit
-        syn::visit::visit_path(self, node);
-    }
-    fn visit_expr_method_call(&mut self, expr_method_call: &'ast ExprMethodCall) {
-        if let Expr::Path(expr_path) = expr_method_call.receiver.as_ref() {
-            if let SourcePath::Name(segments) = expr_path.path.extract_path() {
-                if segments.len() == 1 && segments[0] == "self" {
-                    // add method call, if receiver is self
-                    self.self_method_calls
-                        .push(expr_method_call.method.to_owned());
-                }
-            }
-        }
-        // recursive visit
-        syn::visit::visit_expr_method_call(self, expr_method_call);
-    }
-}
-
+// visitor to collect all ident with the given name
 pub struct IdentCollector {
     pub ident_name: String,
     pub ident_collector: Vec<Ident>,
