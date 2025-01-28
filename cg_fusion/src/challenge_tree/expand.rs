@@ -11,7 +11,7 @@ use crate::{
 
 use anyhow::{anyhow, Context};
 use cargo_metadata::camino::Utf8PathBuf;
-use petgraph::stable_graph::NodeIndex;
+use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use quote::ToTokens;
 use std::collections::HashSet;
 use std::fs;
@@ -413,17 +413,104 @@ impl<O: CgCli, S> CgData<O, S> {
             }
             // check collected node references
             for node_reference in challenge_collector.referenced_nodes.iter() {
-                if self.is_syn_impl_item(*node_reference) || self.is_syn_trait_item(*node_reference)
-                {
-                    let impl_or_trait_index = self
+                if self.is_syn_impl_item(*node_reference) {
+                    let impl_block_index = self
                         .get_parent_index_by_edge_type(*node_reference, EdgeType::Syn)
-                        .context(add_context!("Expected impl or trait item."))?;
-                    if !self.is_required_by_challenge(impl_or_trait_index) {
-                        self.add_required_by_challenge_link(item_to_check, impl_or_trait_index)?;
+                        .context(add_context!("Expected impl block."))?;
+                    if !self.is_required_by_challenge(impl_block_index) {
+                        self.add_required_by_challenge_link(item_to_check, impl_block_index)?;
+                    }
+                }
+                if self.is_syn_trait_item(*node_reference) {
+                    let trait_index = self
+                        .get_parent_index_by_edge_type(*node_reference, EdgeType::Syn)
+                        .context(add_context!("Expected impl block."))?;
+                    if !self.is_required_by_challenge(trait_index) {
+                        self.add_required_by_challenge_link(item_to_check, trait_index)?;
+                        self.add_trait_items_of_required_trait(trait_index, seen_check_items)?;
                     }
                 }
                 self.add_required_by_challenge_link(item_to_check, *node_reference)?;
-                self.add_challenge_links_for_referenced_nodes_of_item(*node_reference, seen_check_items)?;
+                self.add_impl_items_of_impl_blocks_with_trait_if_referenced_item_is_required(
+                    *node_reference,
+                    seen_check_items,
+                )?;
+                self.add_challenge_links_for_referenced_nodes_of_item(
+                    *node_reference,
+                    seen_check_items,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn add_impl_items_of_impl_blocks_with_trait_if_referenced_item_is_required(
+        &mut self,
+        item_index: NodeIndex,
+        seen_check_items: &mut HashSet<NodeIndex>,
+    ) -> TreeResult<()> {
+        // vec is empty if no EdgeType::Implementation exist or impl block does not have a trait
+        let impl_blocks_with_trait: Vec<NodeIndex> = self
+            .tree
+            .edges_directed(item_index, Direction::Outgoing)
+            .filter(|e| *e.weight() == EdgeType::Implementation)
+            .map(|e| e.target())
+            .filter(|n| {
+                if let Some(Item::Impl(item_impl)) = self.get_syn_item(*n) {
+                    item_impl.trait_.is_some()
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        for impl_block_with_trait in impl_blocks_with_trait.iter() {
+            // first add local trait item (if any) as required by challenge
+            let trait_index = self
+                .tree
+                .edges_directed(*impl_block_with_trait, Direction::Incoming)
+                .filter(|e| *e.weight() == EdgeType::Implementation)
+                .map(|e| e.target())
+                .find(|n| matches!(self.get_syn_item(*n), Some(Item::Trait(_))));
+            if let Some(ti) = trait_index {
+                self.add_required_by_challenge_link(*impl_block_with_trait, ti)?;
+                self.add_trait_items_of_required_trait(ti, seen_check_items)?;
+            }
+            // second add all impl items of impl block as required by challenge
+            let impl_items: Vec<NodeIndex> = self
+                .iter_syn_impl_item(*impl_block_with_trait)
+                .filter(|(n, _)| !self.is_required_by_challenge(*n))
+                .map(|(n, _)| n)
+                .collect();
+            for impl_item in impl_items {
+                self.add_required_by_challenge_link(*impl_block_with_trait, impl_item)?;
+                self.add_challenge_links_for_referenced_nodes_of_item(impl_item, seen_check_items)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn add_trait_items_of_required_trait(
+        &mut self,
+        trait_index: NodeIndex,
+        seen_check_items: &mut HashSet<NodeIndex>,
+    ) -> TreeResult<()> {
+        if !matches!(self.get_syn_item(trait_index), Some(Item::Trait(_))) {
+            return Ok(());
+        }
+        if !seen_check_items.contains(&trait_index) {
+            // mark all trait items of required trait as required by challenge
+            let trait_items: Vec<NodeIndex> = self
+                .iter_syn_trait_item(trait_index)
+                .filter(|(n, _)| !self.is_required_by_challenge(*n))
+                .map(|(n, _)| n)
+                .collect();
+            for trait_item_index in trait_items {
+                self.add_required_by_challenge_link(trait_index, trait_item_index)?;
+                self.add_challenge_links_for_referenced_nodes_of_item(
+                    trait_item_index,
+                    seen_check_items,
+                )?;
             }
         }
         Ok(())

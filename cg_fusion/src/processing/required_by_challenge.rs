@@ -1,7 +1,7 @@
 // Linking all items, which are required by challenge
 
 use super::{ProcessingImplItemDialogState, ProcessingResult};
-use crate::{add_context, challenge_tree::NodeType, configuration::CgCli, CgData};
+use crate::{add_context, configuration::CgCli, CgData};
 use anyhow::Context;
 use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
@@ -32,34 +32,6 @@ impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
         // a seen cache to make sure, that every required item is only checked once for path statements
         let mut seen_check_items: HashSet<NodeIndex> = HashSet::new();
         self.add_challenge_links_for_referenced_nodes_of_item(main_index, &mut seen_check_items)?;
-        // mark all trait items of required trait as required by challenge
-        let trait_items: Vec<(NodeIndex, NodeIndex)> = self
-            .iter_items_required_by_challenge()
-            .filter_map(|(n, nt)| match nt {
-                NodeType::SynItem(Item::Trait(_)) => Some(n),
-                _ => None,
-            })
-            .flat_map(|n| self.iter_syn_trait_item(n).map(move |(nti, _)| (nti, n)))
-            .filter(|(n, _)| !self.is_required_by_challenge(*n))
-            .collect();
-        for (trait_item_index, trait_index) in trait_items {
-            self.add_required_by_challenge_link(trait_index, trait_item_index)?;
-            self.add_challenge_links_for_referenced_nodes_of_item(trait_item_index, &mut seen_check_items)?;
-        }
-        // mark all impl items of required impl with trait as required by challenge
-        let impl_with_trait_items: Vec<(NodeIndex, NodeIndex)> = self
-            .iter_items_required_by_challenge()
-            .filter_map(|(n, nt)| match nt {
-                NodeType::SynItem(Item::Impl(item_impl)) => item_impl.trait_.is_some().then_some(n),
-                _ => None,
-            })
-            .flat_map(|n| self.iter_syn_impl_item(n).map(move |(nii, _)| (nii, n)))
-            .filter(|(n, _)| !self.is_required_by_challenge(*n))
-            .collect();
-        for (impl_with_trait_item_index, trait_index) in impl_with_trait_items {
-            self.add_required_by_challenge_link(trait_index, impl_with_trait_item_index)?;
-            self.add_challenge_links_for_referenced_nodes_of_item(impl_with_trait_item_index, &mut seen_check_items)?;
-        }
         Ok(CgData {
             state: ProcessingImplItemDialogState,
             options: self.options,
@@ -110,6 +82,7 @@ mod tests {
             })
             .collect();
         challenge_items_ident.sort();
+        dbg!(&challenge_items_ident);
         assert_eq!(
             challenge_items_ident,
             [
@@ -127,7 +100,11 @@ mod tests {
                 "cg_fusion_binary_test (binary crate)::Y (Use)",
                 "cg_fusion_binary_test (binary crate)::main (Fn)",
                 "cg_fusion_binary_test (library crate)",
+                "cg_fusion_binary_test (library crate)::Action (Use)",
+                "cg_fusion_binary_test (library crate)::Default for Go (Impl)::default (Impl Fn)",
+                "cg_fusion_binary_test (library crate)::Display for Value (Impl)::fmt (Impl Fn)",
                 "cg_fusion_binary_test (library crate)::Go (Impl)",
+                "cg_fusion_binary_test (library crate)::Go (Impl)::apply_action (Impl Fn)",
                 "cg_fusion_binary_test (library crate)::Go (Impl)::new (Impl Fn)",
                 "cg_fusion_binary_test (library crate)::Go (Struct)",
                 "cg_fusion_binary_test (library crate)::MyMap2D (Use)",
@@ -139,6 +116,7 @@ mod tests {
                 "cg_fusion_lib_test (library crate)",
                 "cg_fusion_lib_test (library crate)::my_map_two_dim (Use)",
                 "my_map_point (Mod)::MapPoint (Impl)",
+                "my_map_point (Mod)::MapPoint (Impl)::is_in_map (Impl Fn)",
                 "my_map_point (Mod)::MapPoint (Impl)::new (Impl Fn)",
                 "my_map_point (Mod)::MapPoint (Struct)",
                 "my_map_two_dim (library crate)",

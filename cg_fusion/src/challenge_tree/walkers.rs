@@ -13,7 +13,7 @@ use crate::{
     CgData,
 };
 
-use super::{VariableReferences, ChallengeTree, EdgeType, NodeType};
+use super::{ChallengeTree, EdgeType, NodeType, VariableReferences};
 
 pub trait BfsWalker {
     fn next(&mut self, graph: &ChallengeTree) -> Option<NodeIndex>;

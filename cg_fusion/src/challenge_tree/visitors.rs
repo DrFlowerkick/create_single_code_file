@@ -9,8 +9,8 @@ use anyhow::{anyhow, Result};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
 use syn::{
-    visit::Visit, Block, Expr, ExprMethodCall, FnArg, Ident, Item, LocalInit, Pat, PatIdent, Path,
-    Signature, Stmt, Type, TypePath,
+    visit::Visit, Block, Expr, ExprMethodCall, FnArg, Ident, ImplItem, Item, LocalInit, Pat,
+    PatIdent, Path, ReturnType, Signature, Stmt, Type, TypePath,
 };
 
 use super::{EdgeType, NodeType, PathElement, SourcePathWalker};
@@ -43,12 +43,10 @@ impl VariableReferences {
     }
 }
 
-// struct to collect
-// - syn::Path items as SourcePath
-// - ident of method calls from self
-// - variable definitions, which point to user defined types
-//   (ident: name of variable, SourcePath: path to user defined type)
-// ToDo: try to extend to analyze local items
+// struct to parse and collect referenced nodes and leaf nodes (nodes at the end of
+// syn::Path elements) from a parsed code snippet.
+// variables (ident and node of type) are collected, too. VariableReferences is used
+// in SourcePathWalker to traverse Path elements, which start with variable names.
 
 pub struct SynReferenceMapper<'a, O, S> {
     graph: &'a CgData<O, S>,
@@ -131,17 +129,151 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
     fn visit_block(&mut self, block: &'a Block) {
         let mut num_variables: usize = 0;
         for statement in block.stmts.iter() {
-            if let Stmt::Local(local_stmt) = statement {
-                // ToDo: later this could be expanded to tuples and maybe Arrays, Vec, and Option
-                if let Pat::Ident(PatIdent { ident, .. }) = &local_stmt.pat {
-                    // ident of variable
-                    if let Some(LocalInit { expr, .. }) = &local_stmt.init {
-                        // check some expression types, which can yield type of variable
+            // first recursive visit...
+            syn::visit::visit_stmt(self, statement);
+            // ...than try to add variables. This order prevents usage of variables before they are defined
+            let Stmt::Local(local_stmt) = statement else {
+                continue;
+            };
+            // At current state we only check single named variables (no tuples or enum constrictions
+            // like let Some(var) = ...).
+            // ToDo: later this could be expanded to tuples and maybe Arrays, Vec, and Option.
+
+            match &local_stmt.pat {
+                // check if type is explicitly defined
+                Pat::Type(pat_type) => {
+                    let Pat::Ident(PatIdent { ident, .. }) = pat_type.pat.as_ref() else {
+                        continue;
+                    };
+                    let Type::Path(type_path) = pat_type.ty.as_ref() else {
+                        continue;
+                    };
+                    if let Ok(PathElement::Item(node)) =
+                        self.graph.get_path_leaf(self.node, &type_path.path)
+                    {
+                        self.variables.push_variable(ident.to_owned(), node);
+                        num_variables += 1;
                     }
                 }
+                // check if variable is given as simple ident
+                Pat::Ident(PatIdent { ident, .. }) => {
+                    // ident of variable
+                    let Some(LocalInit { expr, .. }) = &local_stmt.init else {
+                        continue;
+                    };
+                    // check some expression types, which can yield type of variable
+                    match expr.as_ref() {
+                        Expr::Struct(expr_struct) => {
+                            if let Ok(PathElement::Item(node)) =
+                                self.graph.get_path_leaf(self.node, &expr_struct.path)
+                            {
+                                self.variables.push_variable(ident.to_owned(), node);
+                                num_variables += 1;
+                            }
+                        }
+                        Expr::Path(expr_path) => {
+                            // at current state we expect a path to
+                            // 1. an enum variant
+                            // 2. another variable in scope, which could be an enum, a struct or an union
+                            // 3. a const or a const inside an impl block
+                            for path_element in SourcePathWalker::with_variables(
+                                expr_path.path.extract_path(),
+                                self.node,
+                                self.variables.clone(),
+                            )
+                            .into_iter(self.graph)
+                            {
+                                match path_element {
+                                    PathElement::Group
+                                    | PathElement::Glob(_)
+                                    | PathElement::ItemRenamed(_, _) => {
+                                        unreachable!("Not possible in syn path")
+                                    }
+                                    PathElement::ExternalPackage
+                                    | PathElement::PathCouldNotBeParsed => break,
+                                    PathElement::Item(node) => {
+                                        let const_type = if let Some(item) =
+                                            self.graph.get_syn_item(node)
+                                        {
+                                            match item {
+                                                Item::Enum(_)
+                                                | Item::Struct(_)
+                                                | Item::Union(_) => {
+                                                    self.variables
+                                                        .push_variable(ident.to_owned(), node);
+                                                    num_variables += 1;
+                                                    break;
+                                                }
+                                                Item::Const(item_const) => &item_const.ty,
+                                                _ => continue,
+                                            }
+                                        } else if let Some(impl_item) =
+                                            self.graph.get_syn_impl_item(node)
+                                        {
+                                            let ImplItem::Const(impl_item_const) = impl_item else {
+                                                continue;
+                                            };
+                                            &impl_item_const.ty
+                                        } else {
+                                            continue;
+                                        };
+                                        if let Type::Path(type_path) = const_type {
+                                            if let Ok(PathElement::Item(node)) =
+                                                self.graph.get_path_leaf(self.node, &type_path.path)
+                                            {
+                                                // set variable type to type of const
+                                                self.variables
+                                                    .push_variable(ident.to_owned(), node);
+                                                num_variables += 1;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Expr::Call(expr_call) => {
+                            // At current state only parsing a simple path to constructor like new()
+                            // or a alone standing fn(), both represented as Expr::Path(ExprPath) inside ExprCall.
+                            // ToDo: support builder pattern
+                            if let Expr::Path(expr_path_of_method) = expr_call.func.as_ref() {
+                                if let Ok(PathElement::Item(fn_or_method_node)) = self
+                                    .graph
+                                    .get_path_leaf(self.node, &expr_path_of_method.path)
+                                {
+                                    let output = if let Some(Item::Fn(item_fn)) =
+                                        self.graph.get_syn_item(fn_or_method_node)
+                                    {
+                                        Some(&item_fn.sig.output)
+                                    } else if let Some(ImplItem::Fn(impl_item_fn)) =
+                                        self.graph.get_syn_impl_item(fn_or_method_node)
+                                    {
+                                        Some(&impl_item_fn.sig.output)
+                                    } else {
+                                        None
+                                    };
+
+                                    if let Some(ReturnType::Type(_, box_type)) = output {
+                                        if let Type::Path(type_path) = box_type.as_ref() {
+                                            if let Ok(PathElement::Item(node)) = self
+                                                .graph
+                                                .get_path_leaf(fn_or_method_node, &type_path.path)
+                                            {
+                                                // set variable type to return type of method call
+                                                self.variables
+                                                    .push_variable(ident.to_owned(), node);
+                                                num_variables += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                _ => (),
             }
-            // recursive visit
-            syn::visit::visit_stmt(self, statement);
         }
         // remove variables collected inside of this block, because they are out of scope
         // after leaving a block
@@ -177,43 +309,48 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
         // recursive visit
         syn::visit::visit_path(self, path);
     }
-    // ToDo: continue here with clean up of self_method_calls by adding node of called method to referenced_nodes
-    // see expand::check_path_items_for_challenge:453
-    // add function to SynReferenceMapper to add use tree to referenced_nodes and clean up expand::check_path_items_for_challenge:407
-    // afterward clean up expand::check_path_items_for_challenge:430-472 and TEST
-    // than continue visit_block
+
     fn visit_expr_method_call(&mut self, expr_method_call: &'a ExprMethodCall) {
         if let Expr::Path(expr_path) = expr_method_call.receiver.as_ref() {
             if let SourcePath::Name(segments) = expr_path.path.extract_path() {
-                if segments.len() == 1 && segments[0] == "self" {
-                    // add reference to method call, if receiver is self
-                    for (impl_method, _) in self
-                        .graph
-                        .get_parent_index_by_edge_type(self.node, EdgeType::Syn)
-                        .map(|n| {
-                            self.graph
-                                .get_parent_index_by_edge_type(n, EdgeType::Implementation)
-                        })
-                        .flatten()
-                        .into_iter()
-                        .flat_map(|n| self.graph.iter_impl_blocks_of_item(n))
-                        .flat_map(|(n, _)| self.graph.iter_syn_impl_item(n))
-                        .filter(|(n, _)| !self.graph.is_required_by_challenge(*n))
-                        .filter(|(_, i)| {
-                            if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
-                                name == expr_method_call.method
-                            } else {
-                                false
-                            }
-                        })
-                    {
-                        // It is possible to have the same method name in different impl blocks of an item,
-                        // if the item has generic parameters and impl blocks, each defining a specific
-                        // type for the generic parameter. These type specific impl blocks may share
-                        // method names, because they are identified by the specific type first and than
-                        // by method name. Same is true if different traits with similar method names are
-                        // implemented.
-                        self.referenced_nodes.insert(impl_method);
+                if segments.len() == 1 {
+                    let item_node = if segments[0] == "self" {
+                        // get item node which is referenced by self
+                        self.graph
+                            .get_parent_index_by_edge_type(self.node, EdgeType::Syn)
+                            .map(|n| {
+                                self.graph
+                                    .get_parent_index_by_edge_type(n, EdgeType::Implementation)
+                            })
+                            .flatten()
+                    } else {
+                        // check if receiver is listed in variables
+                        self.variables.get_node_index(&segments[0])
+                    };
+
+                    // add reference to method call, if receiver is self or listed in variables
+                    if let Some(node) = item_node {
+                        for (impl_method, _) in self
+                            .graph
+                            .iter_impl_blocks_of_item(node)
+                            .flat_map(|(n, _)| self.graph.iter_syn_impl_item(n))
+                            .filter(|(n, _)| !self.graph.is_required_by_challenge(*n))
+                            .filter(|(_, i)| {
+                                if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
+                                    name == expr_method_call.method
+                                } else {
+                                    false
+                                }
+                            })
+                        {
+                            // It is possible to have the same method name in different impl blocks of an item,
+                            // if the item has generic parameters and impl blocks, each defining a specific
+                            // type for the generic parameter. These type specific impl blocks may share
+                            // method names, because they are identified by the specific type first and than
+                            // by method name. Same is true if different traits with similar method names are
+                            // implemented.
+                            self.referenced_nodes.insert(impl_method);
+                        }
                     }
                 }
             }

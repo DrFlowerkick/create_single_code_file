@@ -17,17 +17,17 @@ use mockall::predicate::*;
 use once_cell::sync::Lazy;
 use std::{fmt::Display, io::Cursor};
 
-const PROMPT: &str = "Found 'MapPoint (Impl)::is_in_map (Impl Fn)' of required 'MapPoint (Impl)'.";
+const PROMPT: &str = "Found 'MyMap2D (Impl)::set (Impl Fn)' of required 'MyMap2D (Impl)'.";
 const HELP: &str = "↑↓ to move, enter to select, type to filter, and esc to quit.";
 
 static OPTIONS: Lazy<Vec<String>> = Lazy::new(|| {
     vec![
-        String::from("Include 'MapPoint (Impl)::is_in_map (Impl Fn)'."),
-        String::from("Exclude 'MapPoint (Impl)::is_in_map (Impl Fn)'."),
-        String::from("Include all items of 'MapPoint (Impl)'."),
-        String::from("Exclude all items of 'MapPoint (Impl)'."),
-        String::from("Show code of 'MapPoint (Impl)::is_in_map (Impl Fn)'."),
-        String::from("Show usage of 'MapPoint (Impl)::is_in_map (Impl Fn)'."),
+        String::from("Include 'MyMap2D (Impl)::set (Impl Fn)'."),
+        String::from("Exclude 'MyMap2D (Impl)::set (Impl Fn)'."),
+        String::from("Include all items of 'MyMap2D (Impl)'."),
+        String::from("Exclude all items of 'MyMap2D (Impl)'."),
+        String::from("Show code of 'MyMap2D (Impl)::set (Impl Fn)'."),
+        String::from("Show usage of 'MyMap2D (Impl)::set (Impl Fn)'."),
     ]
 });
 
@@ -90,30 +90,37 @@ fn prepare_test() -> (
         .unwrap();
 
     // get impl item index not required by challenge
-    let is_in_map_index = cg_data
+    let set_index = cg_data
         .iter_crates()
         .flat_map(|(n, _, _)| cg_data.iter_syn(n))
-        .find_map(|(n, nt)| match nt {
+        .filter_map(|(n, nt)| match nt {
             NodeType::SynImplItem(impl_item) => {
                 if let Some(name) = ItemName::from(impl_item).get_ident_in_name_space() {
-                    (name == "is_in_map").then_some(n)
+                    (name == "set").then_some(n)
                 } else {
                     None
                 }
             }
             _ => None,
         })
+        .find(|n| {
+            let parent = cg_data
+                .get_parent_index_by_edge_type(*n, EdgeType::Syn)
+                .unwrap();
+            let parent_name = cg_data.get_verbose_name_of_tree_node(parent).unwrap();
+            parent_name == "MyMap2D (Impl)"
+        })
         .unwrap();
-    let map_point_impl_block_index = cg_data
-        .get_parent_index_by_edge_type(is_in_map_index, EdgeType::Syn)
+    let my_map_2d_impl_block_index = cg_data
+        .get_parent_index_by_edge_type(set_index, EdgeType::Syn)
         .unwrap();
-    (cg_data, is_in_map_index, map_point_impl_block_index)
+    (cg_data, set_index, my_map_2d_impl_block_index)
 }
 
 #[test]
 fn test_impl_item_selection() {
     // preparation
-    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
     // prepare mock for include
     let mut mock = TestCgDialog::new();
@@ -175,49 +182,49 @@ fn test_impl_item_selection() {
     // test and assert
     // include
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::IncludeItem);
 
     // exclude
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::ExcludeItem);
 
     // include block items
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::IncludeAllItemsOfImplBlock);
 
     // exclude block items
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::ExcludeAllItemsOfImplBlock);
 
     // show item
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::ShowItem);
 
     // show usage of item
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::ShowUsageOfItem);
 
     // user quits
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::Quit);
 
     // bad output
     let test_result = cg_data
-        .impl_item_selection(is_in_map_index, map_point_impl_block_index, &mut mock)
+        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
     assert_eq!(test_result, UserSelection::Quit);
 }
@@ -225,7 +232,7 @@ fn test_impl_item_selection() {
 #[test]
 fn test_impl_item_dialog_include() {
     // preparation
-    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
     let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
@@ -240,8 +247,8 @@ fn test_impl_item_dialog_include() {
     // assert
     let test_result = cg_data
         .impl_item_dialog(
-            is_in_map_index,
-            map_point_impl_block_index,
+            set_index,
+            my_map_2d_impl_block_index,
             &mut mock,
             &mut seen_impl_items,
         )
@@ -253,7 +260,7 @@ fn test_impl_item_dialog_include() {
 #[test]
 fn test_impl_item_dialog_exclude() {
     // preparation
-    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
     let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
@@ -268,8 +275,8 @@ fn test_impl_item_dialog_exclude() {
     // assert
     let test_result = cg_data
         .impl_item_dialog(
-            is_in_map_index,
-            map_point_impl_block_index,
+            set_index,
+            my_map_2d_impl_block_index,
             &mut mock,
             &mut seen_impl_items,
         )
@@ -281,7 +288,7 @@ fn test_impl_item_dialog_exclude() {
 #[test]
 fn test_impl_item_dialog_include_block_items() {
     // preparation
-    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
     let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
@@ -296,8 +303,8 @@ fn test_impl_item_dialog_include_block_items() {
     // assert
     let test_result = cg_data
         .impl_item_dialog(
-            is_in_map_index,
-            map_point_impl_block_index,
+            set_index,
+            my_map_2d_impl_block_index,
             &mut mock,
             &mut seen_impl_items,
         )
@@ -305,7 +312,7 @@ fn test_impl_item_dialog_include_block_items() {
 
     assert_eq!(test_result, true);
 
-    for (item_index, item) in cg_data.iter_syn_impl_item(map_point_impl_block_index) {
+    for (item_index, item) in cg_data.iter_syn_impl_item(my_map_2d_impl_block_index) {
         match ItemName::from(item)
             .get_ident_in_name_space()
             .unwrap()
@@ -323,7 +330,7 @@ fn test_impl_item_dialog_include_block_items() {
 #[test]
 fn test_impl_item_dialog_exclude_block_items() {
     // preparation
-    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
     let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
@@ -338,8 +345,8 @@ fn test_impl_item_dialog_exclude_block_items() {
     // assert
     let test_result = cg_data
         .impl_item_dialog(
-            is_in_map_index,
-            map_point_impl_block_index,
+            set_index,
+            my_map_2d_impl_block_index,
             &mut mock,
             &mut seen_impl_items,
         )
@@ -347,7 +354,7 @@ fn test_impl_item_dialog_exclude_block_items() {
 
     assert_eq!(test_result, false);
 
-    for (item_index, item) in cg_data.iter_syn_impl_item(map_point_impl_block_index) {
+    for (item_index, item) in cg_data.iter_syn_impl_item(my_map_2d_impl_block_index) {
         match ItemName::from(item)
             .get_ident_in_name_space()
             .unwrap()
@@ -365,7 +372,7 @@ fn test_impl_item_dialog_exclude_block_items() {
 #[test]
 fn test_impl_item_dialog_show_item_and_include() {
     // preparation
-    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
     let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
@@ -385,8 +392,8 @@ fn test_impl_item_dialog_show_item_and_include() {
     // assert
     let test_result = cg_data
         .impl_item_dialog(
-            is_in_map_index,
-            map_point_impl_block_index,
+            set_index,
+            my_map_2d_impl_block_index,
             &mut mock,
             &mut seen_impl_items,
         )
@@ -397,9 +404,10 @@ fn test_impl_item_dialog_show_item_and_include() {
     assert_eq!(
         writer_content,
         r#"
-C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\my_map_point.rs:61:5
-pub fn is_in_map(&self) -> bool {
-        self.x < X && self.y < Y
+C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\lib.rs:50:5
+pub fn set(&mut self, coordinates: MapPoint<X, Y>, value: T) -> &T {
+        self.items[coordinates.y()][coordinates.x()] = value;
+        &self.items[coordinates.y()][coordinates.x()]
     }
 
 "#
@@ -409,7 +417,7 @@ pub fn is_in_map(&self) -> bool {
 #[test]
 fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
     // preparation
-    let (cg_data, is_in_map_index, map_point_impl_block_index) = prepare_test();
+    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
     let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
@@ -429,8 +437,8 @@ fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
     // assert
     let test_result = cg_data
         .impl_item_dialog(
-            is_in_map_index,
-            map_point_impl_block_index,
+            set_index,
+            my_map_2d_impl_block_index,
             &mut mock,
             &mut seen_impl_items,
         )
@@ -441,19 +449,9 @@ fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
     assert_eq!(
         writer_content,
         r#"
-C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\my_map_point.rs:24:20
-pub fn new(x: usize, y: usize) -> Self {
-        if X == 0 {
-            panic!("line {}, minimum size of dimension X is 1", line!());
-        }
-        if Y == 0 {
-            panic!("line {}, minimum size of dimension Y is 1", line!());
-        }
-        let result = MapPoint { x, y };
-        if !result.is_in_map() {
-            panic!("line {}, coordinates are out of range", line!());
-        }
-        result
+C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_binary_test\src\lib.rs:48:20
+pub fn apply_action(&mut self, action: Action) {
+        self.board.set(action.cell, action.value);
     }
 
 "#
