@@ -12,6 +12,7 @@ mod usage;
 pub use crate_src_files::ProcessingSrcFilesState;
 pub use dependencies::ProcessingDependenciesState;
 pub use error::{ProcessingError, ProcessingResult};
+pub use fuse_challenge::FuseChallengeState;
 pub use impl_block_check::ProcessingImplItemDialogState;
 pub use impl_linking::ProcessingImplBlocksState;
 pub use required_by_challenge::ProcessingRequiredByChallengeState;

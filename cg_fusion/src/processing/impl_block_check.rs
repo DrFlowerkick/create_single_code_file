@@ -4,7 +4,7 @@
 
 mod inquire_dialog;
 
-use super::{ProcessedState, ProcessingError, ProcessingResult};
+use super::{FuseChallengeState, ProcessingError, ProcessingResult};
 use crate::{
     add_context,
     challenge_tree::EdgeType,
@@ -51,7 +51,7 @@ exclude_impl_items = []
 impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
     pub fn check_impl_blocks_required_by_challenge(
         mut self,
-    ) -> ProcessingResult<CgData<O, ProcessedState>> {
+    ) -> ProcessingResult<CgData<O, FuseChallengeState>> {
         let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
         let mut seen_check_items: HashSet<NodeIndex> = self
             .iter_items_required_by_challenge()
@@ -59,6 +59,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             .collect();
         let impl_options = self.map_impl_config_options_to_node_indices()?;
         let mut dialog_handler = DialogCli::new(std::io::stdout());
+        let mut got_user_input = false;
         while let Some(impl_item) = {
             let next_item_option = self
                 .iter_impl_items_without_required_link_in_required_impl_block()
@@ -85,6 +86,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 seen_impl_items.insert(impl_item, *include);
                 continue;
             }
+            got_user_input = true;
             let user_input = self.impl_item_dialog(
                 impl_item,
                 impl_block,
@@ -100,25 +102,27 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             }
             seen_impl_items.insert(impl_item, user_input);
         }
-        if let Some((toml_path, toml_content)) =
-            self.impl_config_toml_dialog(&mut dialog_handler, &seen_impl_items)?
-        {
-            let confirmation = if toml_path.exists() {
-                let prompt = format!("Overwriting existing impl config file '{}'?", toml_path);
-                let help = "Default is not overwriting (N).";
-                dialog_handler.confirm(&prompt, help, false)?
-            } else {
-                true
-            };
-            if confirmation {
-                let mut file = fs::File::create(toml_path)?;
-                file.write_all(toml_content.as_bytes())?;
-            } else if self.options.verbose() {
-                println!("Skipping saving impl config to '{}'.", toml_path);
+        if got_user_input {
+            if let Some((toml_path, toml_content)) =
+                self.impl_config_toml_dialog(&mut dialog_handler, &seen_impl_items)?
+            {
+                let confirmation = if toml_path.exists() {
+                    let prompt = format!("Overwriting existing impl config file '{}'?", toml_path);
+                    let help = "Default is not overwriting (N).";
+                    dialog_handler.confirm(&prompt, help, false)?
+                } else {
+                    true
+                };
+                if confirmation {
+                    let mut file = fs::File::create(toml_path)?;
+                    file.write_all(toml_content.as_bytes())?;
+                } else if self.options.verbose() {
+                    println!("Skipping saving impl config to '{}'.", toml_path);
+                }
             }
         }
         Ok(CgData {
-            state: ProcessedState,
+            state: FuseChallengeState,
             options: self.options,
             tree: self.tree,
         })

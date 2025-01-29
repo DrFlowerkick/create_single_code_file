@@ -14,5 +14,5 @@
 # 'user_defined_type_name'.
 #
 # If in conflict with other impl options, the 'include' option always wins.
-include_impl_items = ["MyMap2D::set"]
-exclude_impl_items = ["x", "y"]
+include_impl_items = ["MyMap2D::set", "x", "y"]
+exclude_impl_items = []

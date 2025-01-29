@@ -4,18 +4,22 @@ use super::{
 };
 use crate::{
     add_context,
+    challenge_tree::PathElement,
     configuration::CgCli,
-    parsing::{load_syntax, ItemName},
+    parsing::{load_syntax, ItemName, UseTreeExtras},
     CgData,
 };
 
 use anyhow::{anyhow, Context};
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
+use proc_macro2::Span;
 use quote::ToTokens;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use syn::{visit::Visit, Item, ItemImpl, ItemMod, ItemTrait};
+use syn::{
+    token, visit::Visit, Ident, Item, ItemImpl, ItemMod, ItemTrait, UsePath, UseTree, Visibility,
+};
 
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn add_local_package(
@@ -514,5 +518,189 @@ impl<O: CgCli, S> CgData<O, S> {
             }
         }
         Ok(())
+    }
+    pub(crate) fn add_lib_dependency_as_mod_to_fusion(
+        &mut self,
+        lib_crate_index: NodeIndex,
+        fusion_node_index: NodeIndex,
+    ) -> TreeResult<()> {
+        let Some(NodeType::LibCrate(src_file)) = self.tree.node_weight(lib_crate_index) else {
+            return Err(
+                anyhow!("{}", add_context!("Expected required lib crate src file.")).into(),
+            );
+        };
+        let new_mod = ItemMod {
+            // only keep cfg attributes
+            attrs: src_file
+                .attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("cfg"))
+                .map(|a| a.to_owned())
+                .collect(),
+
+            vis: Visibility::Public(token::Pub::default()),
+            unsafety: None,
+            mod_token: token::Mod::default(),
+            ident: Ident::new(&src_file.name, Span::call_site()),
+            content: Some((token::Brace::default(), vec![])),
+            semi: None,
+        };
+        if self.options.verbose() {
+            println!("A")
+        }
+        let fusion_mod_index = self.tree.add_node(NodeType::SynItem(Item::Mod(new_mod)));
+        self.tree
+            .add_edge(fusion_node_index, fusion_mod_index, EdgeType::Syn);
+        if self.options.verbose() {
+            println!(
+                "Fusing '{}' to tree.",
+                self.get_verbose_name_of_tree_node(fusion_mod_index)?
+            );
+        }
+        // now add content of crate to new mod
+        self.add_required_mod_content_to_fusion(lib_crate_index, fusion_mod_index)?;
+        Ok(())
+    }
+
+    pub(crate) fn add_required_mod_content_to_fusion(
+        &mut self,
+        mod_index: NodeIndex,
+        fusion_mod_index: NodeIndex,
+    ) -> TreeResult<()> {
+        let mod_content: Vec<(NodeIndex, Item)> = self
+            .iter_syn_item_neighbors(mod_index)
+            .filter(|(n, _)| self.is_required_by_challenge(*n))
+            .map(|(n, i)| (n, i.to_owned()))
+            .collect();
+        let mut node_mapping: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+        let mut sub_mods:Vec<(NodeIndex, NodeIndex)> = Vec::new();
+        for (item_index, item) in mod_content {
+            let new_fusion_item_index = match item {
+                Item::Mod(_) => {
+                    let new_mod_index =
+                    self.tree.add_node(NodeType::SynItem(item));
+                    sub_mods.push((item_index, new_mod_index));
+                    new_mod_index
+                }
+                Item::Use(mut item_use) => {
+                    let new_item_use = if let PathElement::Item(path_root) =
+                        self.get_path_root(item_index, &item_use.tree)?
+                    {
+                        if self.is_crate(path_root) && !item_use.tree.is_item_use_root_keyword() {
+                            let new_use_root = UsePath {
+                                ident: Ident::new("crate", Span::call_site()),
+                                colon2_token: token::PathSep::default(),
+                                tree: Box::new(item_use.tree.to_owned()),
+                            };
+                            item_use.tree = UseTree::Path(new_use_root);
+                            item_use
+                        } else {
+                            item_use
+                        }
+                    } else {
+                        item_use
+                    };
+                    self.tree
+                        .add_node(NodeType::SynItem(Item::Use(new_item_use)))
+                }
+                Item::Impl(mut item_impl) => {
+                    let new_item_impl = if item_impl.trait_.is_none() {
+                        let required_impl_item_names: Vec<Ident> = self
+                            .iter_syn_impl_item(item_index)
+                            .filter_map(|(n, i)| {
+                                self.is_required_by_challenge(n).then_some(i.to_owned())
+                            })
+                            .filter_map(|i| ItemName::from(&i).get_ident_in_name_space())
+                            .collect();
+                        // keep original order by only retaining required impl items
+                        item_impl.items.retain(|i| {
+                            if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
+                                required_impl_item_names.contains(&name)
+                            } else {
+                                false
+                            }
+                        });
+                        item_impl
+                    } else {
+                        item_impl
+                    };
+                    self.tree
+                        .add_node(NodeType::SynItem(Item::Impl(new_item_impl)))
+                }
+                _ => self.tree.add_node(NodeType::SynItem(item)),
+            };
+            node_mapping.insert(item_index, new_fusion_item_index);
+            self.tree
+                .add_edge(fusion_mod_index, new_fusion_item_index, EdgeType::Syn);
+            if self.options.verbose() {
+                println!(
+                    "Fusing '{}' to tree.",
+                    self.get_verbose_name_of_tree_node(new_fusion_item_index)?
+                );
+            }
+        }
+        // add mod intern implementation links
+        let mod_intern_impl_links: Vec<(NodeIndex, NodeIndex)> = self
+            .iter_syn_item_neighbors(mod_index)
+            .flat_map(|(n, _)| self.iter_impl_blocks_of_item(n).map(move |(ni, _)| (n, ni)))
+            .filter(|(_, ni)| node_mapping.contains_key(ni))
+            .collect();
+        for (item_index, impl_block_index) in mod_intern_impl_links {
+            let new_fusion_item_index = node_mapping.get(&item_index).unwrap();
+            let new_fusion_impl_block_index = node_mapping.get(&impl_block_index).unwrap();
+            self.tree.add_edge(
+                *new_fusion_item_index,
+                *new_fusion_impl_block_index,
+                EdgeType::Implementation,
+            );
+            if self.options.verbose() {
+                println!(
+                    "Fusing implementation link from '{}' to '{}'.",
+                    self.get_verbose_name_of_tree_node(*new_fusion_item_index)?,
+                    self.get_verbose_name_of_tree_node(*new_fusion_impl_block_index)?
+                );
+            }
+        }
+        // add sub mods to tree
+        for (sub_mod_index, sub_mod_fusion_index) in sub_mods {
+            self.add_required_mod_content_to_fusion(sub_mod_index, sub_mod_fusion_index)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<O: CgCli, S> CgData<O, S> {
+    pub(crate) fn add_fusion_bin_crate(&mut self) -> TreeResult<NodeIndex> {
+        let path = self.get_fusion_file_path()?;
+        let fusion_bin_dir = path
+            .parent()
+            .context(add_context!("Expected parent of fusion file path."))?;
+        fs::create_dir_all(fusion_bin_dir)?;
+        let fusion_file_name = path
+            .file_stem()
+            .context(add_context!("Expected file stem of fusion file path."))?
+            .to_owned();
+        let (_, challenge_src_file) = self
+            .get_challenge_bin_crate()
+            .context(add_context!("Expected challenge bin crate."))?;
+        let fusion_src_file = SrcFile {
+            name: fusion_file_name,
+            path: path.to_owned(),
+            shebang: challenge_src_file.shebang.clone(),
+            attrs: challenge_src_file.attrs.clone(),
+        };
+        let fusion_node_index = self.tree.add_node(NodeType::BinCrate(fusion_src_file));
+        // challenge package is at index 0
+        self.tree
+            .add_edge(0.into(), fusion_node_index, EdgeType::Crate);
+        if self.options.verbose() {
+            println!(
+                "Fusing '{}' at path '{}' to tree.",
+                self.get_verbose_name_of_tree_node(fusion_node_index)?,
+                path
+            );
+        }
+        Ok(fusion_node_index)
     }
 }

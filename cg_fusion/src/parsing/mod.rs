@@ -3,7 +3,7 @@
 mod error;
 pub use error::{ParsingError, ParsingResult};
 
-use crate::add_context;
+use crate::{add_context, utilities::Sortable};
 use quote::ToTokens;
 use std::fmt::{Display, Write};
 use syn::{
@@ -186,8 +186,9 @@ impl PathAnalysis for Path {
     }
 }
 
-trait UseTreeExtras {
+pub trait UseTreeExtras {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
+    fn is_item_use_root_keyword(&self) -> bool;
 }
 
 impl UseTreeExtras for UseTree {
@@ -213,6 +214,13 @@ impl UseTreeExtras for UseTree {
             }
         }
         use_trees
+    }
+
+    fn is_item_use_root_keyword(&self) -> bool {
+        if let SourcePath::Name(segments) = self.extract_path() {
+            return segments[0] == "crate" || segments[0] == "super" || segments[0] == "self";
+        }
+        false
     }
 }
 
@@ -285,6 +293,19 @@ impl ItemExtras for Item {
     }
 }
 
+impl Sortable for Item {
+    fn sort(&self, other: &Self) -> std::cmp::Ordering {
+        let self_name = ItemName::from(self).get_name();
+        let other_name = ItemName::from(other).get_name();
+        match (self_name, other_name) {
+            (Some(self_name), Some(other_name)) => self_name.cmp(&other_name),
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum ItemName {
     TypeStringAndIdent(String, Ident),
@@ -322,6 +343,16 @@ impl ItemName {
             Self::TypeStringAndIdent(_, ident) => Some(ident.to_owned()),
             Self::TypeStringAndRenamed(_, _, rename) => Some(rename.to_owned()),
             _ => None,
+        }
+    }
+    pub fn get_name(&self) -> Option<String> {
+        match self {
+            Self::TypeStringAndIdent(_, ident) => Some(ident.to_string()),
+            Self::TypeStringAndRenamed(_, _, rename) => Some(rename.to_string()),
+            Self::TypeStringAndNameString(_, name) => Some(name.to_owned()),
+            Self::TypeStringAndTraitAndNameString(_, _, name) => Some(name.to_owned()),
+            Self::TypeString(name) => Some(name.to_owned()),
+            Self::Glob | Self::Group | Self::None => None,
         }
     }
 }
@@ -496,9 +527,9 @@ impl From<&TraitItem> for ItemName {
                 }
             }
             TraitItem::Type(trait_item_type) => {
-                ItemName::TypeStringAndIdent("Impl Type".into(), trait_item_type.ident.to_owned())
+                ItemName::TypeStringAndIdent("Trait Type".into(), trait_item_type.ident.to_owned())
             }
-            TraitItem::Verbatim(_) => ItemName::TypeString("Impl Verbatim".into()),
+            TraitItem::Verbatim(_) => ItemName::TypeString("Trait Verbatim".into()),
             _ => ItemName::None,
         }
     }

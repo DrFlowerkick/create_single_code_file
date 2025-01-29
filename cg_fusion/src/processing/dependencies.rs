@@ -58,11 +58,11 @@ impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
         for (_, package) in self.iter_local_packages() {
             package
                 .metadata
-                .run_cargo_check()?
+                .run_cargo_check(&package.name)?
                 .collect_cargo_check_messages()?;
             package
                 .metadata
-                .run_cargo_clippy()?
+                .run_cargo_clippy(&package.name)?
                 .collect_cargo_clippy_messages()?;
         }
         Ok(CgData {

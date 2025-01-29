@@ -28,7 +28,8 @@ fn run(options: CargoCli) -> CgResult<()> {
                 .expand_use_statements()?
                 .link_impl_blocks_with_corresponding_item()?
                 .link_required_by_challenge()?
-                .check_impl_blocks_required_by_challenge()?;
+                .check_impl_blocks_required_by_challenge()?
+                .fuse_challenge()?;
         }
     }
     Ok(())

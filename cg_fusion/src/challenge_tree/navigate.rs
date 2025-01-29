@@ -1,5 +1,7 @@
 // functions to navigate the challenge tree
 
+use std::collections::HashMap;
+
 use super::{
     walkers::{PathElement, SourcePathWalker},
     ChallengeTreeError, EdgeType, LocalPackage, NodeType, SrcFile, TreeResult,
@@ -8,10 +10,12 @@ use crate::{
     add_context,
     configuration::CgCli,
     parsing::{IdentCollector, ItemName, PathAnalysis},
+    utilities::{clean_absolute_utf8, DrainFilterAndSortExt},
     CgData,
 };
 
 use anyhow::{anyhow, Context};
+use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use proc_macro2::Span;
 use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, UseTree};
@@ -269,6 +273,17 @@ impl<O, S> CgData<O, S> {
             .map_err(|err| err.into())
     }
 
+    pub(crate) fn get_path_root(
+        &self,
+        path_item_index: NodeIndex,
+        path: &impl PathAnalysis,
+    ) -> TreeResult<PathElement> {
+        SourcePathWalker::new(path.extract_path(), path_item_index)
+            .next(self)
+            .context(add_context!("Expected path target."))
+            .map_err(|err| err.into())
+    }
+
     pub(crate) fn get_use_item_leaf(
         &self,
         index_of_use_item: NodeIndex,
@@ -351,6 +366,87 @@ impl<O, S> CgData<O, S> {
             }
         })
     }
+
+    pub(crate) fn get_sorted_mod_content(&self, mod_index: NodeIndex) -> TreeResult<Vec<Item>> {
+        let mod_content_mapping: HashMap<Item, NodeIndex> = self
+            .iter_syn_neighbors(mod_index)
+            .filter_map(|(n, w)| match w {
+                NodeType::SynItem(item) => Some((item.clone(), n)),
+                _ => None,
+            })
+            .collect();
+        let mut mod_content: Vec<Item> = mod_content_mapping.keys().cloned().collect();
+        let mut new_mod_content: Vec<Item> = Vec::new();
+        // 1. use items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Use(_))));
+        // 2. type items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Type(_))));
+        // 3. const items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Const(_))));
+        // 4. static items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Static(_))));
+        // 5. macro items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Macro(_))));
+        // 6. fn items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Fn(_))));
+        // 7. trait items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Trait(_))));
+        // 8. trait alias items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::TraitAlias(_))));
+        // 9. enum items and corresponding impl items
+        let new_enums = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Enum(_)));
+        for item in new_enums {
+            let item_index = mod_content_mapping[&item];
+            let item_impl_block_indices: Vec<NodeIndex> = self
+                .iter_impl_blocks_of_item(item_index)
+                .map(|(n, _)| n)
+                .collect();
+            new_mod_content.push(item);
+            new_mod_content.extend(
+                mod_content
+                    .drain_filter_and_sort(|i| item_impl_block_indices.contains(&mod_content_mapping[i])),
+            );
+        }
+        // 10. struct items and corresponding impl items
+        let new_structs = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Struct(_)));
+        for item in new_structs {
+            let item_index = mod_content_mapping[&item];
+            let item_impl_block_indices: Vec<NodeIndex> = self
+                .iter_impl_blocks_of_item(item_index)
+                .map(|(n, _)| n)
+                .collect();
+            new_mod_content.push(item);
+            new_mod_content.extend(
+                mod_content
+                    .drain_filter_and_sort(|i| item_impl_block_indices.contains(&mod_content_mapping[i])),
+            );
+        }
+        // 11. union items and corresponding impl items
+        let new_unions = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Union(_)));
+        for item in new_unions {
+            let item_index = mod_content_mapping[&item];
+            let item_impl_block_indices: Vec<NodeIndex> = self
+                .iter_impl_blocks_of_item(item_index)
+                .map(|(n, _)| n)
+                .collect();
+            new_mod_content.push(item);
+            new_mod_content.extend(
+                mod_content
+                    .drain_filter_and_sort(|i| item_impl_block_indices.contains(&mod_content_mapping[i])),
+            );
+        }
+        // 12. remaining impl items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Impl(_))));
+        // 13. mod items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Mod(_))));
+        // 14. foreign mod items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ForeignMod(_))));
+        // 15. extern crate items
+        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ExternCrate(_))));
+        // mod_content should be empty
+        assert!(mod_content.is_empty());
+        Ok(new_mod_content)
+    }
 }
 
 impl<O: CgCli, S> CgData<O, S> {
@@ -368,5 +464,20 @@ impl<O: CgCli, S> CgData<O, S> {
         self.iter_package_crates(0.into())
             .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
             .find(|(_, cf)| cf.name == bin_name)
+    }
+
+    pub(crate) fn get_fusion_file_name(&self) -> String {
+        if let Some(ref name) = self.options.output().filename {
+            name.to_owned()
+        } else {
+            format!("fusion_of_{}", self.challenge_package().name)
+        }
+    }
+
+    pub(crate) fn get_fusion_file_path(&self) -> TreeResult<Utf8PathBuf> {
+        let fusion_file_name = format!("{}.rs", self.get_fusion_file_name());
+        let fusion_bin_dir = self.challenge_package().path.join("src/bin/");
+        let fusion_bin_dir = clean_absolute_utf8(fusion_bin_dir)?;
+        Ok(fusion_bin_dir.join(&fusion_file_name))
     }
 }

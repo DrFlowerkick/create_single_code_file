@@ -35,6 +35,56 @@ macro_rules! add_context {
 pub const CODINGAME_SUPPORTED_CRATES: [&str; 6] =
     ["chrono", "itertools", "libc", "rand", "regex", "time"];
 
+// extension trait for Vec to drain elements based on a predicate
+pub trait DrainFilterExt<T> {
+    fn drain_filter<F>(&mut self, predicate: F) -> Vec<T>
+    where
+        F: Fn(&T) -> bool;
+}
+
+impl<T> DrainFilterExt<T> for Vec<T> {
+    fn drain_filter<F>(&mut self, predicate: F) -> Vec<T>
+    where
+        F: Fn(&T) -> bool,
+    {
+        let mut extracted = Vec::new();
+        let mut i = 0;
+
+        while i < self.len() {
+            if predicate(&self[i]) {
+                extracted.push(self.swap_remove(i));
+            } else {
+                i += 1;
+            }
+        }
+
+        extracted
+    }
+}
+
+// trait to indicate that a type is sortable
+pub trait Sortable {
+    fn sort(&self, other: &Self) -> std::cmp::Ordering;
+}
+
+pub trait DrainFilterAndSortExt<T>: DrainFilterExt<T> {
+    fn drain_filter_and_sort<F>(&mut self, predicate: F) -> Vec<T>
+    where
+        F: Fn(&T) -> bool,
+        T: Sortable;
+}
+
+impl<T: Sortable> DrainFilterAndSortExt<T> for Vec<T> {
+    fn drain_filter_and_sort<F>(&mut self, predicate: F) -> Vec<T>
+    where
+        F: Fn(&T) -> bool,
+    {
+        let mut extracted = self.drain_filter(predicate);
+        extracted.sort_by(|a, b| a.sort(b));
+        extracted
+    }
+}
+
 // get relative path from base to target
 pub fn get_relative_path<P>(base_dir: P, target_path: P) -> Result<Utf8PathBuf>
 where

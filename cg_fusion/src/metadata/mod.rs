@@ -5,7 +5,7 @@ use crate::add_context;
 pub use error::{MetadataError, MetadataResult};
 
 use anyhow::Context;
-use cargo_metadata::{camino::Utf8PathBuf, Message, Target};
+use cargo_metadata::{camino::Utf8PathBuf, Message, Metadata, MetadataCommand, Target};
 use std::fmt::Write;
 use std::{
     ops::Deref,
@@ -13,7 +13,7 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct MetaWrapper(cargo_metadata::Metadata);
+pub struct MetaWrapper(Metadata);
 
 // try from path of Cargo.toml file
 impl TryFrom<&Utf8PathBuf> for MetaWrapper {
@@ -22,6 +22,14 @@ impl TryFrom<&Utf8PathBuf> for MetaWrapper {
         let metadata = cargo_metadata::MetadataCommand::new()
             .manifest_path(value)
             .exec()?;
+        Ok(MetaWrapper(metadata))
+    }
+}
+
+impl TryFrom<MetadataCommand> for MetaWrapper {
+    type Error = MetadataError;
+    fn try_from(value: MetadataCommand) -> Result<Self, Self::Error> {
+        let metadata = value.exec()?;
         Ok(MetaWrapper(metadata))
     }
 }
@@ -79,10 +87,12 @@ impl MetaWrapper {
             .map(|p| (p.name.to_owned(), p.manifest_path.to_owned()))
             .collect()
     }
-
-    fn run_cargo_command(&self, command: &str) -> MetadataResult<OutputWrapper> {
+    fn run_cargo_command_for_given_bin_and_lib(&self, bin_name: &str, command: &str) -> MetadataResult<OutputWrapper> {
         Command::new("cargo")
             .arg(command)
+            .arg("--bin")
+            .arg(bin_name)
+            .arg("--lib")
             .arg("--manifest-path")
             .arg(self.package_manifest()?)
             .arg("--message-format=json")
@@ -92,12 +102,28 @@ impl MetaWrapper {
             .map_err(MetadataError::from)
     }
 
-    pub fn run_cargo_check(&self) -> MetadataResult<OutputWrapper> {
-        self.run_cargo_command("check")
+    pub fn run_cargo_check(&self, bin_name: &str) -> MetadataResult<OutputWrapper> {
+        self.run_cargo_command_for_given_bin_and_lib(bin_name, "check")
     }
 
-    pub fn run_cargo_clippy(&self) -> MetadataResult<OutputWrapper> {
-        self.run_cargo_command("clippy")
+    pub fn run_cargo_clippy(&self, bin_name: &str) -> MetadataResult<OutputWrapper> {
+        self.run_cargo_command_for_given_bin_and_lib(bin_name, "clippy")
+    }
+
+    pub fn run_cargo_fmt_on_fusion_bin(
+        &self,
+        fusion_path: &Utf8PathBuf,
+    ) -> MetadataResult<OutputWrapper> {
+        Command::new("cargo")
+            .arg("fmt")
+            .arg("--manifest-path")
+            .arg(self.package_manifest()?)
+            .arg("--")
+            .arg(fusion_path.as_str())
+            .current_dir(self.package_root_dir()?)
+            .output()
+            .map(OutputWrapper::from)
+            .map_err(MetadataError::from)
     }
 }
 
@@ -124,9 +150,20 @@ impl OutputWrapper {
     pub fn collect_cargo_clippy_messages(&self) -> MetadataResult<()> {
         self.collect_cargo_messages("clippy")
     }
+    pub fn display_raw_output(&self) {
+        let stdout = String::from_utf8_lossy(&self.0.stdout);
+        if !stdout.is_empty() {
+            println!("stdout: {}", stdout);
+        }
+        let stderr = String::from_utf8_lossy(&self.0.stderr);
+        if !stderr.is_empty() {
+            println!("stderr: {}", stderr);
+        }
+    }
     fn collect_cargo_messages(&self, command: &str) -> MetadataResult<()> {
         // collect any remaining 'cargo <command>' messages
         let mut check_messages = String::new();
+
         for message in Message::parse_stream(&self.0.stdout[..]) {
             if let Message::CompilerMessage(msg) = message.context(add_context!(format!(
                 "Unexpected error of parsing 'cargo {command}' messages stream."

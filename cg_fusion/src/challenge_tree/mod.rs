@@ -12,7 +12,7 @@ pub use error::{ChallengeTreeError, TreeResult};
 pub use visitors::{SynReferenceMapper, VariableReferences};
 pub use walkers::{BfsByEdgeType, BfsWalker, PathElement, SourcePathWalker};
 
-use crate::metadata::MetaWrapper;
+use crate::{configuration::CgCli, metadata::MetaWrapper};
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::StableDiGraph;
 use syn::{Attribute, ImplItem, Item, TraitItem};
@@ -47,6 +47,15 @@ pub struct LocalPackage {
     pub name: String,
     pub path: Utf8PathBuf,
     pub metadata: Box<MetaWrapper>,
+}
+
+impl LocalPackage {
+    pub fn update_metadata(&mut self, options: &impl CgCli) -> TreeResult<()> {
+        let metadata_command = options.manifest_metadata_command();
+        let metadata = MetaWrapper::try_from(metadata_command)?;
+        self.metadata = Box::new(metadata);
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
