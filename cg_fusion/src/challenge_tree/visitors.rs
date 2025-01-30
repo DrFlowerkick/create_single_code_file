@@ -2,7 +2,7 @@
 
 use crate::{
     add_context,
-    parsing::{ItemName, PathAnalysis, SourcePath},
+    parsing::{ItemName, SourcePath},
     CgData,
 };
 use anyhow::{anyhow, Result};
@@ -73,7 +73,7 @@ impl<'a, O, S> SynReferenceMapper<'a, O, S> {
             let mut leaf: Option<NodeIndex> = None;
             // collect nodes referenced by use tree
             for path_element in
-                SourcePathWalker::new(item_use.tree.extract_path(), self.node).into_iter(self.graph)
+                SourcePathWalker::new(item_use.into(), self.node).into_iter(self.graph)
             {
                 let node_reference = match path_element {
                     PathElement::Glob(_) | PathElement::Group => {
@@ -117,7 +117,8 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                 continue;
             };
             // node of argument; in syn path ItemRenamed is not possible
-            let Ok(PathElement::Item(node)) = self.graph.get_path_leaf(self.node, path) else {
+            let Ok(PathElement::Item(node)) = self.graph.get_path_leaf(self.node, path.into())
+            else {
                 continue;
             };
             self.variables.push_variable(ident.to_owned(), node);
@@ -149,7 +150,7 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                         continue;
                     };
                     if let Ok(PathElement::Item(node)) =
-                        self.graph.get_path_leaf(self.node, &type_path.path)
+                        self.graph.get_path_leaf(self.node, type_path.into())
                     {
                         self.variables.push_variable(ident.to_owned(), node);
                         num_variables += 1;
@@ -165,7 +166,7 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                     match expr.as_ref() {
                         Expr::Struct(expr_struct) => {
                             if let Ok(PathElement::Item(node)) =
-                                self.graph.get_path_leaf(self.node, &expr_struct.path)
+                                self.graph.get_path_leaf(self.node, expr_struct.into())
                             {
                                 self.variables.push_variable(ident.to_owned(), node);
                                 num_variables += 1;
@@ -177,7 +178,7 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                             // 2. another variable in scope, which could be an enum, a struct or an union
                             // 3. a const or a const inside an impl block
                             for path_element in SourcePathWalker::with_variables(
-                                expr_path.path.extract_path(),
+                                expr_path.into(),
                                 self.node,
                                 self.variables.clone(),
                             )
@@ -218,8 +219,9 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                                             continue;
                                         };
                                         if let Type::Path(type_path) = const_type {
-                                            if let Ok(PathElement::Item(node)) =
-                                                self.graph.get_path_leaf(self.node, &type_path.path)
+                                            if let Ok(PathElement::Item(node)) = self
+                                                .graph
+                                                .get_path_leaf(self.node, type_path.into())
                                             {
                                                 // set variable type to type of const
                                                 self.variables
@@ -239,7 +241,7 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                             if let Expr::Path(expr_path_of_method) = expr_call.func.as_ref() {
                                 if let Ok(PathElement::Item(fn_or_method_node)) = self
                                     .graph
-                                    .get_path_leaf(self.node, &expr_path_of_method.path)
+                                    .get_path_leaf(self.node, expr_path_of_method.into())
                                 {
                                     let output = if let Some(Item::Fn(item_fn)) =
                                         self.graph.get_syn_item(fn_or_method_node)
@@ -257,7 +259,7 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                                         if let Type::Path(type_path) = box_type.as_ref() {
                                             if let Ok(PathElement::Item(node)) = self
                                                 .graph
-                                                .get_path_leaf(fn_or_method_node, &type_path.path)
+                                                .get_path_leaf(fn_or_method_node, type_path.into())
                                             {
                                                 // set variable type to return type of method call
                                                 self.variables
@@ -284,7 +286,7 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
         let mut leaf: Option<NodeIndex> = None;
         // collect nodes referenced by path
         for path_element in
-            SourcePathWalker::with_variables(path.extract_path(), self.node, self.variables.clone())
+            SourcePathWalker::with_variables(path.into(), self.node, self.variables.clone())
                 .into_iter(self.graph)
         {
             let node_reference = match path_element {
@@ -312,7 +314,7 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
 
     fn visit_expr_method_call(&mut self, expr_method_call: &'a ExprMethodCall) {
         if let Expr::Path(expr_path) = expr_method_call.receiver.as_ref() {
-            if let SourcePath::Name(segments) = expr_path.path.extract_path() {
+            if let SourcePath::Name(segments) = expr_path.into() {
                 if segments.len() == 1 {
                     let item_node = if segments[0] == "self" {
                         // get item node which is referenced by self

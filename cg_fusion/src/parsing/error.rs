@@ -12,6 +12,12 @@ pub enum ParsingError {
     ParsingFileContentError(#[from] syn::parse::Error),
     #[error("Parsed file contains verbatim elements:\n{0}")]
     ContainsVerbatim(String),
+    #[error("Only SourcePath::Name can be converted to Path.")]
+    ConvertSourcePathToPathError,
+    #[error("SourcePath::Group cannot be converted to UseTree.")]
+    ConvertSourcePathGroupToUseTreeError,
+    #[error("SourcePath::Group cannot be converted to UseTree.")]
+    ConvertSourcePathToUseTreeNotEnoughSegmentsError,
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),
 }

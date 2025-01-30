@@ -7,7 +7,7 @@ mod syn_extend;
 pub use error::{ParsingError, ParsingResult};
 pub use fold_and_visit::{FoldRemoveAttrDocComments, IdentCollector, VisitVerbatim};
 pub use item_name::ItemName;
-pub use syn_extend::{ItemExtras, PathAnalysis, SourcePath, UseTreeExtras};
+pub use syn_extend::{ItemExtras, SourcePath, UseTreeExtras};
 
 use syn::{fold::Fold, visit::Visit, File, Item};
 

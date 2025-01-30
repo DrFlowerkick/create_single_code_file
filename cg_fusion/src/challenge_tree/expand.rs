@@ -583,9 +583,11 @@ impl<O: CgCli, S> CgData<O, S> {
                 }
                 Item::Use(mut item_use) => {
                     let new_item_use = if let PathElement::Item(path_root) =
-                        self.get_path_root(item_index, &item_use.tree)?
+                        self.get_path_root(item_index, (&item_use).into())?
                     {
-                        if self.is_crate(path_root) && !item_use.tree.is_item_use_root_keyword() {
+                        if self.is_crate(path_root)
+                            && !item_use.tree.is_use_tree_root_path_keyword()
+                        {
                             let new_use_root = UsePath {
                                 ident: Ident::new("crate", Span::call_site()),
                                 colon2_token: token::PathSep::default(),

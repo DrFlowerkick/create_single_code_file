@@ -1,6 +1,6 @@
 // extract item name from syn::Item, syn::ImplItem, syn::TraitItem
 
-use super::{PathAnalysis, SourcePath};
+use super::SourcePath;
 
 use quote::ToTokens;
 use std::fmt::Display;
@@ -77,14 +77,14 @@ impl From<&Item> for ItemName {
             Item::Impl(item_impl) => {
                 let trait_ident: Option<Ident> = if let Some((_, ref trait_, _)) = item_impl.trait_
                 {
-                    trait_.extract_path().get_last().map(|i| i.to_owned())
+                    SourcePath::from(trait_).get_last().map(|i| i.to_owned())
                 } else {
                     None
                 };
                 match item_impl.self_ty.as_ref() {
                     // at current state of code, we only support Path and Reference
                     Type::Path(type_path) => {
-                        let path_target = match type_path.path.extract_path().get_last() {
+                        let path_target = match SourcePath::from(type_path).get_last() {
                             Some(ident) => ident.to_owned(),
                             None => unreachable!("Path must have at least one segment."),
                         };
@@ -103,7 +103,7 @@ impl From<&Item> for ItemName {
                     }
                     Type::Reference(type_ref) => {
                         if let Type::Path(type_path) = type_ref.elem.as_ref() {
-                            let path_target = match type_path.path.extract_path().get_last() {
+                            let path_target = match SourcePath::from(type_path).get_last() {
                                 Some(ident) => ident.to_owned(),
                                 None => unreachable!("Path must have at least one segment."),
                             };
@@ -164,7 +164,7 @@ impl From<&Item> for ItemName {
             Item::Union(item_union) => {
                 ItemName::TypeStringAndIdent("Union".into(), item_union.ident.to_owned())
             }
-            Item::Use(item_use) => match item_use.tree.extract_path() {
+            Item::Use(item_use) => match item_use.into() {
                 SourcePath::Group => ItemName::Group,
                 SourcePath::Glob(_) => ItemName::Glob,
                 SourcePath::Name(segments) => {
@@ -192,7 +192,7 @@ impl From<&ImplItem> for ItemName {
                 ItemName::TypeStringAndIdent("Impl Fn".into(), impl_item_fn.sig.ident.to_owned())
             }
             ImplItem::Macro(impl_item_macro) => {
-                match impl_item_macro.mac.path.extract_path().get_last() {
+                match SourcePath::from(impl_item_macro).get_last() {
                     Some(ident) => {
                         ItemName::TypeStringAndIdent("Impl Macro".into(), ident.to_owned())
                     }
@@ -219,7 +219,7 @@ impl From<&TraitItem> for ItemName {
                 ItemName::TypeStringAndIdent("Trait Fn".into(), trait_item_fn.sig.ident.to_owned())
             }
             TraitItem::Macro(trait_item_macro) => {
-                match trait_item_macro.mac.path.extract_path().get_last() {
+                match SourcePath::from(trait_item_macro).get_last() {
                     Some(ident) => {
                         ItemName::TypeStringAndIdent("Trait Macro".into(), ident.to_owned())
                     }

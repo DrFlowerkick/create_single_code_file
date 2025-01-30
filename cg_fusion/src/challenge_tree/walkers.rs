@@ -249,6 +249,8 @@ impl SourcePathWalker {
                     Some(Item::Enum(_)) | Some(Item::Struct(_)) | Some(Item::Union(_))
                 ) {
                     // iter all impl items of all impl blocks linked to current_node_index
+                    // ToDo: names in different impl blocks for the same type may not be unique
+                    // How should this be handled?
                     graph
                         .iter_impl_blocks_of_item(self.current_node_index)
                         .flat_map(|(n, _)| {
@@ -293,7 +295,7 @@ impl SourcePathWalker {
                         NodeType::SynItem(Item::Use(item_use)) => {
                             // found reimported item -> get index of it
                             if let Ok(path_element) =
-                                graph.get_path_leaf(item_index, &item_use.tree)
+                                graph.get_path_leaf(item_index, item_use.into())
                             {
                                 match path_element {
                                     PathElement::ExternalPackage => {
@@ -366,8 +368,6 @@ impl<O, S> Iterator for SourcePathIterator<'_, O, S> {
 #[cfg(test)]
 mod tests {
 
-    use crate::parsing::PathAnalysis;
-
     use super::super::super::processing::tests::setup_processing_test;
     use super::*;
 
@@ -392,7 +392,7 @@ mod tests {
             .iter()
             .filter_map(|(n, i)| match i {
                 Item::Use(item_use) => {
-                    let source_path = item_use.tree.extract_path();
+                    let source_path = item_use.into();
                     let walker = SourcePathWalker::new(source_path, *n);
                     walker.into_iter(&cg_data).last()
                 }
@@ -425,7 +425,7 @@ mod tests {
             .iter_syn_item_neighbors(my_map_point_mod_index)
             .filter_map(|(n, i)| {
                 if let Item::Use(item_use) = i {
-                    match item_use.tree.extract_path() {
+                    match item_use.into() {
                         SourcePath::Name(segments) | SourcePath::Glob(segments) => {
                             Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
                         }
@@ -455,7 +455,7 @@ mod tests {
             .unwrap()
             .0;
         let path_elements_of_use_glob_my_compass: Vec<PathElement> = SourcePathWalker::new(
-            use_glob_tree_my_compass.extract_path(),
+            (*use_glob_tree_my_compass).into(),
             *use_glob_index_my_compass,
         )
         .into_iter(&cg_data)
@@ -474,7 +474,7 @@ mod tests {
             .iter_syn_item_neighbors(cg_fusion_binary_test_index)
             .filter_map(|(n, i)| {
                 if let Item::Use(item_use) = i {
-                    match item_use.tree.extract_path() {
+                    match item_use.into() {
                         SourcePath::Name(segments) | SourcePath::Glob(segments) => {
                             Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
                         }
@@ -495,7 +495,7 @@ mod tests {
             .find(|(_, c)| c.name == "my_map_two_dim")
             .unwrap();
         let path_elements_of_use_glob_my_map_two_dim: Vec<PathElement> = SourcePathWalker::new(
-            use_glob_tree_my_map_two_dim.extract_path(),
+            (*use_glob_tree_my_map_two_dim).into(),
             *use_glob_index_my_map_two_dim,
         )
         .into_iter(&cg_data)

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use syn::{Ident, UseTree};
 
-use crate::parsing::{ItemName, PathAnalysis, SourcePath};
+use crate::parsing::{ItemName, SourcePath};
 
 use super::super::tests::setup_processing_test;
 use super::*;
@@ -25,7 +25,7 @@ fn contains_use_group(item: &Item) -> bool {
 
 fn is_use_glob(item: &Item) -> Option<&UseTree> {
     if let Item::Use(item_use) = item {
-        return if let SourcePath::Glob(_) = item_use.tree.extract_path() {
+        return if let SourcePath::Glob(_) = item_use.into() {
             Some(&item_use.tree)
         } else {
             None
@@ -177,13 +177,13 @@ fn test_get_path_leaf() {
     // test path target of use items, which point to lib crates
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_map_two_dim, *use_tree_my_map_two_dim,)
+            .get_path_leaf(*use_index_my_map_two_dim, (*use_tree_my_map_two_dim).into())
             .unwrap(),
         PathElement::Item(my_map_two_dim_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_array, *use_tree_my_array,)
+            .get_path_leaf(*use_index_my_array, (*use_tree_my_array).into())
             .unwrap(),
         PathElement::Item(my_array_mod_index)
     );
@@ -251,13 +251,19 @@ fn test_get_path_leaf() {
     // test path target of use items, which point to items in modules
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_array_struct, *use_tree_my_array_struct,)
+            .get_path_leaf(
+                *use_index_my_array_struct,
+                (*use_tree_my_array_struct).into()
+            )
             .unwrap(),
         PathElement::Item(my_array_item_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_index_my_map_2d_struct, *use_tree_my_map_2d_struct,)
+            .get_path_leaf(
+                *use_index_my_map_2d_struct,
+                (*use_tree_my_map_2d_struct).into()
+            )
             .unwrap(),
         PathElement::Item(my_map_2d_item_index)
     );
@@ -265,7 +271,7 @@ fn test_get_path_leaf() {
         cg_data
             .get_path_leaf(
                 *use_index_my_map_point_struct,
-                *use_tree_my_map_point_struct,
+                (*use_tree_my_map_point_struct).into()
             )
             .unwrap(),
         PathElement::Item(my_map_point_item_index)
@@ -276,7 +282,7 @@ fn test_get_path_leaf() {
         .iter_syn_item_neighbors(my_map_two_dim_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
-                if let SourcePath::Glob(segments) = item_use.tree.extract_path() {
+                if let SourcePath::Glob(segments) = item_use.into() {
                     Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
                 } else {
                     None
@@ -318,19 +324,25 @@ fn test_get_path_leaf() {
     // test path target of use items, which point to use globs
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_map_point, *use_glob_tree_my_map_point,)
+            .get_path_leaf(
+                *use_glob_index_my_map_point,
+                (*use_glob_tree_my_map_point).into()
+            )
             .unwrap(),
         PathElement::Glob(my_map_point_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_array, *use_glob_tree_my_array,)
+            .get_path_leaf(*use_glob_index_my_array, (*use_glob_tree_my_array).into())
             .unwrap(),
         PathElement::Glob(my_array_mod_index)
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass,)
+            .get_path_leaf(
+                *use_glob_index_my_compass,
+                (*use_glob_tree_my_compass).into()
+            )
             .unwrap(),
         PathElement::Glob(my_compass_mod_index)
     );
@@ -340,7 +352,7 @@ fn test_get_path_leaf() {
         .iter_syn_item_neighbors(my_map_point_mod_index)
         .filter_map(|(n, i)| {
             if let Item::Use(item_use) = i {
-                match item_use.tree.extract_path() {
+                match item_use.into() {
                     SourcePath::Name(segments) | SourcePath::Glob(segments) => {
                         Some((n, segments.last().unwrap().to_owned(), &item_use.tree))
                     }
@@ -361,13 +373,16 @@ fn test_get_path_leaf() {
         .unwrap();
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_extern_ordering, *use_tree_extern_ordering,)
+            .get_path_leaf(*use_extern_ordering, (*use_tree_extern_ordering).into())
             .unwrap(),
         PathElement::ExternalPackage
     );
     assert_eq!(
         cg_data
-            .get_path_leaf(*use_glob_index_my_compass, *use_glob_tree_my_compass,)
+            .get_path_leaf(
+                *use_glob_index_my_compass,
+                (*use_glob_tree_my_compass).into()
+            )
             .unwrap(),
         PathElement::Glob(my_compass_mod_index)
     );
@@ -573,7 +588,7 @@ fn test_expand_use_glob() {
         .iter_syn_item_neighbors(cg_fusion_binary_test_mod_index)
         .find(|(_, i)| {
             is_use_glob(i).is_some() && {
-                let path = i.get_item_use().unwrap().tree.extract_path();
+                let path = i.get_item_use().unwrap().into();
                 if let SourcePath::Glob(segments) = path {
                     segments[1] == "action"
                 } else {
@@ -587,7 +602,7 @@ fn test_expand_use_glob() {
         .iter_syn_item_neighbors(cg_fusion_binary_test_mod_index)
         .find(|(_, i)| {
             is_use_glob(i).is_some() && {
-                let path = i.get_item_use().unwrap().tree.extract_path();
+                let path = i.get_item_use().unwrap().into();
                 if let SourcePath::Glob(segments) = path {
                     segments[1] == "my_map_two_dim"
                 } else {

@@ -9,7 +9,7 @@ use super::{
 use crate::{
     add_context,
     configuration::CgCli,
-    parsing::{IdentCollector, ItemName, PathAnalysis},
+    parsing::{IdentCollector, ItemName, SourcePath},
     utilities::{clean_absolute_utf8, DrainFilterAndSortExt},
     CgData,
 };
@@ -18,7 +18,7 @@ use anyhow::{anyhow, Context};
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use proc_macro2::Span;
-use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, UseTree};
+use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, TraitItem, UseTree};
 
 impl<O, S> CgData<O, S> {
     pub(crate) fn challenge_package(&self) -> &LocalPackage {
@@ -97,6 +97,27 @@ impl<O, S> CgData<O, S> {
     pub(crate) fn get_syn_impl_item(&self, node: NodeIndex) -> Option<&ImplItem> {
         self.tree.node_weight(node).and_then(|w| match w {
             NodeType::SynImplItem(impl_item) => Some(impl_item),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn clone_syn_item(&self, node: NodeIndex) -> Option<Item> {
+        self.tree.node_weight(node).and_then(|w| match w {
+            NodeType::SynItem(item) => Some(item.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn clone_syn_impl_item(&self, node: NodeIndex) -> Option<ImplItem> {
+        self.tree.node_weight(node).and_then(|w| match w {
+            NodeType::SynImplItem(impl_item) => Some(impl_item.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn clone_syn_trait_item(&self, node: NodeIndex) -> Option<TraitItem> {
+        self.tree.node_weight(node).and_then(|w| match w {
+            NodeType::SynTraitItem(trait_item) => Some(trait_item.clone()),
             _ => None,
         })
     }
@@ -264,9 +285,9 @@ impl<O, S> CgData<O, S> {
     pub(crate) fn get_path_leaf(
         &self,
         path_item_index: NodeIndex,
-        path: &impl PathAnalysis,
+        path: SourcePath,
     ) -> TreeResult<PathElement> {
-        SourcePathWalker::new(path.extract_path(), path_item_index)
+        SourcePathWalker::new(path, path_item_index)
             .into_iter(self)
             .last()
             .context(add_context!("Expected path target."))
@@ -276,9 +297,9 @@ impl<O, S> CgData<O, S> {
     pub(crate) fn get_path_root(
         &self,
         path_item_index: NodeIndex,
-        path: &impl PathAnalysis,
+        path: SourcePath,
     ) -> TreeResult<PathElement> {
-        SourcePathWalker::new(path.extract_path(), path_item_index)
+        SourcePathWalker::new(path, path_item_index)
             .next(self)
             .context(add_context!("Expected path target."))
             .map_err(|err| err.into())
@@ -289,7 +310,7 @@ impl<O, S> CgData<O, S> {
         index_of_use_item: NodeIndex,
     ) -> TreeResult<PathElement> {
         if let Some(Item::Use(item_use)) = self.get_syn_item(index_of_use_item) {
-            return self.get_path_leaf(index_of_use_item, &item_use.tree);
+            return self.get_path_leaf(index_of_use_item, SourcePath::from(&item_use.tree));
         }
         Err(anyhow!(add_context!("Expected syn use item")).into())
     }

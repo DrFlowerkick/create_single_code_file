@@ -1,6 +1,6 @@
 // functions to analyze use statements in src files
 
-use super::{ProcessingError, ProcessingCrateUseAndPathState, ProcessingResult};
+use super::{ProcessingCrateUseAndPathState, ProcessingError, ProcessingResult};
 use crate::{
     add_context,
     challenge_tree::PathElement,
@@ -147,7 +147,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             })
             .filter_map(|(n, i)| match i {
                 Item::Use(item_use) => {
-                    if let Ok(ref path_element) = self.get_path_leaf(n, &item_use.tree) {
+                    if let Ok(ref path_element) = self.get_path_leaf(n, item_use.into()) {
                         match path_element {
                             PathElement::Group => Some(None), // first expand all use groups
                             PathElement::Glob(glob_target_index) => {
@@ -269,7 +269,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 Visibility::Inherited => return Ok(false),
                 Visibility::Public(_) => return Ok(true),
                 Visibility::Restricted(vis_restricted) => {
-                    match self.get_path_leaf(item_index, vis_restricted.path.as_ref())? {
+                    match self.get_path_leaf(item_index, vis_restricted.into())? {
                         PathElement::ExternalPackage => return Ok(false), // only local syn items have NodeIndex to link to
                         PathElement::Group => unreachable!("No group in visibility path."),
                         PathElement::Glob(_) => unreachable!("No glob in visibility path."),

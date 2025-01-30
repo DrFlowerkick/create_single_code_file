@@ -1,13 +1,11 @@
 // extend syn to fit needs of cg_fusion
 
-use super::ItemName;
+use super::{ItemName, ParsingError};
 use crate::utilities::Sortable;
-use syn::{Ident, Item, ItemUse, Path, UseName, UseTree, Visibility};
-
-// path analysis
-pub trait PathAnalysis {
-    fn extract_path(&self) -> SourcePath;
-}
+use syn::{
+    ExprPath, ExprStruct, Ident, ImplItemMacro, Item, ItemUse, Path, TraitItemMacro, TypePath,
+    UseGlob, UseName, UsePath, UseRename, UseTree, VisRestricted, Visibility,
+};
 
 #[derive(Debug, Clone)]
 pub enum SourcePath {
@@ -28,21 +26,14 @@ impl SourcePath {
     }
 }
 
-impl PathAnalysis for SourcePath {
-    fn extract_path(&self) -> SourcePath {
-        self.clone()
-    }
-}
-
-impl PathAnalysis for UseTree {
-    fn extract_path(&self) -> SourcePath {
-        let mut tree = self;
+impl From<&UseTree> for SourcePath {
+    fn from(mut use_tree: &UseTree) -> Self {
         let mut segments: Vec<Ident> = Vec::new();
         loop {
-            match tree {
+            match use_tree {
                 UseTree::Path(use_path) => {
                     segments.push(use_path.ident.to_owned());
-                    tree = &use_path.tree;
+                    use_tree = &use_path.tree;
                 }
                 UseTree::Group(_) => return SourcePath::Group,
                 UseTree::Glob(_) => return SourcePath::Glob(segments),
@@ -59,15 +50,129 @@ impl PathAnalysis for UseTree {
     }
 }
 
-impl PathAnalysis for Path {
-    fn extract_path(&self) -> SourcePath {
-        SourcePath::Name(self.segments.iter().map(|s| s.ident.to_owned()).collect())
+impl From<&Path> for SourcePath {
+    fn from(path: &Path) -> Self {
+        SourcePath::Name(path.segments.iter().map(|s| s.ident.to_owned()).collect())
+    }
+}
+
+impl From<&ItemUse> for SourcePath {
+    fn from(item_use: &ItemUse) -> Self {
+        SourcePath::from(&item_use.tree)
+    }
+}
+
+impl From<&TypePath> for SourcePath {
+    fn from(type_path: &TypePath) -> Self {
+        SourcePath::from(&type_path.path)
+    }
+}
+
+impl From<&ExprStruct> for SourcePath {
+    fn from(expr_struct: &ExprStruct) -> Self {
+        SourcePath::from(&expr_struct.path)
+    }
+}
+
+impl From<&ExprPath> for SourcePath {
+    fn from(expr_path: &ExprPath) -> Self {
+        SourcePath::from(&expr_path.path)
+    }
+}
+
+impl From<&ImplItemMacro> for SourcePath {
+    fn from(impl_item_macro: &ImplItemMacro) -> Self {
+        SourcePath::from(&impl_item_macro.mac.path)
+    }
+}
+
+impl From<&TraitItemMacro> for SourcePath {
+    fn from(trait_item_macro: &TraitItemMacro) -> Self {
+        SourcePath::from(&trait_item_macro.mac.path)
+    }
+}
+
+impl From<&VisRestricted> for SourcePath {
+    fn from(vis_restricted: &VisRestricted) -> Self {
+        SourcePath::from(vis_restricted.path.as_ref())
+    }
+}
+
+impl TryFrom<SourcePath> for UseTree {
+    type Error = ParsingError;
+
+    fn try_from(value: SourcePath) -> Result<Self, Self::Error> {
+        let (mut use_tree, segments) = match value {
+            SourcePath::Name(ref segments) => {
+                let last_segment = segments
+                    .last()
+                    .ok_or(ParsingError::ConvertSourcePathToUseTreeNotEnoughSegmentsError)?;
+                let use_tree = UseTree::Name(UseName {
+                    ident: last_segment.to_owned(),
+                });
+                (use_tree, &segments[..segments.len() - 1])
+            }
+            SourcePath::Glob(ref segments) => {
+                let use_tree = UseTree::Glob(UseGlob {
+                    star_token: Default::default(),
+                });
+                (use_tree, segments.as_slice())
+            }
+            SourcePath::Rename(ref segments, rename) => {
+                let last_segment = segments
+                    .last()
+                    .ok_or(ParsingError::ConvertSourcePathToUseTreeNotEnoughSegmentsError)?;
+                let use_tree = UseTree::Rename(UseRename {
+                    ident: last_segment.to_owned(),
+                    as_token: Default::default(),
+                    rename: rename.to_owned(),
+                });
+                (use_tree, &segments[..segments.len() - 1])
+            }
+            SourcePath::Group => return Err(ParsingError::ConvertSourcePathGroupToUseTreeError),
+        };
+        if segments.is_empty() {
+            return Err(ParsingError::ConvertSourcePathToUseTreeNotEnoughSegmentsError);
+        }
+        for segment in segments.iter().rev().skip(1) {
+            let use_path = UsePath {
+                ident: segment.to_owned(),
+                colon2_token: Default::default(),
+                tree: Box::new(use_tree),
+            };
+            use_tree = UseTree::Path(use_path);
+        }
+        Ok(use_tree)
+    }
+}
+
+impl TryFrom<SourcePath> for Path {
+    type Error = ParsingError;
+
+    fn try_from(value: SourcePath) -> Result<Self, Self::Error> {
+        match value {
+            SourcePath::Name(segments) => {
+                let path = Path {
+                    leading_colon: None,
+                    segments: segments
+                        .iter()
+                        .map(|ident| syn::PathSegment {
+                            ident: ident.to_owned(),
+                            arguments: Default::default(),
+                        })
+                        .collect(),
+                };
+                Ok(path)
+            }
+            _ => Err(ParsingError::ConvertSourcePathToPathError),
+        }
     }
 }
 
 pub trait UseTreeExtras {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
-    fn is_item_use_root_keyword(&self) -> bool;
+    fn is_use_tree_root_path_keyword(&self) -> bool;
+    fn is_use_tree_root_crate_keyword(&self) -> bool;
 }
 
 impl UseTreeExtras for UseTree {
@@ -95,9 +200,16 @@ impl UseTreeExtras for UseTree {
         use_trees
     }
 
-    fn is_item_use_root_keyword(&self) -> bool {
-        if let SourcePath::Name(segments) = self.extract_path() {
+    fn is_use_tree_root_path_keyword(&self) -> bool {
+        if let SourcePath::Name(segments) = self.into() {
             return segments[0] == "crate" || segments[0] == "super" || segments[0] == "self";
+        }
+        false
+    }
+
+    fn is_use_tree_root_crate_keyword(&self) -> bool {
+        if let SourcePath::Name(segments) = self.into() {
+            return segments[0] == "crate";
         }
         false
     }
