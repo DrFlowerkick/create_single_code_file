@@ -61,6 +61,8 @@ mod tests {
             .unwrap()
             .expand_use_statements()
             .unwrap()
+            .remove_crate_keyword_from_use_and_path_statements()
+            .unwrap()
             // action to test
             .link_impl_blocks_with_corresponding_item()
             .unwrap();

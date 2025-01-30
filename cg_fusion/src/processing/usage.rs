@@ -1,6 +1,6 @@
 // functions to analyze use statements in src files
 
-use super::{ProcessingError, ProcessingImplBlocksState, ProcessingResult};
+use super::{ProcessingError, ProcessingCrateUseAndPathState, ProcessingResult};
 use crate::{
     add_context,
     challenge_tree::PathElement,
@@ -19,7 +19,7 @@ pub struct ProcessingUsageState;
 impl<O: CgCli> CgData<O, ProcessingUsageState> {
     pub fn expand_use_statements(
         mut self,
-    ) -> ProcessingResult<CgData<O, ProcessingImplBlocksState>> {
+    ) -> ProcessingResult<CgData<O, ProcessingCrateUseAndPathState>> {
         let mut use_groups_and_globs: VecDeque<(NodeIndex, ItemName)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
@@ -77,7 +77,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             }
         }
         Ok(CgData {
-            state: ProcessingImplBlocksState,
+            state: ProcessingCrateUseAndPathState,
             options: self.options,
             tree: self.tree,
         })

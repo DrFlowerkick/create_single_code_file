@@ -9,6 +9,7 @@ mod impl_block_check;
 mod impl_linking;
 mod required_by_challenge;
 mod usage;
+mod crate_path_resolution;
 
 pub use crate_src_files::ProcessingSrcFilesState;
 pub use dependencies::ProcessingDependenciesState;
@@ -19,6 +20,7 @@ pub use impl_block_check::ProcessingImplItemDialogState;
 pub use impl_linking::ProcessingImplBlocksState;
 pub use required_by_challenge::ProcessingRequiredByChallengeState;
 pub use usage::ProcessingUsageState;
+pub use crate_path_resolution::ProcessingCrateUseAndPathState;
 
 #[cfg(test)]
 pub mod tests {
