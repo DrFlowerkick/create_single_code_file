@@ -392,7 +392,8 @@ impl<O, S> CgData<O, S> {
         // 7. trait items
         new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Trait(_))));
         // 8. trait alias items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::TraitAlias(_))));
+        new_mod_content
+            .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::TraitAlias(_))));
         // 9. enum items and corresponding impl items
         let new_enums = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Enum(_)));
         for item in new_enums {
@@ -402,10 +403,9 @@ impl<O, S> CgData<O, S> {
                 .map(|(n, _)| n)
                 .collect();
             new_mod_content.push(item);
-            new_mod_content.extend(
-                mod_content
-                    .drain_filter_and_sort(|i| item_impl_block_indices.contains(&mod_content_mapping[i])),
-            );
+            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
+                item_impl_block_indices.contains(&mod_content_mapping[i])
+            }));
         }
         // 10. struct items and corresponding impl items
         let new_structs = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Struct(_)));
@@ -416,10 +416,9 @@ impl<O, S> CgData<O, S> {
                 .map(|(n, _)| n)
                 .collect();
             new_mod_content.push(item);
-            new_mod_content.extend(
-                mod_content
-                    .drain_filter_and_sort(|i| item_impl_block_indices.contains(&mod_content_mapping[i])),
-            );
+            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
+                item_impl_block_indices.contains(&mod_content_mapping[i])
+            }));
         }
         // 11. union items and corresponding impl items
         let new_unions = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Union(_)));
@@ -430,19 +429,20 @@ impl<O, S> CgData<O, S> {
                 .map(|(n, _)| n)
                 .collect();
             new_mod_content.push(item);
-            new_mod_content.extend(
-                mod_content
-                    .drain_filter_and_sort(|i| item_impl_block_indices.contains(&mod_content_mapping[i])),
-            );
+            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
+                item_impl_block_indices.contains(&mod_content_mapping[i])
+            }));
         }
         // 12. remaining impl items
         new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Impl(_))));
         // 13. mod items
         new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Mod(_))));
         // 14. foreign mod items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ForeignMod(_))));
+        new_mod_content
+            .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ForeignMod(_))));
         // 15. extern crate items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ExternCrate(_))));
+        new_mod_content
+            .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ExternCrate(_))));
         // mod_content should be empty
         assert!(mod_content.is_empty());
         Ok(new_mod_content)

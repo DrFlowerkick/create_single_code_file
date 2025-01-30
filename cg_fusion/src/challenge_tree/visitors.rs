@@ -318,11 +318,10 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                         // get item node which is referenced by self
                         self.graph
                             .get_parent_index_by_edge_type(self.node, EdgeType::Syn)
-                            .map(|n| {
+                            .and_then(|n| {
                                 self.graph
                                     .get_parent_index_by_edge_type(n, EdgeType::Implementation)
                             })
-                            .flatten()
                     } else {
                         // check if receiver is listed in variables
                         self.variables.get_node_index(&segments[0])

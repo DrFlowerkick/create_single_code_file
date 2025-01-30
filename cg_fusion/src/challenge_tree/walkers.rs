@@ -342,7 +342,7 @@ impl SourcePathWalker {
         Some(PathElement::PathCouldNotBeParsed)
     }
 
-    pub fn into_iter<'a, O, S>(self, graph: &'a CgData<O, S>) -> SourcePathIterator<'a, O, S> {
+    pub fn into_iter<O, S>(self, graph: &CgData<O, S>) -> SourcePathIterator<'_, O, S> {
         SourcePathIterator {
             walker: self,
             graph,

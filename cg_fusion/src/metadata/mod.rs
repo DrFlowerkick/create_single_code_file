@@ -87,7 +87,11 @@ impl MetaWrapper {
             .map(|p| (p.name.to_owned(), p.manifest_path.to_owned()))
             .collect()
     }
-    fn run_cargo_command_for_given_bin_and_lib(&self, bin_name: &str, command: &str) -> MetadataResult<OutputWrapper> {
+    fn run_cargo_command_for_given_bin_and_lib(
+        &self,
+        bin_name: &str,
+        command: &str,
+    ) -> MetadataResult<OutputWrapper> {
         Command::new("cargo")
             .arg(command)
             .arg("--bin")

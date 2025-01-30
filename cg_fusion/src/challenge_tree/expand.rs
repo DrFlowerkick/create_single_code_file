@@ -402,7 +402,7 @@ impl<O: CgCli, S> CgData<O, S> {
         seen_check_items: &mut HashSet<NodeIndex>,
     ) -> TreeResult<()> {
         if seen_check_items.insert(item_to_check) {
-            let mut challenge_collector = SynReferenceMapper::new(&self, item_to_check);
+            let mut challenge_collector = SynReferenceMapper::new(self, item_to_check);
             match self.tree.node_weight(item_to_check) {
                 Some(NodeType::SynItem(Item::Mod(_)))            // do not reference nodes in these items, since
                 | Some(NodeType::SynItem(Item::Impl(_)))         // we will process their sub items if they
@@ -573,12 +573,11 @@ impl<O: CgCli, S> CgData<O, S> {
             .map(|(n, i)| (n, i.to_owned()))
             .collect();
         let mut node_mapping: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-        let mut sub_mods:Vec<(NodeIndex, NodeIndex)> = Vec::new();
+        let mut sub_mods: Vec<(NodeIndex, NodeIndex)> = Vec::new();
         for (item_index, item) in mod_content {
             let new_fusion_item_index = match item {
                 Item::Mod(_) => {
-                    let new_mod_index =
-                    self.tree.add_node(NodeType::SynItem(item));
+                    let new_mod_index = self.tree.add_node(NodeType::SynItem(item));
                     sub_mods.push((item_index, new_mod_index));
                     new_mod_index
                 }
