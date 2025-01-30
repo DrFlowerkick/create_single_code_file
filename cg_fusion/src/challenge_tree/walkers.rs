@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_source_path_walker() {
         // preparation
-        let cg_data = setup_processing_test()
+        let cg_data = setup_processing_test(false)
             .add_challenge_dependencies()
             .unwrap()
             .add_src_files()

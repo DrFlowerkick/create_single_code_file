@@ -512,7 +512,7 @@ mod tests {
     #[test]
     fn test_map_impl_config_options_to_node_indices() {
         // preparation
-        let mut cg_data = setup_processing_test()
+        let mut cg_data = setup_processing_test(false)
             .add_challenge_dependencies()
             .unwrap()
             .add_src_files()
@@ -536,7 +536,7 @@ mod tests {
 
         cg_data
             .options
-            .set_impl_item_toml("../cg_fusion_binary_test/test/text_impl_config.toml".into());
+            .set_impl_item_toml("../cg_fusion_binary_test/test/test_impl_config.toml".into());
         let mapping = cg_data.map_impl_config_options_to_node_indices().unwrap();
 
         // check impl items of my_map_two_dim
@@ -761,7 +761,7 @@ mod tests {
     #[test]
     fn test_map_node_indices_to_impl_config_options() {
         // preparation
-        let cg_data = setup_processing_test()
+        let cg_data = setup_processing_test(false)
             .add_challenge_dependencies()
             .unwrap()
             .add_src_files()

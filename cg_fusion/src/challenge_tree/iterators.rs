@@ -63,7 +63,6 @@ impl<O, S> CgData<O, S> {
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .filter_map(|(n, w)| match w {
-                // ToDo: a filter is required to differentiate between challenge source und new merged challenge bin
                 NodeType::BinCrate(bin_crate_file) => Some((n, false, bin_crate_file)),
                 NodeType::LibCrate(lib_crate_file) => Some((n, true, lib_crate_file)),
                 _ => None,

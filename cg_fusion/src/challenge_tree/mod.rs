@@ -62,10 +62,8 @@ impl LocalPackage {
 pub struct SrcFile {
     pub name: String,
     pub path: Utf8PathBuf,
-    #[allow(dead_code)]
-    pub shebang: Option<String>, // ToDo: check if really required
-    #[allow(dead_code)]
-    pub attrs: Vec<Attribute>, // ToDo: check if really required
+    pub shebang: Option<String>,
+    pub attrs: Vec<Attribute>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

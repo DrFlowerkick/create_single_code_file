@@ -1,0 +1,3 @@
+# test config file, see ../cg_fusion/src/challenge_tree/map_impl_options.rs
+include_impl_items = ["MyArray::new", "MyArray::set"]
+exclude_impl_items = ["MyArray::*"]

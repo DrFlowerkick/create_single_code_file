@@ -366,6 +366,46 @@ impl<O, S> CgData<O, S> {
             }
         })
     }
+}
+
+impl<O: CgCli, S> CgData<O, S> {
+    pub(crate) fn get_challenge_bin_name(&self) -> &str {
+        if self.options.input().input == "main" {
+            // if main, use crate name for bin name
+            self.challenge_package().name.as_str()
+        } else {
+            self.options.input().input.as_str()
+        }
+    }
+
+    pub(crate) fn get_challenge_bin_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
+        let bin_name = self.get_challenge_bin_name();
+        self.iter_package_crates(0.into())
+            .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
+            .find(|(_, cf)| cf.name == bin_name)
+    }
+
+    pub(crate) fn get_fusion_file_name(&self) -> String {
+        if let Some(ref name) = self.options.output().filename {
+            name.to_owned()
+        } else {
+            format!("fusion_of_{}", self.challenge_package().name)
+        }
+    }
+
+    pub(crate) fn get_fusion_file_path(&self) -> TreeResult<Utf8PathBuf> {
+        let fusion_file_name = format!("{}.rs", self.get_fusion_file_name());
+        let fusion_bin_dir = self.challenge_package().path.join("src/bin/");
+        let fusion_bin_dir = clean_absolute_utf8(fusion_bin_dir)?;
+        Ok(fusion_bin_dir.join(&fusion_file_name))
+    }
+
+    pub(crate) fn get_fusion_bin_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
+        let bin_name = self.get_fusion_file_name();
+        self.iter_package_crates(0.into())
+            .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
+            .find(|(_, cf)| cf.name == bin_name)
+    }
 
     pub(crate) fn get_sorted_mod_content(&self, mod_index: NodeIndex) -> TreeResult<Vec<Item>> {
         let mod_content_mapping: HashMap<Item, NodeIndex> = self
@@ -445,39 +485,16 @@ impl<O, S> CgData<O, S> {
             .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ExternCrate(_))));
         // mod_content should be empty
         assert!(mod_content.is_empty());
+        if self.options.verbose() {
+            println!(
+                "Sorted mod content of '{}':",
+                self.get_verbose_name_of_tree_node(mod_index)?
+            );
+            for item in &new_mod_content {
+                let item_index = mod_content_mapping[item];
+                println!("{}", self.get_verbose_name_of_tree_node(item_index)?);
+            }
+        }
         Ok(new_mod_content)
-    }
-}
-
-impl<O: CgCli, S> CgData<O, S> {
-    pub(crate) fn get_challenge_bin_name(&self) -> &str {
-        if self.options.input().input == "main" {
-            // if main, use crate name for bin name
-            self.challenge_package().name.as_str()
-        } else {
-            self.options.input().input.as_str()
-        }
-    }
-
-    pub(crate) fn get_challenge_bin_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
-        let bin_name = self.get_challenge_bin_name();
-        self.iter_package_crates(0.into())
-            .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
-            .find(|(_, cf)| cf.name == bin_name)
-    }
-
-    pub(crate) fn get_fusion_file_name(&self) -> String {
-        if let Some(ref name) = self.options.output().filename {
-            name.to_owned()
-        } else {
-            format!("fusion_of_{}", self.challenge_package().name)
-        }
-    }
-
-    pub(crate) fn get_fusion_file_path(&self) -> TreeResult<Utf8PathBuf> {
-        let fusion_file_name = format!("{}.rs", self.get_fusion_file_name());
-        let fusion_bin_dir = self.challenge_package().path.join("src/bin/");
-        let fusion_bin_dir = clean_absolute_utf8(fusion_bin_dir)?;
-        Ok(fusion_bin_dir.join(&fusion_file_name))
     }
 }

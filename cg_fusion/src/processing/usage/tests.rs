@@ -37,7 +37,7 @@ fn is_use_glob(item: &Item) -> Option<&UseTree> {
 #[test]
 fn test_expand_use_group() {
     // preparation
-    let mut cg_data = setup_processing_test()
+    let mut cg_data = setup_processing_test(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()
@@ -124,7 +124,7 @@ fn test_expand_use_group() {
 #[test]
 fn test_get_path_leaf() {
     // preparation
-    let mut cg_data = setup_processing_test()
+    let mut cg_data = setup_processing_test(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()
@@ -376,7 +376,7 @@ fn test_get_path_leaf() {
 #[test]
 fn test_is_visible_for_module() {
     // preparation
-    let cg_data = setup_processing_test()
+    let cg_data = setup_processing_test(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()
@@ -538,7 +538,7 @@ fn test_is_visible_for_module() {
 #[test]
 fn test_expand_use_glob() {
     // preparation
-    let mut cg_data = setup_processing_test()
+    let mut cg_data = setup_processing_test(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()
@@ -724,7 +724,7 @@ fn test_expand_use_glob() {
 #[test]
 fn test_expand_use_statements() {
     // preparation
-    let cg_data = setup_processing_test()
+    let cg_data = setup_processing_test(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()

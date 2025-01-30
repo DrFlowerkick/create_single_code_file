@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn test_collecting_dependencies() {
-        let cg_data = setup_processing_test()
+        let cg_data = setup_processing_test(false)
             .add_challenge_dependencies()
             .unwrap();
         let dependencies: Vec<&str> = cg_data

@@ -77,7 +77,7 @@ fn prepare_test() -> (
     NodeIndex,
 ) {
     // preparation
-    let cg_data = setup_processing_test()
+    let cg_data = setup_processing_test(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()
@@ -461,7 +461,7 @@ pub fn apply_action(&mut self, action: Action) {
 #[test]
 fn test_impl_config_toml_dialog() {
     // preparation
-    let cg_data = setup_processing_test()
+    let cg_data = setup_processing_test(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()
