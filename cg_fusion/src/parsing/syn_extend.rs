@@ -184,7 +184,6 @@ impl TryFrom<SourcePath> for Path {
 pub trait UseTreeExtras {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
     fn is_use_tree_root_path_keyword(&self) -> bool;
-    fn is_use_tree_root_crate_keyword(&self) -> bool;
 }
 
 impl UseTreeExtras for UseTree {
@@ -214,10 +213,6 @@ impl UseTreeExtras for UseTree {
 
     fn is_use_tree_root_path_keyword(&self) -> bool {
         SourcePath::from(self).is_use_tree_root_path_keyword()
-    }
-
-    fn is_use_tree_root_crate_keyword(&self) -> bool {
-        SourcePath::from(self).is_use_tree_root_crate_keyword()
     }
 }
 

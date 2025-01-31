@@ -84,17 +84,20 @@ mod tests {
             })
             .collect();
         challenge_items_ident.sort();
-        dbg!(&challenge_items_ident);
         assert_eq!(
             challenge_items_ident,
             [
                 "action (Mod)::Action (Impl)",
                 "action (Mod)::Action (Impl)::set_white (Impl Fn)",
                 "action (Mod)::Action (Struct)",
+                "action (Mod)::Display (Use)",
+                "action (Mod)::Display for Action (Impl)",
+                "action (Mod)::Display for Action (Impl)::fmt (Impl Fn)",
                 "action (Mod)::MapPoint (Use)",
                 "action (Mod)::Value (Use)",
                 "action (Mod)::X (Use)",
                 "action (Mod)::Y (Use)",
+                "action (Mod)::fmt (Use)",
                 "cg_fusion_binary_test (binary crate)::Action (Use)",
                 "cg_fusion_binary_test (binary crate)::Go (Use)",
                 "cg_fusion_binary_test (binary crate)::MapPoint (Use)",

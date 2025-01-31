@@ -730,7 +730,6 @@ fn test_expand_use_glob() {
             "X",
             "Y",
             "action",
-            "fmt",
             "my_map_point"
         ]
     );
@@ -815,7 +814,6 @@ fn test_expand_use_statements() {
             "use cg_fusion_lib_test :: my_map_two_dim :: FilterFn ;",
             "use std :: fmt ;",
             "use super :: action ;",
-            "use super :: fmt ;",
             "use super :: X ;",
             "use super :: Y ;",
             "use super :: N ;",
@@ -826,6 +824,8 @@ fn test_expand_use_statements() {
             "use super :: IsCellFreeFn ;",
             "use super :: my_map_point ;",
             "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: MapPoint ;",
+            "use crate :: fmt :: Display ;",
+            "use crate :: fmt ;",
         ]
     );
 }

@@ -7,14 +7,14 @@ use crate::{
     add_context,
     challenge_tree::{NodeType, PathElement, SourcePathWalker},
     configuration::CgCli,
-    parsing::{SourcePath, UseTreeExtras},
+    parsing::SourcePath,
     CgData,
 };
 
 use anyhow::{anyhow, Context};
 use petgraph::stable_graph::NodeIndex;
 use proc_macro2::Span;
-use syn::{fold::Fold, Ident, Item, Path, UseTree};
+use syn::{fold::Fold, Ident, Item, Path, PathSegment, UseTree};
 
 pub struct ProcessingCrateUseAndPathState;
 
@@ -45,10 +45,19 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
             }
         }
 
-        // 2. remove crate keyword from path statements"
+        // 2. minimize path statements, removing crate keyword from path statements"
         let all_syn_items: Vec<NodeIndex> = self
             .iter_crates()
-            .flat_map(|(n, _, _)| self.iter_syn(n).map(|(n, _)| n))
+            .flat_map(|(n, _, _)| {
+                self.iter_syn(n).filter_map(|(n, i)| {
+                    if let NodeType::SynItem(Item::Mod(_)) = i {
+                        // filter modules
+                        None
+                    } else {
+                        Some(n)
+                    }
+                })
+            })
             .collect();
         for syn_index in all_syn_items {
             if let Some(cloned_item) = self.clone_syn_item(syn_index) {
@@ -56,7 +65,24 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                     graph: &self,
                     node: syn_index,
                 };
-                let new_item = folder.fold_item(cloned_item);
+                let new_item = match cloned_item {
+                    Item::Impl(mut impl_item) => {
+                        // only fold trait_ and self_ty of impl_item
+                        if let Some((pre_token, trait_path, post_token)) = impl_item.trait_ {
+                            let trait_path = folder.fold_path(trait_path);
+                            impl_item.trait_ = Some((pre_token, trait_path, post_token));
+                        }
+                        impl_item.self_ty =
+                            Box::new(folder.fold_type(impl_item.self_ty.as_ref().to_owned()));
+                        Item::Impl(impl_item)
+                    }
+                    Item::Trait(_) => {
+                        // do not fold trait items directly
+                        cloned_item
+                    }
+                    _ => folder.fold_item(cloned_item),
+                };
+
                 if let Some(NodeType::SynItem(item)) = self.tree.node_weight_mut(syn_index) {
                     *item = new_item;
                 }
@@ -129,7 +155,9 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                         // which imports external code. Minimize path to this use statement and
                         // append remaining segments of external use statement
                         if let Some(external_use_ident) = self.get_ident(leaf_index) {
-                            if let Some(pos) = segments.iter().position(|s| *s == external_use_ident) {
+                            if let Some(pos) =
+                                segments.iter().position(|s| *s == external_use_ident)
+                            {
                                 remaining_external_segments = Some(Vec::from(&segments[pos + 1..]));
                                 break;
                             }
@@ -191,7 +219,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
             new_path.extend(from_junction_leaf_ident);
             new_path
         };
-        
+
         if let Some(res) = remaining_external_segments.take() {
             new_path.extend(res);
         }
@@ -214,17 +242,36 @@ pub struct CratePathFolder<'a, O: CgCli> {
 impl<O: CgCli> Fold for CratePathFolder<'_, O> {
     fn fold_path(&mut self, path: Path) -> Path {
         let source_path = SourcePath::from(&path);
-        if source_path.is_use_tree_root_crate_keyword() {
-            let resolved_path = self
-                .graph
-                .resolving_crate_source_path(self.node, source_path)
-                .expect("resolving crate source path failed");
-            let resolved_path = resolved_path
-                .try_into()
-                .expect("resolving crate source path failed");
-            return resolved_path;
-        }
-        path
+        let resolved_path = self
+            .graph
+            .resolving_crate_source_path(self.node, source_path)
+            .expect("resolving crate source path failed");
+        let resolved_path: Path = resolved_path
+            .try_into()
+            .expect("resolving crate source path failed");
+        // rebuild arguments of segments from input path
+        let resolved_path = Path {
+            leading_colon: path.leading_colon,
+            segments: resolved_path
+                .segments
+                .iter()
+                .map(|s| {
+                    if let Some(arguments) = path
+                        .segments
+                        .iter()
+                        .find_map(|p| (p.ident == s.ident).then_some(p.arguments.to_owned()))
+                    {
+                        PathSegment {
+                            ident: s.ident.to_owned(),
+                            arguments,
+                        }
+                    } else {
+                        s.to_owned()
+                    }
+                })
+                .collect(),
+        };
+        resolved_path
     }
 }
 
@@ -342,6 +389,7 @@ mod tests {
                 }
             })
             .unwrap();
+
         let use_fmt_index = cg_data
             .iter_syn_item_neighbors(mod_action_index)
             .find_map(|(n, i)| {

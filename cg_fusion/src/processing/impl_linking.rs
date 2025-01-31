@@ -46,7 +46,8 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
 #[cfg(test)]
 mod tests {
 
-    use petgraph::Direction;
+    use petgraph::{visit::EdgeRef, Direction};
+    use syn::Item;
 
     use super::super::tests::setup_processing_test;
     use crate::{challenge_tree::EdgeType, parsing::ItemName};
@@ -125,6 +126,45 @@ mod tests {
             cg_data
                 .tree
                 .edges_directed(struct_my_map_2d_index, Direction::Outgoing)
+                .filter(|e| *e.weight() == EdgeType::Implementation)
+                .count(),
+            2
+        );
+
+        // test impl links of impl Display for Action
+        let action_mod_index = cg_data
+            .iter_syn_item_neighbors(cg_fusion_binary_test_index)
+            .find_map(|(n, i)| {
+                if let Item::Mod(item_mod) = i {
+                    (item_mod.ident == "action").then_some(n)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let impl_display_for_action_block_index = cg_data
+            .iter_syn_item_neighbors(action_mod_index)
+            .find_map(|(n, i)| {
+                if let Item::Impl(item_impl) = i {
+                    item_impl.trait_.is_some().then_some(n)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        for node in cg_data
+            .tree
+            .edges_directed(impl_display_for_action_block_index, Direction::Incoming)
+            .filter(|e| *e.weight() == EdgeType::Implementation)
+            .map(|e| e.source())
+        {
+            println!("{}", cg_data.get_verbose_name_of_tree_node(node).unwrap());
+        }
+
+        assert_eq!(
+            cg_data
+                .tree
+                .edges_directed(impl_display_for_action_block_index, Direction::Incoming)
                 .filter(|e| *e.weight() == EdgeType::Implementation)
                 .count(),
             2

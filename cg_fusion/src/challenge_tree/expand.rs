@@ -229,7 +229,6 @@ impl<O: CgCli, S> CgData<O, S> {
                         self.get_verbose_name_of_tree_node(item_mod_index)?
                     );
                 }
-                // ToDo: remove sub items from item_mod. This improves performance and reduces memory usage.
                 for content_item in content.iter() {
                     self.add_syn_item(content_item, dir_path, item_mod_index)?;
                 }
@@ -283,7 +282,6 @@ impl<O: CgCli, S> CgData<O, S> {
         item_impl_index: NodeIndex,
     ) -> TreeResult<()> {
         // Add impl items
-        // ToDo: remove impl items from item_impl. This improves performance and reduces memory usage.
         for impl_item in item_impl.items.iter() {
             if self.options.verbose() {
                 println!("Adding '{}' to tree.", ItemName::from(impl_item));
@@ -303,7 +301,6 @@ impl<O: CgCli, S> CgData<O, S> {
         item_trait_index: NodeIndex,
     ) -> TreeResult<()> {
         // Add trait items
-        // ToDo: remove trait items from item_trait. This improves performance and reduces memory usage.
         for trait_item in item_trait.items.iter() {
             if self.options.verbose() {
                 println!("Adding '{}' to tree.", ItemName::from(trait_item));
@@ -476,8 +473,13 @@ impl<O: CgCli, S> CgData<O, S> {
                 .tree
                 .edges_directed(*impl_block_with_trait, Direction::Incoming)
                 .filter(|e| *e.weight() == EdgeType::Implementation)
-                .map(|e| e.target())
-                .find(|n| matches!(self.get_syn_item(*n), Some(Item::Trait(_))));
+                .map(|e| e.source())
+                .find(|n| {
+                    matches!(
+                        self.get_syn_item(*n),
+                        Some(Item::Trait(_)) | Some(Item::Use(_))
+                    )
+                });
             if let Some(ti) = trait_index {
                 self.add_required_by_challenge_link(*impl_block_with_trait, ti)?;
                 self.add_trait_items_of_required_trait(ti, seen_check_items)?;
