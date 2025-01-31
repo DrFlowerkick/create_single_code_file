@@ -32,7 +32,7 @@ pub struct Go {
     board: MyMap2D<Value, X, Y, N>,
 }
 
-impl Default for Go {
+impl Default for crate::Go {
     fn default() -> Self {
         Self::new()
     }

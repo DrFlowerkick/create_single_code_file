@@ -24,6 +24,19 @@ impl SourcePath {
             SourcePath::Group => None,
         }
     }
+    pub fn is_use_tree_root_path_keyword(&self) -> bool {
+        if let SourcePath::Name(segments) = self {
+            return segments[0] == "crate" || segments[0] == "super" || segments[0] == "self";
+        }
+        false
+    }
+
+    pub fn is_use_tree_root_crate_keyword(&self) -> bool {
+        if let SourcePath::Name(segments) = self {
+            return segments[0] == "crate";
+        }
+        false
+    }
 }
 
 impl From<&UseTree> for SourcePath {
@@ -131,16 +144,15 @@ impl TryFrom<SourcePath> for UseTree {
             }
             SourcePath::Group => return Err(ParsingError::ConvertSourcePathGroupToUseTreeError),
         };
-        if segments.is_empty() {
-            return Err(ParsingError::ConvertSourcePathToUseTreeNotEnoughSegmentsError);
-        }
-        for segment in segments.iter().rev().skip(1) {
-            let use_path = UsePath {
-                ident: segment.to_owned(),
-                colon2_token: Default::default(),
-                tree: Box::new(use_tree),
-            };
-            use_tree = UseTree::Path(use_path);
+        if !segments.is_empty() {
+            for segment in segments.iter().rev() {
+                let use_path = UsePath {
+                    ident: segment.to_owned(),
+                    colon2_token: Default::default(),
+                    tree: Box::new(use_tree),
+                };
+                use_tree = use_path.into();
+            }
         }
         Ok(use_tree)
     }
@@ -201,17 +213,11 @@ impl UseTreeExtras for UseTree {
     }
 
     fn is_use_tree_root_path_keyword(&self) -> bool {
-        if let SourcePath::Name(segments) = self.into() {
-            return segments[0] == "crate" || segments[0] == "super" || segments[0] == "self";
-        }
-        false
+        SourcePath::from(self).is_use_tree_root_path_keyword()
     }
 
     fn is_use_tree_root_crate_keyword(&self) -> bool {
-        if let SourcePath::Name(segments) = self.into() {
-            return segments[0] == "crate";
-        }
-        false
+        SourcePath::from(self).is_use_tree_root_crate_keyword()
     }
 }
 

@@ -229,6 +229,7 @@ impl<O: CgCli, S> CgData<O, S> {
                         self.get_verbose_name_of_tree_node(item_mod_index)?
                     );
                 }
+                // ToDo: remove sub items from item_mod. This improves performance and reduces memory usage.
                 for content_item in content.iter() {
                     self.add_syn_item(content_item, dir_path, item_mod_index)?;
                 }
@@ -282,6 +283,7 @@ impl<O: CgCli, S> CgData<O, S> {
         item_impl_index: NodeIndex,
     ) -> TreeResult<()> {
         // Add impl items
+        // ToDo: remove impl items from item_impl. This improves performance and reduces memory usage.
         for impl_item in item_impl.items.iter() {
             if self.options.verbose() {
                 println!("Adding '{}' to tree.", ItemName::from(impl_item));
@@ -300,7 +302,8 @@ impl<O: CgCli, S> CgData<O, S> {
         item_trait: &ItemTrait,
         item_trait_index: NodeIndex,
     ) -> TreeResult<()> {
-        // Add impl items
+        // Add trait items
+        // ToDo: remove trait items from item_trait. This improves performance and reduces memory usage.
         for trait_item in item_trait.items.iter() {
             if self.options.verbose() {
                 println!("Adding '{}' to tree.", ItemName::from(trait_item));
@@ -455,21 +458,20 @@ impl<O: CgCli, S> CgData<O, S> {
     ) -> TreeResult<()> {
         // vec is empty if no EdgeType::Implementation exist or impl block does not have a trait
         let impl_blocks_with_trait: Vec<NodeIndex> = self
-            .tree
-            .edges_directed(item_index, Direction::Outgoing)
-            .filter(|e| *e.weight() == EdgeType::Implementation)
-            .map(|e| e.target())
-            .filter(|n| {
-                if let Some(Item::Impl(item_impl)) = self.get_syn_item(*n) {
-                    item_impl.trait_.is_some()
+            .iter_impl_blocks_of_item(item_index)
+            .filter_map(|(n, i)| {
+                if let Item::Impl(item_impl) = i {
+                    item_impl.trait_.is_some().then_some(n)
                 } else {
-                    false
+                    None
                 }
             })
             .collect();
 
         for impl_block_with_trait in impl_blocks_with_trait.iter() {
-            // first add local trait item (if any) as required by challenge
+            // first add link from item to impl block with trait
+            self.add_required_by_challenge_link(item_index, *impl_block_with_trait)?;
+            // second add local trait item (if any) as required by challenge
             let trait_index = self
                 .tree
                 .edges_directed(*impl_block_with_trait, Direction::Incoming)
@@ -480,7 +482,7 @@ impl<O: CgCli, S> CgData<O, S> {
                 self.add_required_by_challenge_link(*impl_block_with_trait, ti)?;
                 self.add_trait_items_of_required_trait(ti, seen_check_items)?;
             }
-            // second add all impl items of impl block as required by challenge
+            // third add all impl items of impl block as required by challenge
             let impl_items: Vec<NodeIndex> = self
                 .iter_syn_impl_item(*impl_block_with_trait)
                 .filter(|(n, _)| !self.is_required_by_challenge(*n))

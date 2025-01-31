@@ -127,7 +127,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             .context(add_context!("Expected index of owning module of use glob."))?;
         // get index of module use glob is pointing to
         let use_glob_target_module_index = match self.get_use_item_leaf(use_glob_index)? {
-            PathElement::Glob(glob_lef_index) => glob_lef_index,
+            PathElement::Glob(glob_leaf_index) => glob_leaf_index,
             PathElement::ExternalPackage => return Ok(false), // ignoring external globs
             // path of use glob could not be parsed, probably because of module in path, which is "hidden" behind a use glob
             PathElement::PathCouldNotBeParsed => return Ok(true),

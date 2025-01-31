@@ -118,7 +118,6 @@ mod tests {
             item_names_of_fusion_bin,
             [
                 "my_map_two_dim (Mod)",
-                "cg_fusion_lib_test (Mod)",
                 "cg_fusion_binary_test (Mod)",
                 "Action (Use)",
                 "main (Fn)",
@@ -145,7 +144,6 @@ mod tests {
                 "Y (Use)",
                 "main (Fn)",
                 "cg_fusion_binary_test (Mod)",
-                "cg_fusion_lib_test (Mod)",
                 "my_map_two_dim (Mod)",
             ]
         );
@@ -168,16 +166,18 @@ mod tests {
             .iter_syn_item_neighbors(index_of_cg_fusion_binary_test)
             .filter_map(|(n, _)| cg_data.get_verbose_name_of_tree_node(n).ok())
             .collect();
-
         assert_eq!(
             item_names_of_cg_fusion_binary_test,
             [
                 "action (Mod)",
+                "fmt (Use)",
                 "X (Const)",
                 "Y (Const)",
                 "N (Const)",
                 "Value (Enum)",
+                "Display for Value (Impl)",
                 "Go (Struct)",
+                "Default for Go (Impl)",
                 "Go (Impl)",
                 "MyMap2D (Use)",
                 "Action (Use)",
@@ -196,17 +196,19 @@ mod tests {
             .iter()
             .map(|i| format!("{}", ItemName::from(i)))
             .collect();
-
         assert_eq!(
             sorted_item_names_of_cg_fusion_binary_test,
             [
                 "Action (Use)",
                 "MyMap2D (Use)",
+                "fmt (Use)",
                 "N (Const)",
                 "X (Const)",
                 "Y (Const)",
                 "Value (Enum)",
+                "Display for Value (Impl)",
                 "Go (Struct)",
+                "Default for Go (Impl)",
                 "Go (Impl)",
                 "action (Mod)",
             ]

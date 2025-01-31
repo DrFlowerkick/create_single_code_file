@@ -160,6 +160,42 @@ impl<O, S> CgData<O, S> {
         None
     }
 
+    pub(crate) fn get_crate_path_nodes(&self, node: NodeIndex) -> Vec<NodeIndex> {
+        let Some(node_type) = self.tree.node_weight(node) else {
+            return Vec::new();
+        };
+        let mut path_nodes: Vec<NodeIndex> = match node_type {
+            NodeType::BinCrate(_) | NodeType::LibCrate(_) => return vec![node],
+            NodeType::SynItem(_) | NodeType::SynImplItem(_) | NodeType::SynTraitItem(_) => {
+                if let Some(module) = self.get_syn_module_index(node) {
+                    self.get_crate_path_nodes(module)
+                } else {
+                    return Vec::new();
+                }
+            }
+            _ => return Vec::new(),
+        };
+        path_nodes.push(node);
+        path_nodes
+    }
+
+    pub(crate) fn get_ident(&self, node: NodeIndex) -> Option<Ident> {
+        let node_type = self.tree.node_weight(node)?;
+        match node_type {
+            NodeType::ExternalSupportedPackage(_)
+            | NodeType::ExternalUnsupportedPackage(_)
+            | NodeType::LocalPackage(_) => None,
+            NodeType::BinCrate(src_file)
+            | NodeType::LibCrate(src_file)
+            | NodeType::Module(src_file) => Some(Ident::new(&src_file.name, Span::call_site())),
+            NodeType::SynItem(item) => ItemName::from(item).get_ident_in_name_space(),
+            NodeType::SynImplItem(impl_item) => ItemName::from(impl_item).get_ident_in_name_space(),
+            NodeType::SynTraitItem(trait_item) => {
+                ItemName::from(trait_item).get_ident_in_name_space()
+            }
+        }
+    }
+
     pub(crate) fn get_verbose_name_of_tree_node(&self, node: NodeIndex) -> TreeResult<String> {
         match self
             .tree
@@ -457,43 +493,28 @@ impl<O: CgCli, S> CgData<O, S> {
             .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::TraitAlias(_))));
         // 9. enum items and corresponding impl items
         let new_enums = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Enum(_)));
-        for item in new_enums {
-            let item_index = mod_content_mapping[&item];
-            let item_impl_block_indices: Vec<NodeIndex> = self
-                .iter_impl_blocks_of_item(item_index)
-                .map(|(n, _)| n)
-                .collect();
-            new_mod_content.push(item);
-            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
-                item_impl_block_indices.contains(&mod_content_mapping[i])
-            }));
-        }
+        self.get_item_with_sorted_impl_blocks(
+            new_enums,
+            &mut new_mod_content,
+            &mut mod_content,
+            &mod_content_mapping,
+        );
         // 10. struct items and corresponding impl items
         let new_structs = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Struct(_)));
-        for item in new_structs {
-            let item_index = mod_content_mapping[&item];
-            let item_impl_block_indices: Vec<NodeIndex> = self
-                .iter_impl_blocks_of_item(item_index)
-                .map(|(n, _)| n)
-                .collect();
-            new_mod_content.push(item);
-            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
-                item_impl_block_indices.contains(&mod_content_mapping[i])
-            }));
-        }
+        self.get_item_with_sorted_impl_blocks(
+            new_structs,
+            &mut new_mod_content,
+            &mut mod_content,
+            &mod_content_mapping,
+        );
         // 11. union items and corresponding impl items
         let new_unions = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Union(_)));
-        for item in new_unions {
-            let item_index = mod_content_mapping[&item];
-            let item_impl_block_indices: Vec<NodeIndex> = self
-                .iter_impl_blocks_of_item(item_index)
-                .map(|(n, _)| n)
-                .collect();
-            new_mod_content.push(item);
-            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
-                item_impl_block_indices.contains(&mod_content_mapping[i])
-            }));
-        }
+        self.get_item_with_sorted_impl_blocks(
+            new_unions,
+            &mut new_mod_content,
+            &mut mod_content,
+            &mod_content_mapping,
+        );
         // 12. remaining impl items
         new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Impl(_))));
         // 13. mod items
@@ -517,5 +538,46 @@ impl<O: CgCli, S> CgData<O, S> {
             }
         }
         Ok(new_mod_content)
+    }
+
+    fn get_item_with_sorted_impl_blocks(
+        &self,
+        new_items: Vec<Item>,
+        new_mod_content: &mut Vec<Item>,
+        mod_content: &mut Vec<Item>,
+        mod_content_mapping: &HashMap<Item, NodeIndex>,
+    ) {
+        for item in new_items {
+            let item_index = mod_content_mapping[&item];
+            let item_impl_block_with_traits_indices: Vec<NodeIndex> = self
+                .iter_impl_blocks_of_item(item_index)
+                .filter(|(_, i)| {
+                    if let Item::Impl(item_impl) = i {
+                        item_impl.trait_.is_some()
+                    } else {
+                        false
+                    }
+                })
+                .map(|(n, _)| n)
+                .collect();
+            let item_impl_block_without_traits_indices: Vec<NodeIndex> = self
+                .iter_impl_blocks_of_item(item_index)
+                .filter(|(_, i)| {
+                    if let Item::Impl(item_impl) = i {
+                        item_impl.trait_.is_none()
+                    } else {
+                        false
+                    }
+                })
+                .map(|(n, _)| n)
+                .collect();
+            new_mod_content.push(item);
+            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
+                item_impl_block_with_traits_indices.contains(&mod_content_mapping[i])
+            }));
+            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
+                item_impl_block_without_traits_indices.contains(&mod_content_mapping[i])
+            }));
+        }
     }
 }

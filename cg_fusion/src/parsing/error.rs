@@ -16,7 +16,7 @@ pub enum ParsingError {
     ConvertSourcePathToPathError,
     #[error("SourcePath::Group cannot be converted to UseTree.")]
     ConvertSourcePathGroupToUseTreeError,
-    #[error("SourcePath::Group cannot be converted to UseTree.")]
+    #[error("Not enough segments in SourcePath to convert to UseTree.")]
     ConvertSourcePathToUseTreeNotEnoughSegmentsError,
     #[error(transparent)]
     UnexpectedError(#[from] anyhow::Error),

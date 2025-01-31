@@ -1,6 +1,6 @@
 // processing of challenge and library code
 
-mod crate_path_resolution;
+mod path_minimizing;
 mod crate_src_files;
 mod dependencies;
 mod error;
@@ -11,7 +11,7 @@ mod impl_linking;
 mod required_by_challenge;
 mod usage;
 
-pub use crate_path_resolution::ProcessingCrateUseAndPathState;
+pub use path_minimizing::ProcessingCrateUseAndPathState;
 pub use crate_src_files::ProcessingSrcFilesState;
 pub use dependencies::ProcessingDependenciesState;
 pub use error::{ProcessingError, ProcessingResult};

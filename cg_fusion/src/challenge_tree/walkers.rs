@@ -101,6 +101,7 @@ pub struct SourcePathWalker {
     current_index: usize,
     variables: VariableReferences,
     walker_finished: bool,
+    next_is_external: bool,
 }
 
 impl SourcePathWalker {
@@ -111,6 +112,7 @@ impl SourcePathWalker {
             current_index: 0,
             variables: VariableReferences::default(),
             walker_finished: false,
+            next_is_external: false,
         }
     }
 
@@ -125,6 +127,7 @@ impl SourcePathWalker {
             current_index: 0,
             variables,
             walker_finished: false,
+            next_is_external: false,
         }
     }
 
@@ -141,6 +144,10 @@ impl SourcePathWalker {
     pub fn next<O, S>(&mut self, graph: &CgData<O, S>) -> Option<PathElement> {
         if self.walker_finished {
             return None;
+        }
+        if self.next_is_external {
+            self.walker_finished = true;
+            return Some(PathElement::ExternalPackage);
         }
         let (segments, glob, rename) = match self.source_path {
             SourcePath::Group => {
@@ -197,6 +204,7 @@ impl SourcePathWalker {
             "self" => {
                 // set current node to module of item
                 if self.set_current_node_to_module_of_it(graph) {
+                    self.walker_finished = true;
                     return Some(PathElement::PathCouldNotBeParsed);
                 };
                 return Some(PathElement::Item(self.current_node_index));
@@ -206,11 +214,13 @@ impl SourcePathWalker {
                 if is_first {
                     // if is first, set current node to module of item
                     if self.set_current_node_to_module_of_it(graph) {
+                        self.walker_finished = true;
                         return Some(PathElement::PathCouldNotBeParsed);
                     };
                 }
                 // get module of current node
                 if self.set_current_node_to_module_of_it(graph) {
+                    self.walker_finished = true;
                     return Some(PathElement::PathCouldNotBeParsed);
                 };
                 return Some(PathElement::Item(self.current_node_index));
@@ -239,6 +249,7 @@ impl SourcePathWalker {
                     }
                     // if none of above set current node to module of item
                     if self.set_current_node_to_module_of_it(graph) {
+                        self.walker_finished = true;
                         return Some(PathElement::PathCouldNotBeParsed);
                     };
                 }
@@ -299,21 +310,25 @@ impl SourcePathWalker {
                             {
                                 match path_element {
                                     PathElement::ExternalPackage => {
-                                        return Some(PathElement::ExternalPackage)
+                                        // return index of use statement, next call will return external package
+                                        self.next_is_external = true;
+                                        return Some(PathElement::Item(item_index));
                                     }
                                     PathElement::Glob(_) | PathElement::Group => {
                                         unreachable!(
-                                            "filter_map use statements which end on name or rename"
+                                            "Using above filter_map on ItemName with ident. Group and Glob are not possible."
                                         );
                                     }
                                     PathElement::Item(path_item_index)
                                     | PathElement::ItemRenamed(path_item_index, _) => {
+                                        // return index of use statement, next call will continue with leaf item of use statement
                                         let result = Some(PathElement::Item(item_index));
                                         self.current_node_index = path_item_index;
                                         return result;
                                     }
                                     PathElement::PathCouldNotBeParsed => {
                                         // could not find module of use statement
+                                        self.walker_finished = true;
                                         return Some(PathElement::PathCouldNotBeParsed);
                                     }
                                 }
