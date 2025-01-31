@@ -19,7 +19,7 @@ use syn::{fold::Fold, Ident, Item, Path, UseTree};
 pub struct ProcessingCrateUseAndPathState;
 
 impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
-    pub fn remove_crate_keyword_from_use_and_path_statements(
+    pub fn path_minimizing_of_use_and_path_statements(
         mut self,
     ) -> ProcessingResult<CgData<O, ProcessingImplBlocksState>> {
         // 1. minimize use statements
@@ -99,7 +99,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
         source_path: SourcePath,
     ) -> ProcessingResult<SourcePath> {
         // get path properties
-        let (_segments, glob, rename) = match &source_path {
+        let (segments, glob, rename) = match &source_path {
             SourcePath::Group => {
                 unreachable!("use groups have been expanded before.");
             }
@@ -110,7 +110,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                 (segments, false, Some(renamed.to_owned()))
             }
         };
-        //let mut segments_slice = segments.as_slice();
+        let mut remaining_external_segments: Option<Vec<Ident>> = None;
         let mut path_leaf: Option<NodeIndex> = None;
         let mut path_walker = SourcePathWalker::new(source_path.clone(), path_item_index);
         while let Some(path_element) = path_walker.next(self) {
@@ -124,10 +124,19 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                                   PathElement::ExternalPackage before reaching glob.");
                 }
                 PathElement::ExternalPackage => {
-                    // there should be remaining segments; append these remaining segments to new path
-                    //assert!(!segments_slice.is_empty());
-                    // path directly starts with external package
-                    if path_leaf.is_none() {
+                    if let Some(leaf_index) = path_leaf {
+                        // This is only possible, if a path element points toward a use statement,
+                        // which imports external code. Minimize path to this use statement and
+                        // append remaining segments of external use statement
+                        if let Some(external_use_ident) = self.get_ident(leaf_index) {
+                            if let Some(pos) = segments.iter().position(|s| *s == external_use_ident) {
+                                remaining_external_segments = Some(Vec::from(&segments[pos + 1..]));
+                                break;
+                            }
+                        }
+                        return Ok(source_path);
+                    } else {
+                        // path directly starts with external package
                         return Ok(source_path);
                     }
                 }
@@ -142,7 +151,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
         let path_leaf = path_leaf.context(add_context!("Expected index of path leaf."))?;
         let path_leaf_nodes = self.get_crate_path_nodes(path_leaf);
         let path_item_nodes = self.get_crate_path_nodes(path_item_index);
-        let new_path: Vec<Ident> = if path_leaf_nodes[0] != path_item_nodes[0] {
+        let mut new_path: Vec<Ident> = if path_leaf_nodes[0] != path_item_nodes[0] {
             // return path of leaf starting from it's crate
             path_leaf_nodes
                 .iter()
@@ -182,7 +191,11 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
             new_path.extend(from_junction_leaf_ident);
             new_path
         };
-        //new_path.extend(segments_slice.iter().cloned());
+        
+        if let Some(res) = remaining_external_segments.take() {
+            new_path.extend(res);
+        }
+
         let new_path = match (glob, rename) {
             (true, None) => SourcePath::Glob(new_path),
             (false, Some(renamed)) => SourcePath::Rename(new_path, renamed),
@@ -225,7 +238,7 @@ mod tests {
     use super::super::tests::setup_processing_test;
 
     #[test]
-    fn test_remove_crate_keyword_from_use_and_path_statements() {
+    fn test_path_minimizing_of_use_and_path_statements() {
         // preparation
         let cg_data = setup_processing_test(false)
             .add_challenge_dependencies()
@@ -235,7 +248,7 @@ mod tests {
             .expand_use_statements()
             .unwrap()
             // action to test
-            .remove_crate_keyword_from_use_and_path_statements()
+            .path_minimizing_of_use_and_path_statements()
             .unwrap();
 
         // validation
@@ -318,5 +331,57 @@ mod tests {
             .to_token_stream()
             .to_string();
         assert_eq!(impl_default_block_of_go_impl_reference, "Go");
+
+        let mod_action_index = cg_data
+            .iter_syn_item_neighbors(cg_fusion_binary_test_lib_index)
+            .find_map(|(n, i)| {
+                if let Item::Mod(item_mod) = i {
+                    (item_mod.ident == "action").then_some(n)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let use_fmt_index = cg_data
+            .iter_syn_item_neighbors(mod_action_index)
+            .find_map(|(n, i)| {
+                if let Item::Use(use_item) = i {
+                    if let Some(ident) = ItemName::from(use_item).get_ident_in_name_space() {
+                        (ident == "fmt").then_some(n)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let use_fmt = cg_data
+            .get_syn_item(use_fmt_index)
+            .unwrap()
+            .to_token_stream()
+            .to_string();
+        assert_eq!(use_fmt, "use super :: fmt ;");
+
+        let use_fmt_display_index = cg_data
+            .iter_syn_item_neighbors(mod_action_index)
+            .find_map(|(n, i)| {
+                if let Item::Use(use_item) = i {
+                    if let Some(ident) = ItemName::from(use_item).get_ident_in_name_space() {
+                        (ident == "Display").then_some(n)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let use_fmt_display = cg_data
+            .get_syn_item(use_fmt_display_index)
+            .unwrap()
+            .to_token_stream()
+            .to_string();
+        assert_eq!(use_fmt_display, "use super :: fmt :: Display ;");
     }
 }

@@ -4,7 +4,7 @@ use super::SourcePath;
 
 use quote::ToTokens;
 use std::fmt::Display;
-use syn::{Ident, ImplItem, Item, TraitItem, Type};
+use syn::{Ident, ImplItem, Item, ItemUse, TraitItem, Type};
 
 #[derive(Debug)]
 pub enum ItemName {
@@ -53,6 +53,23 @@ impl ItemName {
             Self::TypeStringAndTraitAndNameString(_, _, name) => Some(name.to_owned()),
             Self::TypeString(name) => Some(name.to_owned()),
             Self::Glob | Self::Group | Self::None => None,
+        }
+    }
+}
+
+impl From<&ItemUse> for ItemName {
+    fn from(item_use: &ItemUse) -> Self {
+        match item_use.into() {
+            SourcePath::Group => ItemName::Group,
+            SourcePath::Glob(_) => ItemName::Glob,
+            SourcePath::Name(segments) => {
+                ItemName::TypeStringAndIdent("Use".into(), segments.last().unwrap().to_owned())
+            }
+            SourcePath::Rename(segments, rename) => ItemName::TypeStringAndRenamed(
+                "Use".into(),
+                segments.last().unwrap().to_owned(),
+                rename.to_owned(),
+            ),
         }
     }
 }
@@ -164,18 +181,7 @@ impl From<&Item> for ItemName {
             Item::Union(item_union) => {
                 ItemName::TypeStringAndIdent("Union".into(), item_union.ident.to_owned())
             }
-            Item::Use(item_use) => match item_use.into() {
-                SourcePath::Group => ItemName::Group,
-                SourcePath::Glob(_) => ItemName::Glob,
-                SourcePath::Name(segments) => {
-                    ItemName::TypeStringAndIdent("Use".into(), segments.last().unwrap().to_owned())
-                }
-                SourcePath::Rename(segments, rename) => ItemName::TypeStringAndRenamed(
-                    "Use".into(),
-                    segments.last().unwrap().to_owned(),
-                    rename.to_owned(),
-                ),
-            },
+            Item::Use(item_use) => item_use.into(),
             Item::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
             _ => ItemName::None, // Item is #[non_exhaustive]
         }

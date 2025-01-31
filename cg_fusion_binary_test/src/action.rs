@@ -1,9 +1,17 @@
 use super::*;
 use cg_fusion_lib_test::my_map_two_dim::my_map_point::MapPoint;
+use crate::fmt;
+use crate::fmt::Display;
 
 pub struct Action {
     pub cell: MapPoint<X, Y>,
     pub value: Value,
+}
+
+impl Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Action: cell: '({},{}), value: {}", self.cell.x(), self.cell.y(), self.value)
+    }
 }
 
 impl Action {

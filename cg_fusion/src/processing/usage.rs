@@ -145,50 +145,64 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 self.is_visible_for_module(*n, use_statement_owning_module_index)
                     .is_ok_and(|vis| vis)
             })
-            .filter_map(|(n, i)| match i {
-                Item::Use(item_use) => {
-                    if let Ok(ref path_element) = self.get_path_leaf(n, item_use.into()) {
-                        match path_element {
-                            PathElement::Group => Some(None), // first expand all use groups
-                            PathElement::Glob(glob_target_index) => {
-                                // check if glob target module is equal to owning module of use glob
-                                if *glob_target_index == use_statement_owning_module_index {
-                                    // ignore use glob, which points to the owning module of the use glob
-                                    None
-                                } else {
-                                    // first expand all use globs, which do not point to the owning module of the use glob
-                                    Some(None)
+            .filter_map(|(n, item_to_import)| {
+                if let Some(ident_to_import) =
+                    ItemName::from(item_to_import).get_ident_in_name_space()
+                {
+                    if let Item::Use(item_use) = item_to_import {
+                        if let Ok(ref path_element) = self.get_path_leaf(n, item_use.into()) {
+                            match path_element {
+                                PathElement::Group => Some(None), // first expand all use groups
+                                PathElement::Glob(glob_target_index) => {
+                                    // check if glob target module is equal to owning module of use glob
+                                    if *glob_target_index == use_statement_owning_module_index {
+                                        // ignore use glob, which points to the owning module of the use glob
+                                        None
+                                    } else {
+                                        // first expand all use globs, which do not point to the owning module of the use glob
+                                        Some(None)
+                                    }
                                 }
-                            }
-                            // If path could not be parsed, it probably contains a module 'hidden' behind use glob
-                            PathElement::PathCouldNotBeParsed => Some(None),
-                            PathElement::ExternalPackage => {
-                                Some(ItemName::from(i).get_ident_in_name_space())
-                            }
-                            PathElement::Item(item_index)
-                            | PathElement::ItemRenamed(item_index, _) => {
-                                if let Some(use_item_owning_module_index) =
-                                    self.get_syn_module_index(*item_index)
-                                {
-                                    if use_item_owning_module_index
-                                        == use_statement_owning_module_index
+                                // If path could not be parsed, it probably contains a module 'hidden' behind use glob
+                                PathElement::PathCouldNotBeParsed => Some(None),
+                                PathElement::ExternalPackage => {
+                                    // check if already an item exists in module, which has the same name as external item
+                                    if self
+                                        .iter_syn_item_neighbors(use_statement_owning_module_index)
+                                        .filter_map(|(_, i)| {
+                                            ItemName::from(i).get_ident_in_name_space()
+                                        })
+                                        .any(|i| i == ident_to_import)
+                                    {
+                                        // ignore items which ident already exists in owning module
+                                        None
+                                    } else {
+                                        Some(Some(ident_to_import))
+                                    }
+                                }
+                                PathElement::Item(item_index)
+                                | PathElement::ItemRenamed(item_index, _) => {
+                                    if self
+                                        .iter_syn_item_neighbors(use_statement_owning_module_index)
+                                        .any(|(n, _)| n == *item_index)
                                     {
                                         // ignore use item, which points to item inside the owning module of the use glob
                                         None
                                     } else {
-                                        Some(ItemName::from(i).get_ident_in_name_space())
+                                        Some(Some(ident_to_import))
                                     }
-                                } else {
-                                    None
                                 }
                             }
+                        } else {
+                            unreachable!("Every use statement must have a leave.")
                         }
                     } else {
-                        None
+                        // if not use item, return ident_to_import
+                        Some(Some(ident_to_import))
                     }
+                } else {
+                    None
                 }
-                // filter every other item type by checking, if it got an ident in name space
-                _ => ItemName::from(i).get_ident_in_name_space().map(Some),
             })
             .collect();
         if visible_items.contains(&None) {

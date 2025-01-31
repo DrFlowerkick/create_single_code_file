@@ -1,6 +1,5 @@
 // processing of challenge and library code
 
-mod path_minimizing;
 mod crate_src_files;
 mod dependencies;
 mod error;
@@ -8,10 +7,10 @@ mod forge;
 mod fuse_challenge;
 mod impl_block_check;
 mod impl_linking;
+mod path_minimizing;
 mod required_by_challenge;
 mod usage;
 
-pub use path_minimizing::ProcessingCrateUseAndPathState;
 pub use crate_src_files::ProcessingSrcFilesState;
 pub use dependencies::ProcessingDependenciesState;
 pub use error::{ProcessingError, ProcessingResult};
@@ -19,6 +18,7 @@ pub use forge::ForgeState;
 pub use fuse_challenge::FuseChallengeState;
 pub use impl_block_check::ProcessingImplItemDialogState;
 pub use impl_linking::ProcessingImplBlocksState;
+pub use path_minimizing::ProcessingCrateUseAndPathState;
 pub use required_by_challenge::ProcessingRequiredByChallengeState;
 pub use usage::ProcessingUsageState;
 
