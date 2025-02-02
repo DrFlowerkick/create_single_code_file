@@ -32,11 +32,7 @@ impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
         // a seen cache to make sure, that every required item is only checked once for path statements
         let mut seen_check_items: HashSet<NodeIndex> = HashSet::new();
         self.add_challenge_links_for_referenced_nodes_of_item(main_index, &mut seen_check_items)?;
-        Ok(CgData {
-            state: ProcessingImplItemDialogState,
-            options: self.options,
-            tree: self.tree,
-        })
+        Ok(self.set_state(ProcessingImplItemDialogState))
     }
 }
 

@@ -46,11 +46,7 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
         // recursive update of mod / crate items to include all of their sub items in syn mod / file statement
         self.update_required_mod_content(fusion_bin_index)?;
 
-        Ok(CgData {
-            state: ForgeState,
-            options: self.options,
-            tree: self.tree,
-        })
+        Ok(self.set_state(ForgeState))
     }
 
     fn update_required_mod_content(&mut self, mod_index: NodeIndex) -> ProcessingResult<()> {

@@ -22,6 +22,20 @@ pub use path_minimizing::ProcessingCrateUseAndPathState;
 pub use required_by_challenge::ProcessingRequiredByChallengeState;
 pub use usage::ProcessingUsageState;
 
+use crate::CgData;
+
+impl<O, S> CgData<O, S> {
+    fn set_state<N>(self, state: N) -> CgData<O, N> {
+        CgData {
+            state,
+            options: self.options,
+            tree: self.tree,
+            item_order: self.item_order,
+            node_mapping: self.node_mapping,
+        }
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
 

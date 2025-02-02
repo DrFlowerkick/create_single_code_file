@@ -112,11 +112,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
             }
         }
 
-        Ok(CgData {
-            state: ProcessingImplBlocksState,
-            options: self.options,
-            tree: self.tree,
-        })
+        Ok(self.set_state(ProcessingImplBlocksState))
     }
 
     pub(crate) fn resolving_crate_source_path(

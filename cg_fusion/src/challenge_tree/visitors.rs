@@ -66,6 +66,9 @@ impl<'a, O, S> SynReferenceMapper<'a, O, S> {
             leaf_nodes: HashSet::new(),
         }
     }
+    pub fn add_reference_node(&mut self, reference_node: NodeIndex) {
+        self.referenced_nodes.insert(reference_node);
+    }
     pub fn reference_use_tree_nodes(&mut self) -> Result<()> {
         if let Some(NodeType::SynItem(Item::Use(item_use))) = self.graph.tree.node_weight(self.node)
         {

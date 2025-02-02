@@ -8,13 +8,15 @@ pub(crate) mod parsing;
 pub mod processing;
 pub(crate) mod utilities;
 
+use std::collections::HashMap;
+
 use challenge_tree::{ChallengeTree, LocalPackage, NodeType};
 use configuration::{CargoCli, FusionCli};
 use error::{CgError, CgResult};
 use metadata::MetadataError;
 use processing::ProcessingDependenciesState;
 
-use petgraph::stable_graph::StableDiGraph;
+use petgraph::stable_graph::{NodeIndex, StableDiGraph};
 
 // CgMode enum allows to extend cg-fusion for other user modes (e.G. a TUI) in the future
 pub enum CgMode {
@@ -75,6 +77,8 @@ impl CgDataBuilder<CargoCli, cargo_metadata::MetadataCommand> {
                 state: ProcessingDependenciesState,
                 options: fusion_cli,
                 tree,
+                item_order: HashMap::new(),
+                node_mapping: HashMap::new(),
             })),
         }
     }
@@ -85,4 +89,6 @@ pub struct CgData<O, S> {
     state: S,
     options: O,
     tree: ChallengeTree,
+    item_order: HashMap<NodeIndex, Vec<NodeIndex>>,
+    node_mapping: HashMap<NodeIndex, NodeIndex>,
 }

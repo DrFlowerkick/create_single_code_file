@@ -65,14 +65,14 @@ impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
                 .run_cargo_clippy(&package.name)?
                 .collect_cargo_clippy_messages()?;
         }
-        Ok(CgData {
-            state: ProcessingSrcFilesState,
-            tree: self.tree,
-            options: self.options,
-        })
+        Ok(self.set_state(ProcessingSrcFilesState))
     }
 
     fn analyze_challenge_sub_dependencies(&mut self, node: NodeIndex) -> ProcessingResult<()> {
+        // if supported or unsupported dependency, skip analysis
+        if self.is_external(node) {
+            return Ok(());
+        }
         // check for root packages and get dependencies
         // borrow checker requires taking ownership of dependencies for adding new nodes and edges to self.tree
         let dependencies = match self.get_local_package(node)?.metadata.root_package() {
@@ -103,33 +103,41 @@ impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
                 }
             } else {
                 let dep_name = dep.name.to_owned();
-                if self.iter_supported_crates().any(|c| c == dep_name) {
-                    // found supported package, which is not dependency of challenge
-                    if self.options.force() {
-                        self.add_external_supported_package(node, dep_name);
-                    } else {
-                        return Err(ProcessingError::DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(
-                            dep_name,
-                        ));
-                    }
-                } else {
-                    // found unsupported package
-                    if self.options.force() {
-                        // if dependency is already in tree, get index of node otherwise None.
-                        let dependency_node = self
-                            .iter_unsupported_dependencies()
-                            .find(|(_, name)| *name == dep_name)
-                            .map(|(n, _)| n);
-                        match dependency_node {
-                            Some(n) => self.link_to_package(node, n),
-                            None => {
-                                self.add_external_unsupported_package(node, dep_name);
-                            }
+                if !self
+                    .iter_accepted_dependencies()
+                    .any(|(_, c)| c == dep_name)
+                {
+                    // dependency is not listed in accepted dependencies
+                    if self.iter_supported_crates().any(|c| c == dep_name) {
+                        // found supported package, which is not dependency of challenge
+                        if self.options.force() {
+                            self.add_external_supported_package(node, dep_name);
+                        } else {
+                            return Err(ProcessingError::DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(
+                                dep_name,
+                            ));
                         }
                     } else {
-                        return Err(
-                            ProcessingError::CodingameUnsupportedDependencyOfLocalLibrary(dep_name),
-                        );
+                        // found unsupported package
+                        if self.options.force() {
+                            // if dependency is already in tree, get index of node otherwise None.
+                            let dependency_node = self
+                                .iter_unsupported_dependencies()
+                                .find(|(_, name)| *name == dep_name)
+                                .map(|(n, _)| n);
+                            match dependency_node {
+                                Some(n) => self.link_to_package(node, n),
+                                None => {
+                                    self.add_external_unsupported_package(node, dep_name);
+                                }
+                            }
+                        } else {
+                            return Err(
+                                ProcessingError::CodingameUnsupportedDependencyOfLocalLibrary(
+                                    dep_name,
+                                ),
+                            );
+                        }
                     }
                 }
             }

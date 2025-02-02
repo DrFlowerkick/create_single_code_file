@@ -121,11 +121,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 }
             }
         }
-        Ok(CgData {
-            state: FuseChallengeState,
-            options: self.options,
-            tree: self.tree,
-        })
+        Ok(self.set_state(FuseChallengeState))
     }
 
     fn impl_item_dialog(

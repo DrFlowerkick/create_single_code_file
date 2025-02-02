@@ -12,11 +12,7 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
     pub fn add_src_files(mut self) -> ProcessingResult<CgData<O, ProcessingUsageState>> {
         self.add_bin_src_files_of_challenge()?;
         self.add_lib_src_files()?;
-        Ok(CgData {
-            state: ProcessingUsageState,
-            options: self.options,
-            tree: self.tree,
-        })
+        Ok(self.set_state(ProcessingUsageState))
     }
 
     fn add_bin_src_files_of_challenge(&mut self) -> ProcessingResult<()> {
@@ -36,9 +32,11 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
         // add syn items of bin crate to tree
         let code = fs::read_to_string(&binary_crate.path)?;
         let syntax = load_syntax(&code)?;
+        let mut item_order: Vec<NodeIndex> = Vec::new();
         for item in syntax.items.to_owned().iter() {
-            self.add_syn_item(item, &crate_dir, bin_crate_index)?;
+            item_order.push(self.add_syn_item(item, &crate_dir, bin_crate_index)?);
         }
+        self.item_order.insert(bin_crate_index, item_order);
         Ok(())
     }
 
@@ -59,9 +57,11 @@ impl<O: CgCli> CgData<O, ProcessingSrcFilesState> {
                 // add syn items of lib crate to tree
                 let code = fs::read_to_string(&library_crate.path)?;
                 let syntax = load_syntax(&code)?;
+                let mut item_order: Vec<NodeIndex> = Vec::new();
                 for item in syntax.items.to_owned().iter() {
-                    self.add_syn_item(item, &crate_dir, lib_crate_index)?;
+                    item_order.push(self.add_syn_item(item, &crate_dir, lib_crate_index)?);
                 }
+                self.item_order.insert(lib_crate_index, item_order);
             }
         }
         Ok(())

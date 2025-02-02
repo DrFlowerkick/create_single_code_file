@@ -12,14 +12,12 @@ use crate::{
 
 use anyhow::{anyhow, Context};
 use cargo_metadata::camino::Utf8PathBuf;
-use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
+use petgraph::stable_graph::NodeIndex;
 use proc_macro2::Span;
 use quote::ToTokens;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use syn::{
-    token, visit::Visit, Ident, Item, ItemImpl, ItemMod, ItemTrait, UsePath, UseTree, Visibility,
-};
+use syn::{token, visit::Visit, Ident, Item, ItemMod, UsePath, UseTree, Visibility};
 
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn add_local_package(
@@ -177,22 +175,22 @@ impl<O: CgCli, S> CgData<O, S> {
 
         match item {
             // if item is module, add content of module to tree
-            Item::Mod(item_mod) => {
-                self.add_syn_item_mod(item_mod, dir_path, item_index)?;
+            Item::Mod(_) => {
+                self.add_syn_item_mod(dir_path, item_index)?;
             }
             // if item is impl, add content of impl to tree
-            Item::Impl(item_impl) => {
+            Item::Impl(_) => {
                 if self.options.verbose() {
                     println!("Adding '{}' to tree.", ItemName::from(item));
                 }
-                self.add_syn_item_impl(item_impl, item_index)?;
+                self.add_syn_item_impl(item_index)?;
             }
             // if item is impl, add content of impl to tree
-            Item::Trait(item_trait) => {
+            Item::Trait(_) => {
                 if self.options.verbose() {
                     println!("Adding '{}' to tree.", ItemName::from(item));
                 }
-                self.add_syn_item_trait(item_trait, item_index)?;
+                self.add_syn_item_trait(item_index)?;
             }
             // if item is use statement, check if an ident exist (not the case if group or glob)
             Item::Use(item_use) => {
@@ -217,23 +215,22 @@ impl<O: CgCli, S> CgData<O, S> {
 
     fn add_syn_item_mod(
         &mut self,
-        item_mod: &ItemMod,
         dir_path: &Utf8PathBuf,
         item_mod_index: NodeIndex,
     ) -> TreeResult<()> {
-        match item_mod.content {
-            Some((_, ref content)) => {
+        let (items, mod_src_file) = if let Some(NodeType::SynItem(Item::Mod(item_mod))) =
+            self.tree.node_weight_mut(item_mod_index)
+        {
+            let mod_data = if let Some(mod_content) = item_mod.content.take() {
+                // with take() mod_content of item_mod is set to None
                 if self.options.verbose() {
                     println!(
                         "Adding inline '{}' to tree.",
                         self.get_verbose_name_of_tree_node(item_mod_index)?
                     );
                 }
-                for content_item in content.iter() {
-                    self.add_syn_item(content_item, dir_path, item_mod_index)?;
-                }
-            }
-            None => {
+                (mod_content.1, None)
+            } else {
                 // set module directory
                 let mod_dir = dir_path.join(item_mod.ident.to_string());
                 // set module filename
@@ -246,14 +243,6 @@ impl<O: CgCli, S> CgData<O, S> {
                         Err(anyhow!(add_context!("Unexpected module file path error.")))?;
                     }
                 }
-                // add src file of module to tree
-                if self.options.verbose() {
-                    println!(
-                        "Adding module src file '{}' at path '{}' to tree.",
-                        self.get_verbose_name_of_tree_node(item_mod_index)?,
-                        path,
-                    );
-                }
                 // get syntax of src file
                 let code = fs::read_to_string(&path)?;
                 let mod_syntax = load_syntax(&code)?;
@@ -263,54 +252,98 @@ impl<O: CgCli, S> CgData<O, S> {
                     shebang: mod_syntax.shebang.to_owned(),
                     attrs: mod_syntax.attrs.to_owned(),
                 };
-                let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
-                self.tree
-                    .add_edge(mod_node_index, item_mod_index, EdgeType::Module);
+                (mod_syntax.items, Some((src_file, mod_dir)))
+            };
+            mod_data
+        } else {
+            return Err(anyhow!(add_context!("Expecting item mod.")).into());
+        };
 
-                // add items of module src file to tree
-                for content_item in mod_syntax.items.iter() {
-                    self.add_syn_item(content_item, &mod_dir, item_mod_index)?;
-                }
+        let mut item_order: Vec<NodeIndex> = Vec::new();
+        if let Some((src_file, mod_dir)) = mod_src_file {
+            // add src file of module to tree
+            if self.options.verbose() {
+                println!(
+                    "Adding module src file '{}' at path '{}' to tree.",
+                    self.get_verbose_name_of_tree_node(item_mod_index)?,
+                    src_file.path,
+                );
+            }
+            let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
+            self.tree
+                .add_edge(mod_node_index, item_mod_index, EdgeType::Module);
+
+            // add items of module src file to tree
+            for content_item in items.iter() {
+                item_order.push(self.add_syn_item(content_item, &mod_dir, item_mod_index)?);
+            }
+        } else {
+            for content_item in items.iter() {
+                item_order.push(self.add_syn_item(content_item, dir_path, item_mod_index)?);
             }
         }
+        self.item_order.insert(item_mod_index, item_order);
+
         Ok(())
     }
 
-    fn add_syn_item_impl(
-        &mut self,
-        item_impl: &ItemImpl,
-        item_impl_index: NodeIndex,
-    ) -> TreeResult<()> {
+    fn add_syn_item_impl(&mut self, item_impl_index: NodeIndex) -> TreeResult<()> {
+        let items = if let Some(NodeType::SynItem(Item::Impl(item_impl))) =
+            self.tree.node_weight_mut(item_impl_index)
+        {
+            // mem::take takes all items from item_impl.items, leaving it empty
+            std::mem::take(&mut item_impl.items)
+        } else {
+            return Err(anyhow!(add_context!("Expected impl item.")).into());
+        };
+
         // Add impl items
-        for impl_item in item_impl.items.iter() {
-            if self.options.verbose() {
-                println!("Adding '{}' to tree.", ItemName::from(impl_item));
-            }
+        let mut item_order: Vec<NodeIndex> = Vec::new();
+        for impl_item in items.iter() {
             let impl_item_index = self
                 .tree
                 .add_node(NodeType::SynImplItem(impl_item.to_owned()));
             self.tree
                 .add_edge(item_impl_index, impl_item_index, EdgeType::Syn);
+            item_order.push(impl_item_index);
+            if self.options.verbose() {
+                println!(
+                    "Adding '{}' to tree.",
+                    self.get_verbose_name_of_tree_node(impl_item_index)?
+                );
+            }
         }
+        self.item_order.insert(item_impl_index, item_order);
         Ok(())
     }
 
-    fn add_syn_item_trait(
-        &mut self,
-        item_trait: &ItemTrait,
-        item_trait_index: NodeIndex,
-    ) -> TreeResult<()> {
+    fn add_syn_item_trait(&mut self, item_trait_index: NodeIndex) -> TreeResult<()> {
+        let items = if let Some(NodeType::SynItem(Item::Trait(trait_impl))) =
+            self.tree.node_weight_mut(item_trait_index)
+        {
+            // mem::take takes all items from item_impl.items, leaving it empty
+            std::mem::take(&mut trait_impl.items)
+        } else {
+            return Err(anyhow!(add_context!("Expected trait item.")).into());
+        };
+
         // Add trait items
-        for trait_item in item_trait.items.iter() {
-            if self.options.verbose() {
-                println!("Adding '{}' to tree.", ItemName::from(trait_item));
-            }
+        let mut item_order: Vec<NodeIndex> = Vec::new();
+        for trait_item in items.iter() {
             let trait_item_index = self
                 .tree
                 .add_node(NodeType::SynTraitItem(trait_item.to_owned()));
             self.tree
                 .add_edge(item_trait_index, trait_item_index, EdgeType::Syn);
+            item_order.push(trait_item_index);
+            if self.options.verbose() {
+                println!(
+                    "Adding '{}' to tree.",
+                    self.get_verbose_name_of_tree_node(trait_item_index)?
+                );
+            }
         }
+        self.item_order.insert(item_trait_index, item_order);
         Ok(())
     }
 
@@ -404,12 +437,32 @@ impl<O: CgCli, S> CgData<O, S> {
         if seen_check_items.insert(item_to_check) {
             let mut challenge_collector = SynReferenceMapper::new(self, item_to_check);
             match self.tree.node_weight(item_to_check) {
-                Some(NodeType::SynItem(Item::Mod(_)))            // do not reference nodes in these items, since
-                | Some(NodeType::SynItem(Item::Impl(_)))         // we will process their sub items if they
-                | Some(NodeType::SynItem(Item::Trait(_))) => (), // are linked as required by challenge.
-                Some(NodeType::SynItem(Item::Use(_))) => challenge_collector.reference_use_tree_nodes()?,
-                Some(NodeType::SynItem(item)) => challenge_collector.visit_item(item),
-                Some(NodeType::SynImplItem(impl_item)) => challenge_collector.visit_impl_item(impl_item),
+                Some(NodeType::SynItem(Item::Use(_))) => {
+                    challenge_collector.reference_use_tree_nodes()?
+                }
+                Some(NodeType::SynItem(Item::Impl(item_impl))) => {
+                    challenge_collector.visit_item_impl(item_impl);
+                    if item_impl.trait_.is_some() {
+                        for (impl_item_index, _) in self.iter_syn_impl_item(item_to_check) {
+                            challenge_collector.add_reference_node(impl_item_index);
+                        }
+                    }
+                }
+                Some(NodeType::SynItem(Item::Trait(trait_impl))) => {
+                    challenge_collector.visit_item_trait(trait_impl);
+                    for (trait_item_index, _) in self.iter_syn_trait_item(item_to_check) {
+                        challenge_collector.add_reference_node(trait_item_index);
+                    }
+                }
+                Some(NodeType::SynItem(item)) => {
+                    challenge_collector.visit_item(item);
+                    for (impl_block_index, _) in self.iter_impl_blocks_of_item(item_to_check) {
+                        challenge_collector.add_reference_node(impl_block_index);
+                    }
+                }
+                Some(NodeType::SynImplItem(impl_item)) => {
+                    challenge_collector.visit_impl_item(impl_item)
+                }
                 Some(NodeType::SynTraitItem(trait_item)) => {
                     challenge_collector.visit_trait_item(trait_item)
                 }
@@ -417,28 +470,10 @@ impl<O: CgCli, S> CgData<O, S> {
             }
             // check collected node references
             for node_reference in challenge_collector.referenced_nodes.iter() {
-                if self.is_syn_impl_item(*node_reference) {
-                    let impl_block_index = self
-                        .get_parent_index_by_edge_type(*node_reference, EdgeType::Syn)
-                        .context(add_context!("Expected impl block."))?;
-                    if !self.is_required_by_challenge(impl_block_index) {
-                        self.add_required_by_challenge_link(item_to_check, impl_block_index)?;
-                    }
-                }
-                if self.is_syn_trait_item(*node_reference) {
-                    let trait_index = self
-                        .get_parent_index_by_edge_type(*node_reference, EdgeType::Syn)
-                        .context(add_context!("Expected impl block."))?;
-                    if !self.is_required_by_challenge(trait_index) {
-                        self.add_required_by_challenge_link(item_to_check, trait_index)?;
-                        self.add_trait_items_of_required_trait(trait_index, seen_check_items)?;
-                    }
+                if seen_check_items.contains(node_reference) {
+                    continue;
                 }
                 self.add_required_by_challenge_link(item_to_check, *node_reference)?;
-                self.add_impl_items_of_impl_blocks_with_trait_if_referenced_item_is_required(
-                    *node_reference,
-                    seen_check_items,
-                )?;
                 self.add_challenge_links_for_referenced_nodes_of_item(
                     *node_reference,
                     seen_check_items,
@@ -448,81 +483,6 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(())
     }
 
-    fn add_impl_items_of_impl_blocks_with_trait_if_referenced_item_is_required(
-        &mut self,
-        item_index: NodeIndex,
-        seen_check_items: &mut HashSet<NodeIndex>,
-    ) -> TreeResult<()> {
-        // vec is empty if no EdgeType::Implementation exist or impl block does not have a trait
-        let impl_blocks_with_trait: Vec<NodeIndex> = self
-            .iter_impl_blocks_of_item(item_index)
-            .filter_map(|(n, i)| {
-                if let Item::Impl(item_impl) = i {
-                    item_impl.trait_.is_some().then_some(n)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for impl_block_with_trait in impl_blocks_with_trait.iter() {
-            // first add link from item to impl block with trait
-            self.add_required_by_challenge_link(item_index, *impl_block_with_trait)?;
-            // second add local trait item (if any) as required by challenge
-            let trait_index = self
-                .tree
-                .edges_directed(*impl_block_with_trait, Direction::Incoming)
-                .filter(|e| *e.weight() == EdgeType::Implementation)
-                .map(|e| e.source())
-                .find(|n| {
-                    matches!(
-                        self.get_syn_item(*n),
-                        Some(Item::Trait(_)) | Some(Item::Use(_))
-                    )
-                });
-            if let Some(ti) = trait_index {
-                self.add_required_by_challenge_link(*impl_block_with_trait, ti)?;
-                self.add_trait_items_of_required_trait(ti, seen_check_items)?;
-            }
-            // third add all impl items of impl block as required by challenge
-            let impl_items: Vec<NodeIndex> = self
-                .iter_syn_impl_item(*impl_block_with_trait)
-                .filter(|(n, _)| !self.is_required_by_challenge(*n))
-                .map(|(n, _)| n)
-                .collect();
-            for impl_item in impl_items {
-                self.add_required_by_challenge_link(*impl_block_with_trait, impl_item)?;
-                self.add_challenge_links_for_referenced_nodes_of_item(impl_item, seen_check_items)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn add_trait_items_of_required_trait(
-        &mut self,
-        trait_index: NodeIndex,
-        seen_check_items: &mut HashSet<NodeIndex>,
-    ) -> TreeResult<()> {
-        if !matches!(self.get_syn_item(trait_index), Some(Item::Trait(_))) {
-            return Ok(());
-        }
-        if !seen_check_items.contains(&trait_index) {
-            // mark all trait items of required trait as required by challenge
-            let trait_items: Vec<NodeIndex> = self
-                .iter_syn_trait_item(trait_index)
-                .filter(|(n, _)| !self.is_required_by_challenge(*n))
-                .map(|(n, _)| n)
-                .collect();
-            for trait_item_index in trait_items {
-                self.add_required_by_challenge_link(trait_index, trait_item_index)?;
-                self.add_challenge_links_for_referenced_nodes_of_item(
-                    trait_item_index,
-                    seen_check_items,
-                )?;
-            }
-        }
-        Ok(())
-    }
     pub(crate) fn add_lib_dependency_as_mod_to_fusion(
         &mut self,
         lib_crate_index: NodeIndex,
@@ -648,7 +608,7 @@ impl<O: CgCli, S> CgData<O, S> {
         let mod_intern_impl_links: Vec<(NodeIndex, NodeIndex)> = self
             .iter_syn_item_neighbors(mod_index)
             .flat_map(|(n, _)| self.iter_impl_blocks_of_item(n).map(move |(ni, _)| (n, ni)))
-            .filter(|(_, ni)| node_mapping.contains_key(ni))
+            .filter(|(n, ni)| node_mapping.contains_key(n) && node_mapping.contains_key(ni))
             .collect();
         for (item_index, impl_block_index) in mod_intern_impl_links {
             let new_fusion_item_index = node_mapping.get(&item_index).unwrap();

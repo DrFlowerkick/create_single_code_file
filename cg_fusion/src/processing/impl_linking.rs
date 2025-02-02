@@ -18,11 +18,10 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
             .flat_map(|(n, _, _)| {
                 self.iter_syn_items(n).filter_map(|(n, i)| {
                     if let Item::Impl(item_impl) = i {
+                        // since items of impl have been cleared out, al remaining path leaf must pont from
+                        // impl block definition to their targets.
                         let mut leaf_collector = SynReferenceMapper::new(&self, n);
-                        if let Some((_, trait_path, _)) = item_impl.trait_.as_ref() {
-                            leaf_collector.visit_path(trait_path);
-                        };
-                        leaf_collector.visit_type(item_impl.self_ty.as_ref());
+                        leaf_collector.visit_item_impl(item_impl);
                         Some((n, leaf_collector.leaf_nodes))
                     } else {
                         None
@@ -35,11 +34,7 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
                 self.add_implementation_link(*item_index, syn_impl_index)?;
             }
         }
-        Ok(CgData {
-            state: ProcessingRequiredByChallengeState,
-            options: self.options,
-            tree: self.tree,
-        })
+        Ok(self.set_state(ProcessingRequiredByChallengeState))
     }
 }
 

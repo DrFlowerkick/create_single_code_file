@@ -76,11 +76,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 _ => unreachable!("Filtering for groups and globs"),
             }
         }
-        Ok(CgData {
-            state: ProcessingCrateUseAndPathState,
-            options: self.options,
-            tree: self.tree,
-        })
+        Ok(self.set_state(ProcessingCrateUseAndPathState))
     }
 
     fn expand_use_group(

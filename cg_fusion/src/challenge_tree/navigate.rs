@@ -239,6 +239,16 @@ impl<O, S> CgData<O, S> {
         }
     }
 
+    pub(crate) fn is_external(&self, node: NodeIndex) -> bool {
+        if let Some(node_weight) = self.tree.node_weight(node) {
+            return matches!(
+                node_weight,
+                NodeType::ExternalSupportedPackage(_) | NodeType::ExternalUnsupportedPackage(_)
+            );
+        }
+        false
+    }
+
     pub(crate) fn is_crate(&self, node: NodeIndex) -> bool {
         if let Some(node_weight) = self.tree.node_weight(node) {
             return matches!(node_weight, NodeType::BinCrate(_) | NodeType::LibCrate(_));
@@ -276,6 +286,7 @@ impl<O, S> CgData<O, S> {
         false
     }
 
+    #[allow(dead_code)] // ToDo: check if we need this function
     pub(crate) fn is_syn_trait_item(&self, node: NodeIndex) -> bool {
         if let Some(node_weight) = self.tree.node_weight(node) {
             return matches!(node_weight, NodeType::SynTraitItem(_));
