@@ -102,6 +102,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             }
             seen_impl_items.insert(impl_item, user_input);
         }
+        // if at least once user input was required, show dialog to save impl config file.
         if got_user_input {
             if let Some((toml_path, toml_content)) =
                 self.impl_config_toml_dialog(&mut dialog_handler, &seen_impl_items)?

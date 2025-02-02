@@ -32,6 +32,8 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
         let (challenge_bin_index, _) = self
             .get_challenge_bin_crate()
             .context(add_context!("Expected challenge bin crate."))?;
+        self.node_mapping
+            .insert(challenge_bin_index, fusion_bin_index);
         self.add_required_mod_content_to_fusion(challenge_bin_index, fusion_bin_index)?;
 
         // add required lib crates as modules to fusion
@@ -40,7 +42,11 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
             .filter_map(|(n, _)| self.is_required_by_challenge(n).then_some(n))
             .collect();
         for required_lib_crate in required_lib_crates {
-            self.add_lib_dependency_as_mod_to_fusion(required_lib_crate, fusion_bin_index)?;
+            self.add_lib_dependency_as_mod_to_fusion(
+                required_lib_crate,
+                challenge_bin_index,
+                fusion_bin_index,
+            )?;
         }
 
         // recursive update of mod / crate items to include all of their sub items in syn mod / file statement
@@ -62,6 +68,7 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
             self.update_required_mod_content(item_mod_index)?;
         }
         // get sorted list of mod items
+        // ToDo: rework get_sorted_mod_content to use item_order and node_mapping
         let mod_content: Vec<Item> = self.get_sorted_mod_content(mod_index)?;
 
         // update current mod
@@ -135,9 +142,9 @@ mod tests {
             [
                 "Action (Use)",
                 "Go (Use)",
-                "MapPoint (Use)",
                 "X (Use)",
                 "Y (Use)",
+                "MapPoint (Use)",
                 "main (Fn)",
                 "cg_fusion_binary_test (Mod)",
                 "my_map_two_dim (Mod)",
@@ -195,18 +202,18 @@ mod tests {
         assert_eq!(
             sorted_item_names_of_cg_fusion_binary_test,
             [
+                "action (Mod)",
                 "Action (Use)",
                 "MyMap2D (Use)",
                 "fmt (Use)",
-                "N (Const)",
                 "X (Const)",
                 "Y (Const)",
+                "N (Const)",
                 "Value (Enum)",
                 "Display for Value (Impl)",
                 "Go (Struct)",
                 "Default for Go (Impl)",
                 "Go (Impl)",
-                "action (Mod)",
             ]
         );
     }

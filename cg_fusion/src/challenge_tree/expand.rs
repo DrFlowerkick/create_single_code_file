@@ -15,9 +15,11 @@ use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::NodeIndex;
 use proc_macro2::Span;
 use quote::ToTokens;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
-use syn::{token, visit::Visit, Ident, Item, ItemMod, UsePath, UseTree, Visibility};
+use syn::{
+    token, visit::Visit, Ident, ImplItem, Item, ItemMod, TraitItem, UsePath, UseTree, Visibility,
+};
 
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn add_local_package(
@@ -221,7 +223,7 @@ impl<O: CgCli, S> CgData<O, S> {
         let (items, mod_src_file) = if let Some(NodeType::SynItem(Item::Mod(item_mod))) =
             self.tree.node_weight_mut(item_mod_index)
         {
-            let mod_data = if let Some(mod_content) = item_mod.content.take() {
+            if let Some(mod_content) = item_mod.content.take() {
                 // with take() mod_content of item_mod is set to None
                 if self.options.verbose() {
                     println!(
@@ -253,8 +255,7 @@ impl<O: CgCli, S> CgData<O, S> {
                     attrs: mod_syntax.attrs.to_owned(),
                 };
                 (mod_syntax.items, Some((src_file, mod_dir)))
-            };
-            mod_data
+            }
         } else {
             return Err(anyhow!(add_context!("Expecting item mod.")).into());
         };
@@ -486,6 +487,7 @@ impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn add_lib_dependency_as_mod_to_fusion(
         &mut self,
         lib_crate_index: NodeIndex,
+        challenge_bin_index: NodeIndex,
         fusion_node_index: NodeIndex,
     ) -> TreeResult<()> {
         let Some(NodeType::LibCrate(src_file)) = self.tree.node_weight(lib_crate_index) else {
@@ -509,10 +511,13 @@ impl<O: CgCli, S> CgData<O, S> {
             content: Some((token::Brace::default(), vec![])),
             semi: None,
         };
-        if self.options.verbose() {
-            println!("A")
-        }
         let fusion_mod_index = self.tree.add_node(NodeType::SynItem(Item::Mod(new_mod)));
+        self.node_mapping.insert(lib_crate_index, fusion_mod_index);
+        // add required lib crate index to content order of challenge
+        let Some(challenge_content_order) = self.item_order.get_mut(&challenge_bin_index) else {
+            return Err(anyhow!(add_context!("Expected challenge item order.")).into());
+        };
+        challenge_content_order.push(lib_crate_index);
         self.tree
             .add_edge(fusion_node_index, fusion_mod_index, EdgeType::Syn);
         if self.options.verbose() {
@@ -536,7 +541,6 @@ impl<O: CgCli, S> CgData<O, S> {
             .filter(|(n, _)| self.is_required_by_challenge(*n))
             .map(|(n, i)| (n, i.to_owned()))
             .collect();
-        let mut node_mapping: HashMap<NodeIndex, NodeIndex> = HashMap::new();
         let mut sub_mods: Vec<(NodeIndex, NodeIndex)> = Vec::new();
         for (item_index, item) in mod_content {
             let new_fusion_item_index = match item {
@@ -550,7 +554,7 @@ impl<O: CgCli, S> CgData<O, S> {
                         self.get_path_root(item_index, (&item_use).into())?
                     {
                         if self.is_crate(path_root)
-                            && !item_use.tree.is_use_tree_root_path_keyword()
+                            && !item_use.tree.path_root_is_keyword()
                         {
                             let new_use_root = UsePath {
                                 ident: Ident::new("crate", Span::call_site()),
@@ -568,61 +572,47 @@ impl<O: CgCli, S> CgData<O, S> {
                     self.tree
                         .add_node(NodeType::SynItem(Item::Use(new_item_use)))
                 }
-                Item::Impl(mut item_impl) => {
-                    let new_item_impl = if item_impl.trait_.is_none() {
-                        let required_impl_item_names: Vec<Ident> = self
-                            .iter_syn_impl_item(item_index)
-                            .filter_map(|(n, i)| {
-                                self.is_required_by_challenge(n).then_some(i.to_owned())
-                            })
-                            .filter_map(|i| ItemName::from(&i).get_ident_in_name_space())
-                            .collect();
-                        // keep original order by only retaining required impl items
-                        item_impl.items.retain(|i| {
-                            if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
-                                required_impl_item_names.contains(&name)
-                            } else {
-                                false
-                            }
-                        });
-                        item_impl
-                    } else {
-                        item_impl
-                    };
+                Item::Impl(item_impl) => {
+                    let mut new_impl_item = item_impl;
+                    let ordered_required_impl_items: Vec<ImplItem> = self.item_order[&item_index]
+                        .iter()
+                        .filter_map(|on| {
+                            self.iter_syn_impl_item(item_index)
+                                .filter(|(n, _)| {
+                                    new_impl_item.trait_.is_none()
+                                        || self.is_required_by_challenge(*n)
+                                })
+                                .find(|(rn, _)| on == rn)
+                                .map(|(_, ri)| ri.to_owned())
+                        })
+                        .collect();
+                    new_impl_item.items = ordered_required_impl_items;
                     self.tree
-                        .add_node(NodeType::SynItem(Item::Impl(new_item_impl)))
+                        .add_node(NodeType::SynItem(Item::Impl(new_impl_item)))
+                }
+                Item::Trait(trait_impl) => {
+                    let mut new_trait_item = trait_impl;
+                    let ordered_required_trait_items: Vec<TraitItem> = self.item_order[&item_index]
+                        .iter()
+                        .filter_map(|on| {
+                            self.iter_syn_trait_item(item_index)
+                                .find(|(rn, _)| on == rn)
+                                .map(|(_, ri)| ri.to_owned())
+                        })
+                        .collect();
+                    new_trait_item.items = ordered_required_trait_items;
+                    self.tree
+                        .add_node(NodeType::SynItem(Item::Trait(new_trait_item)))
                 }
                 _ => self.tree.add_node(NodeType::SynItem(item)),
             };
-            node_mapping.insert(item_index, new_fusion_item_index);
+            self.node_mapping.insert(item_index, new_fusion_item_index);
             self.tree
                 .add_edge(fusion_mod_index, new_fusion_item_index, EdgeType::Syn);
             if self.options.verbose() {
                 println!(
                     "Fusing '{}' to tree.",
                     self.get_verbose_name_of_tree_node(new_fusion_item_index)?
-                );
-            }
-        }
-        // add mod intern implementation links
-        let mod_intern_impl_links: Vec<(NodeIndex, NodeIndex)> = self
-            .iter_syn_item_neighbors(mod_index)
-            .flat_map(|(n, _)| self.iter_impl_blocks_of_item(n).map(move |(ni, _)| (n, ni)))
-            .filter(|(n, ni)| node_mapping.contains_key(n) && node_mapping.contains_key(ni))
-            .collect();
-        for (item_index, impl_block_index) in mod_intern_impl_links {
-            let new_fusion_item_index = node_mapping.get(&item_index).unwrap();
-            let new_fusion_impl_block_index = node_mapping.get(&impl_block_index).unwrap();
-            self.tree.add_edge(
-                *new_fusion_item_index,
-                *new_fusion_impl_block_index,
-                EdgeType::Implementation,
-            );
-            if self.options.verbose() {
-                println!(
-                    "Fusing implementation link from '{}' to '{}'.",
-                    self.get_verbose_name_of_tree_node(*new_fusion_item_index)?,
-                    self.get_verbose_name_of_tree_node(*new_fusion_impl_block_index)?
                 );
             }
         }

@@ -1,7 +1,5 @@
 // functions to navigate the challenge tree
 
-use std::collections::HashMap;
-
 use super::{
     walkers::{PathElement, SourcePathWalker},
     ChallengeTreeError, EdgeType, LocalPackage, NodeType, SrcFile, TreeResult,
@@ -10,7 +8,7 @@ use crate::{
     add_context,
     configuration::CgCli,
     parsing::{IdentCollector, ItemName, SourcePath},
-    utilities::{clean_absolute_utf8, DrainFilterAndSortExt},
+    utilities::clean_absolute_utf8,
     CgData,
 };
 
@@ -274,6 +272,7 @@ impl<O, S> CgData<O, S> {
                     | NodeType::LibCrate(_)
                     | NodeType::SynItem(_)
                     | NodeType::SynImplItem(_)
+                    | NodeType::SynTraitItem(_)
             );
         }
         false
@@ -476,119 +475,18 @@ impl<O: CgCli, S> CgData<O, S> {
     }
 
     pub(crate) fn get_sorted_mod_content(&self, mod_index: NodeIndex) -> TreeResult<Vec<Item>> {
-        let mod_content_mapping: HashMap<Item, NodeIndex> = self
-            .iter_syn_neighbors(mod_index)
-            .filter_map(|(n, w)| match w {
-                NodeType::SynItem(item) => Some((item.clone(), n)),
-                _ => None,
-            })
+        let challenge_mod = self
+            .node_mapping
+            .iter()
+            .find_map(|(nc, nf)| (*nf == mod_index).then_some(nc))
+            .context(add_context!(
+                "Expected challenge mod corresponding to fusion mod."
+            ))?;
+        let new_mod_content: Vec<Item> = self.item_order[challenge_mod]
+            .iter()
+            .filter_map(|n| self.node_mapping.get(n))
+            .filter_map(|n| self.get_syn_item(*n).map(|i| i.to_owned()))
             .collect();
-        let mut mod_content: Vec<Item> = mod_content_mapping.keys().cloned().collect();
-        let mut new_mod_content: Vec<Item> = Vec::new();
-        // 1. use items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Use(_))));
-        // 2. type items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Type(_))));
-        // 3. const items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Const(_))));
-        // 4. static items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Static(_))));
-        // 5. macro items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Macro(_))));
-        // 6. fn items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Fn(_))));
-        // 7. trait items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Trait(_))));
-        // 8. trait alias items
-        new_mod_content
-            .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::TraitAlias(_))));
-        // 9. enum items and corresponding impl items
-        let new_enums = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Enum(_)));
-        self.get_item_with_sorted_impl_blocks(
-            new_enums,
-            &mut new_mod_content,
-            &mut mod_content,
-            &mod_content_mapping,
-        );
-        // 10. struct items and corresponding impl items
-        let new_structs = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Struct(_)));
-        self.get_item_with_sorted_impl_blocks(
-            new_structs,
-            &mut new_mod_content,
-            &mut mod_content,
-            &mod_content_mapping,
-        );
-        // 11. union items and corresponding impl items
-        let new_unions = mod_content.drain_filter_and_sort(|i| matches!(i, Item::Union(_)));
-        self.get_item_with_sorted_impl_blocks(
-            new_unions,
-            &mut new_mod_content,
-            &mut mod_content,
-            &mod_content_mapping,
-        );
-        // 12. remaining impl items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Impl(_))));
-        // 13. mod items
-        new_mod_content.extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::Mod(_))));
-        // 14. foreign mod items
-        new_mod_content
-            .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ForeignMod(_))));
-        // 15. extern crate items
-        new_mod_content
-            .extend(mod_content.drain_filter_and_sort(|i| matches!(i, Item::ExternCrate(_))));
-        // mod_content should be empty
-        assert!(mod_content.is_empty());
-        if self.options.verbose() {
-            println!(
-                "Sorted mod content of '{}':",
-                self.get_verbose_name_of_tree_node(mod_index)?
-            );
-            for item in &new_mod_content {
-                let item_index = mod_content_mapping[item];
-                println!("{}", self.get_verbose_name_of_tree_node(item_index)?);
-            }
-        }
         Ok(new_mod_content)
-    }
-
-    fn get_item_with_sorted_impl_blocks(
-        &self,
-        new_items: Vec<Item>,
-        new_mod_content: &mut Vec<Item>,
-        mod_content: &mut Vec<Item>,
-        mod_content_mapping: &HashMap<Item, NodeIndex>,
-    ) {
-        for item in new_items {
-            let item_index = mod_content_mapping[&item];
-            let item_impl_block_with_traits_indices: Vec<NodeIndex> = self
-                .iter_impl_blocks_of_item(item_index)
-                .filter(|(_, i)| {
-                    if let Item::Impl(item_impl) = i {
-                        item_impl.trait_.is_some()
-                    } else {
-                        false
-                    }
-                })
-                .map(|(n, _)| n)
-                .collect();
-            let item_impl_block_without_traits_indices: Vec<NodeIndex> = self
-                .iter_impl_blocks_of_item(item_index)
-                .filter(|(_, i)| {
-                    if let Item::Impl(item_impl) = i {
-                        item_impl.trait_.is_none()
-                    } else {
-                        false
-                    }
-                })
-                .map(|(n, _)| n)
-                .collect();
-            new_mod_content.push(item);
-            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
-                item_impl_block_with_traits_indices.contains(&mod_content_mapping[i])
-            }));
-            new_mod_content.extend(mod_content.drain_filter_and_sort(|i| {
-                item_impl_block_without_traits_indices.contains(&mod_content_mapping[i])
-            }));
-        }
     }
 }

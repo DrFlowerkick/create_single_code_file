@@ -79,18 +79,15 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
         Ok(self.set_state(ProcessingCrateUseAndPathState))
     }
 
-    fn expand_use_group(
-        &mut self,
-        syn_use_group_index: NodeIndex,
-    ) -> ProcessingResult<Vec<NodeIndex>> {
+    fn expand_use_group(&mut self, use_group_index: NodeIndex) -> ProcessingResult<Vec<NodeIndex>> {
         // get index of module of syn use item
         let module_index = self
-            .get_syn_module_index(syn_use_group_index)
+            .get_syn_module_index(use_group_index)
             .context(add_context!("Expected source index of syn item."))?;
         // remove old use item from tree
         let old_use_item = self
             .tree
-            .remove_node(syn_use_group_index)
+            .remove_node(use_group_index)
             .context(add_context!("Expected syn node to remove"))?
             .get_item_from_syn_item_node()
             .context(add_context!("Expected syn Item."))?
@@ -107,12 +104,15 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
         }
         // expand and collect use globs and add them to tree
         let mut use_globs: Vec<NodeIndex> = Vec::new();
+        let mut new_use_indices: Vec<NodeIndex> = Vec::new();
         for new_use_item in old_use_item.get_use_items_of_use_group() {
             let new_use_index = self.add_syn_item(&new_use_item, &"".into(), module_index)?;
+            new_use_indices.push(new_use_index);
             if let ItemName::Glob = ItemName::from(&new_use_item) {
                 use_globs.push(new_use_index);
             }
         }
+        self.insert_new_use_indices_in_item_order(module_index, use_group_index, new_use_indices)?;
         Ok(use_globs)
     }
 
@@ -254,13 +254,23 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             }
         }
         // expand use items of use glob and add them to tree
+        let mut new_use_indices: Vec<NodeIndex> = Vec::new();
         for new_use_ident in visible_items.into_iter() {
             let new_use_item = old_use_item
                 .clone()
                 .replace_glob_with_name_ident(new_use_ident)
                 .context(add_context!("Expected syn use glob to be replaced."))?;
-            self.add_syn_item(&new_use_item, &"".into(), use_statement_owning_module_index)?;
+            new_use_indices.push(self.add_syn_item(
+                &new_use_item,
+                &"".into(),
+                use_statement_owning_module_index,
+            )?);
         }
+        self.insert_new_use_indices_in_item_order(
+            use_statement_owning_module_index,
+            use_glob_index,
+            new_use_indices,
+        )?;
         Ok(false)
     }
 
@@ -321,6 +331,25 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             }
         }
         Ok(false)
+    }
+
+    fn insert_new_use_indices_in_item_order(
+        &mut self,
+        module_of_use_item: NodeIndex,
+        old_use_index: NodeIndex,
+        new_use_indices: Vec<NodeIndex>,
+    ) -> ProcessingResult<()> {
+        let Some(item_order) = self.item_order.get_mut(&module_of_use_item) else {
+            return Err(anyhow!(add_context!("Expected item order of module.")).into());
+        };
+        let Some(pos_old_use_item) = item_order.iter().position(|o| *o == old_use_index) else {
+            return Err(anyhow!(add_context!(
+                "Expected position of old use item in item order."
+            ))
+            .into());
+        };
+        item_order.splice(pos_old_use_item..=pos_old_use_item, new_use_indices);
+        Ok(())
     }
 }
 

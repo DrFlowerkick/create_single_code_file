@@ -45,16 +45,6 @@ impl ItemName {
             _ => None,
         }
     }
-    pub fn get_name(&self) -> Option<String> {
-        match self {
-            Self::TypeStringAndIdent(_, ident) => Some(ident.to_string()),
-            Self::TypeStringAndRenamed(_, _, rename) => Some(rename.to_string()),
-            Self::TypeStringAndNameString(_, name) => Some(name.to_owned()),
-            Self::TypeStringAndTraitAndNameString(_, _, name) => Some(name.to_owned()),
-            Self::TypeString(name) => Some(name.to_owned()),
-            Self::Glob | Self::Group | Self::None => None,
-        }
-    }
 }
 
 impl From<&ItemUse> for ItemName {

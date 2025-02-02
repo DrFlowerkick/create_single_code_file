@@ -46,18 +46,11 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
         }
 
         // 2. minimize path statements, removing crate keyword from path statements"
+        // too aggressive path minimizing breaks code, if it'is done in this simple way.
+        // therefore path minimizing will only be done, if 'crate' keyword is used
         let all_syn_items: Vec<NodeIndex> = self
             .iter_crates()
-            .flat_map(|(n, _, _)| {
-                self.iter_syn(n).filter_map(|(n, i)| {
-                    if let NodeType::SynItem(Item::Mod(_)) = i {
-                        // filter modules
-                        None
-                    } else {
-                        Some(n)
-                    }
-                })
-            })
+            .map(|(n, _, _)| n)
             .collect();
         for syn_index in all_syn_items {
             if let Some(cloned_item) = self.clone_syn_item(syn_index) {
@@ -65,24 +58,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                     graph: &self,
                     node: syn_index,
                 };
-                let new_item = match cloned_item {
-                    Item::Impl(mut impl_item) => {
-                        // only fold trait_ and self_ty of impl_item
-                        if let Some((pre_token, trait_path, post_token)) = impl_item.trait_ {
-                            let trait_path = folder.fold_path(trait_path);
-                            impl_item.trait_ = Some((pre_token, trait_path, post_token));
-                        }
-                        impl_item.self_ty =
-                            Box::new(folder.fold_type(impl_item.self_ty.as_ref().to_owned()));
-                        Item::Impl(impl_item)
-                    }
-                    Item::Trait(_) => {
-                        // do not fold trait items directly
-                        cloned_item
-                    }
-                    _ => folder.fold_item(cloned_item),
-                };
-
+                let new_item = folder.fold_item(cloned_item);
                 if let Some(NodeType::SynItem(item)) = self.tree.node_weight_mut(syn_index) {
                     *item = new_item;
                 }
@@ -192,7 +168,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                 .take_while(|(a, b)| a == b)
                 .count();
             let (from_junction_leaf_ident, num_super) = if pos_junction == path_leaf_nodes.len() {
-                // path_item is deeper in tree than path_leaf
+                // path_item is at same level or deeper in tree than path_leaf
                 let leaf_ident = self
                     .get_ident(path_leaf_nodes[pos_junction - 1])
                     .context(add_context!("Expected ident of path node."))?;
@@ -238,36 +214,39 @@ pub struct CratePathFolder<'a, O: CgCli> {
 impl<O: CgCli> Fold for CratePathFolder<'_, O> {
     fn fold_path(&mut self, path: Path) -> Path {
         let source_path = SourcePath::from(&path);
-        let resolved_path = self
-            .graph
-            .resolving_crate_source_path(self.node, source_path)
-            .expect("resolving crate source path failed");
-        let resolved_path: Path = resolved_path
-            .try_into()
-            .expect("resolving crate source path failed");
-        // rebuild arguments of segments from input path
-        let resolved_path = Path {
-            leading_colon: path.leading_colon,
-            segments: resolved_path
-                .segments
-                .iter()
-                .map(|s| {
-                    if let Some(arguments) = path
-                        .segments
-                        .iter()
-                        .find_map(|p| (p.ident == s.ident).then_some(p.arguments.to_owned()))
-                    {
-                        PathSegment {
-                            ident: s.ident.to_owned(),
-                            arguments,
+        if source_path.path_root_is_crate_keyword() {
+            let resolved_path = self
+                .graph
+                .resolving_crate_source_path(self.node, source_path)
+                .expect("resolving crate source path failed");
+            let resolved_path: Path = resolved_path
+                .try_into()
+                .expect("resolving crate source path failed");
+            // rebuild arguments of segments from input path
+            let resolved_path = Path {
+                leading_colon: path.leading_colon,
+                segments: resolved_path
+                    .segments
+                    .iter()
+                    .map(|s| {
+                        if let Some(arguments) = path
+                            .segments
+                            .iter()
+                            .find_map(|p| (p.ident == s.ident).then_some(p.arguments.to_owned()))
+                        {
+                            PathSegment {
+                                ident: s.ident.to_owned(),
+                                arguments,
+                            }
+                        } else {
+                            s.to_owned()
                         }
-                    } else {
-                        s.to_owned()
-                    }
-                })
-                .collect(),
-        };
-        resolved_path
+                    })
+                    .collect(),
+            };
+            return resolved_path
+        }
+        path
     }
 }
 

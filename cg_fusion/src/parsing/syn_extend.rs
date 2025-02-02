@@ -1,7 +1,6 @@
 // extend syn to fit needs of cg_fusion
 
-use super::{ItemName, ParsingError};
-use crate::utilities::Sortable;
+use super::ParsingError;
 use syn::{
     ExprPath, ExprStruct, Ident, ImplItemMacro, Item, ItemUse, Path, TraitItemMacro, TypePath,
     UseGlob, UseName, UsePath, UseRename, UseTree, VisRestricted, Visibility,
@@ -24,14 +23,14 @@ impl SourcePath {
             SourcePath::Group => None,
         }
     }
-    pub fn is_use_tree_root_path_keyword(&self) -> bool {
+    pub fn path_root_is_keyword(&self) -> bool {
         if let SourcePath::Name(segments) = self {
             return segments[0] == "crate" || segments[0] == "super" || segments[0] == "self";
         }
         false
     }
 
-    pub fn is_use_tree_root_crate_keyword(&self) -> bool {
+    pub fn path_root_is_crate_keyword(&self) -> bool {
         if let SourcePath::Name(segments) = self {
             return segments[0] == "crate";
         }
@@ -183,7 +182,7 @@ impl TryFrom<SourcePath> for Path {
 
 pub trait UseTreeExtras {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
-    fn is_use_tree_root_path_keyword(&self) -> bool;
+    fn path_root_is_keyword(&self) -> bool;
 }
 
 impl UseTreeExtras for UseTree {
@@ -211,8 +210,8 @@ impl UseTreeExtras for UseTree {
         use_trees
     }
 
-    fn is_use_tree_root_path_keyword(&self) -> bool {
-        SourcePath::from(self).is_use_tree_root_path_keyword()
+    fn path_root_is_keyword(&self) -> bool {
+        SourcePath::from(self).path_root_is_keyword()
     }
 }
 
@@ -282,18 +281,5 @@ impl ItemExtras for Item {
             }
         }
         None
-    }
-}
-
-impl Sortable for Item {
-    fn sort(&self, other: &Self) -> std::cmp::Ordering {
-        let self_name = ItemName::from(self).get_name();
-        let other_name = ItemName::from(other).get_name();
-        match (self_name, other_name) {
-            (Some(self_name), Some(other_name)) => self_name.cmp(&other_name),
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (None, None) => std::cmp::Ordering::Equal,
-        }
     }
 }
