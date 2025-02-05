@@ -29,7 +29,7 @@ fn run(options: CargoCli) -> CgResult<()> {
                 .path_minimizing_of_use_and_path_statements()?
                 .link_impl_blocks_with_corresponding_item()?
                 .link_required_by_challenge()?
-                .check_impl_blocks_required_by_challenge()?
+                .check_impl_blocks()?
                 .fuse_challenge()?
                 .forge_fused_challenge_and_library_code()?;
         }

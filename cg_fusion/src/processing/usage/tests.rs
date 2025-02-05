@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use syn::{Ident, UseTree};
 
-use crate::parsing::{ItemName, SourcePath};
+use crate::parsing::{ItemName, SourcePath, ToTokensExt};
 
 use super::super::tests::setup_processing_test;
 use super::*;
@@ -93,18 +93,18 @@ fn test_expand_use_group() {
     let use_statements: Vec<String> = cg_data
         .iter_syn_item_neighbors(challenge_bin_crate_index)
         .filter_map(|(_, i)| match i {
-            Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
+            Item::Use(use_item) => Some(use_item.to_trimmed_token_string()),
             _ => None,
         })
         .collect();
     assert_eq!(
         use_statements,
         vec![
-            "use cg_fusion_binary_test :: Y ;",
-            "use cg_fusion_binary_test :: X ;",
-            "use cg_fusion_binary_test :: Go ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: * ;",
-            "use cg_fusion_binary_test :: action :: Action ;",
+            "use cg_fusion_binary_test::Y;",
+            "use cg_fusion_binary_test::X;",
+            "use cg_fusion_binary_test::Go;",
+            "use cg_fusion_lib_test::my_map_two_dim::my_map_point::*;",
+            "use cg_fusion_binary_test::action::Action;",
         ]
     );
     // number of use statements after expansion in cg_fusion_lib_test lib crate
@@ -752,19 +752,19 @@ fn test_expand_use_statements() {
     let use_statements: Vec<String> = cg_data
         .iter_syn_item_neighbors(challenge_bin_crate_index)
         .filter_map(|(_, i)| match i {
-            Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
+            Item::Use(use_item) => Some(use_item.to_trimmed_token_string()),
             _ => None,
         })
         .collect();
     assert_eq!(
         use_statements,
         vec![
-            "use cg_fusion_binary_test :: Y ;",
-            "use cg_fusion_binary_test :: X ;",
-            "use cg_fusion_binary_test :: Go ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: my_compass ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: MapPoint ;",
-            "use cg_fusion_binary_test :: action :: Action ;",
+            "use cg_fusion_binary_test::Y;",
+            "use cg_fusion_binary_test::X;",
+            "use cg_fusion_binary_test::Go;",
+            "use cg_fusion_lib_test::my_map_two_dim::my_map_point::my_compass;",
+            "use cg_fusion_lib_test::my_map_two_dim::my_map_point::MapPoint;",
+            "use cg_fusion_binary_test::action::Action;",
         ]
     );
 
@@ -776,19 +776,19 @@ fn test_expand_use_statements() {
     let use_statements: Vec<String> = cg_data
         .iter_syn_items(my_map_two_dim_mod_index)
         .filter_map(|(_, i)| match i {
-            Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
+            Item::Use(use_item) => Some(use_item.to_trimmed_token_string()),
             _ => None,
         })
         .collect();
     assert_eq!(
         use_statements,
         vec![
-            "use self :: my_map_point :: my_compass ;",
-            "use self :: my_map_point :: MapPoint ;",
-            "use my_array :: MyArray ;",
-            "use my_map_point :: my_compass :: Compass ;",
-            "use crate :: my_map_point :: my_compass :: Compass ;",
-            "use std :: cmp :: Ordering ;",
+            "use self::my_map_point::my_compass;",
+            "use self::my_map_point::MapPoint;",
+            "use my_array::MyArray;",
+            "use my_map_point::my_compass::Compass;",
+            "use crate::my_map_point::my_compass::Compass;",
+            "use std::cmp::Ordering;",
         ]
     );
 
@@ -800,32 +800,32 @@ fn test_expand_use_statements() {
     let use_statements: Vec<String> = cg_data
         .iter_syn_items(cg_fusion_binary_test_index)
         .filter_map(|(_, i)| match i {
-            Item::Use(use_item) => Some(use_item.to_token_stream().to_string()),
+            Item::Use(use_item) => Some(use_item.to_trimmed_token_string()),
             _ => None,
         })
         .collect();
     assert_eq!(
         use_statements,
         vec![
-            "use crate :: action :: Action ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: IsCellFreeFn ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: MyMap2D ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: FilterFn ;",
-            "use std :: fmt ;",
-            "use super :: action ;",
-            "use super :: X ;",
-            "use super :: Y ;",
-            "use super :: N ;",
-            "use super :: Value ;",
-            "use super :: Go ;",
-            "use super :: FilterFn ;",
-            "use super :: MyMap2D ;",
-            "use super :: IsCellFreeFn ;",
-            "use super :: my_map_point ;",
-            "use cg_fusion_lib_test :: my_map_two_dim :: my_map_point :: MapPoint ;",
-            "use crate :: fmt :: Display ;",
-            "use crate :: fmt ;",
+            "use crate::action::Action;",
+            "use cg_fusion_lib_test::my_map_two_dim::my_map_point;",
+            "use cg_fusion_lib_test::my_map_two_dim::IsCellFreeFn;",
+            "use cg_fusion_lib_test::my_map_two_dim::MyMap2D;",
+            "use cg_fusion_lib_test::my_map_two_dim::FilterFn;",
+            "use std::fmt;",
+            "use super::action;",
+            "use super::X;",
+            "use super::Y;",
+            "use super::N;",
+            "use super::Value;",
+            "use super::Go;",
+            "use super::FilterFn;",
+            "use super::MyMap2D;",
+            "use super::IsCellFreeFn;",
+            "use super::my_map_point;",
+            "use cg_fusion_lib_test::my_map_two_dim::my_map_point::MapPoint;",
+            "use crate::fmt::Display;",
+            "use crate::fmt;",
         ]
     );
 }

@@ -6,7 +6,7 @@ use crate::{
     add_context,
     challenge_tree::PathElement,
     configuration::CgCli,
-    parsing::{load_syntax, ItemName, UseTreeExtras},
+    parsing::{load_syntax, ItemName, ToTokensExt, UseTreeExt},
     CgData,
 };
 
@@ -14,7 +14,6 @@ use anyhow::{anyhow, Context};
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::NodeIndex;
 use proc_macro2::Span;
-use quote::ToTokens;
 use std::collections::HashSet;
 use std::fs;
 use syn::{
@@ -202,7 +201,10 @@ impl<O: CgCli, S> CgData<O, S> {
                         println!("Adding '{}' to tree.", use_item_name);
                     } else {
                         // use statement with group or glob
-                        println!("Adding '{}' (Use) to tree.", item_use.to_token_stream());
+                        println!(
+                            "Adding '{}' (Use) to tree.",
+                            item_use.to_trimmed_token_string()
+                        );
                     }
                 }
             }
@@ -442,6 +444,7 @@ impl<O: CgCli, S> CgData<O, S> {
                     challenge_collector.reference_use_tree_nodes()?
                 }
                 Some(NodeType::SynItem(Item::Impl(item_impl))) => {
+                    // with challenge collector trait and impl item will be referenced
                     challenge_collector.visit_item_impl(item_impl);
                     if item_impl.trait_.is_some() {
                         for (impl_item_index, _) in self.iter_syn_impl_item(item_to_check) {
@@ -457,7 +460,17 @@ impl<O: CgCli, S> CgData<O, S> {
                 }
                 Some(NodeType::SynItem(item)) => {
                     challenge_collector.visit_item(item);
-                    for (impl_block_index, _) in self.iter_impl_blocks_of_item(item_to_check) {
+                    // add impl blocks without a trait. This enables the impl block dialog for these blocks.
+                    for impl_block_index in
+                        self.iter_impl_blocks_of_item(item_to_check)
+                            .filter_map(|(n, i)| {
+                                if let Item::Impl(item_impl) = i {
+                                    item_impl.trait_.is_none().then_some(n)
+                                } else {
+                                    None
+                                }
+                            })
+                    {
                         challenge_collector.add_reference_node(impl_block_index);
                     }
                 }
@@ -553,9 +566,7 @@ impl<O: CgCli, S> CgData<O, S> {
                     let new_item_use = if let PathElement::Item(path_root) =
                         self.get_path_root(item_index, (&item_use).into())?
                     {
-                        if self.is_crate(path_root)
-                            && !item_use.tree.path_root_is_keyword()
-                        {
+                        if self.is_crate(path_root) && !item_use.tree.path_root_is_keyword() {
                             let new_use_root = UsePath {
                                 ident: Ident::new("crate", Span::call_site()),
                                 colon2_token: token::PathSep::default(),
@@ -579,13 +590,17 @@ impl<O: CgCli, S> CgData<O, S> {
                         .filter_map(|on| {
                             self.iter_syn_impl_item(item_index)
                                 .filter(|(n, _)| {
-                                    new_impl_item.trait_.is_none()
+                                    new_impl_item.trait_.is_some()
                                         || self.is_required_by_challenge(*n)
                                 })
                                 .find(|(rn, _)| on == rn)
                                 .map(|(_, ri)| ri.to_owned())
                         })
                         .collect();
+                    if ordered_required_impl_items.is_empty() {
+                        // None if the impl items are required by challenge. Therefore do not add impl item to fusion
+                        continue;
+                    }
                     new_impl_item.items = ordered_required_impl_items;
                     self.tree
                         .add_node(NodeType::SynItem(Item::Impl(new_impl_item)))

@@ -166,15 +166,11 @@ impl<O, S> CgData<O, S> {
         self.iter_crates()
             .flat_map(|(n, _, _)| self.iter_syn(n))
             .filter_map(|(n, nt)| {
-                self.is_required_by_challenge(n)
-                    .then_some({
-                        if let NodeType::SynItem(Item::Impl(_)) = nt {
-                            Some(n)
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten()
+                if let NodeType::SynItem(Item::Impl(_)) = nt {
+                    self.is_required_by_challenge(n).then_some(n)
+                } else {
+                    None
+                }
             })
             .flat_map(|n| {
                 self.iter_syn_impl_item(n).filter(|(n, _)| {

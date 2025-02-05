@@ -49,58 +49,64 @@ exclude_impl_items = []
 "#;
 
 impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
-    pub fn check_impl_blocks_required_by_challenge(
-        mut self,
-    ) -> ProcessingResult<CgData<O, FuseChallengeState>> {
+    pub fn check_impl_blocks(mut self) -> ProcessingResult<CgData<O, FuseChallengeState>> {
         let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
+        let impl_options = self.map_impl_config_options_to_node_indices()?;
+        let mut dialog_handler = DialogCli::new(std::io::stdout());
         let mut seen_check_items: HashSet<NodeIndex> = self
             .iter_items_required_by_challenge()
             .map(|(n, _)| n)
             .collect();
-        let impl_options = self.map_impl_config_options_to_node_indices()?;
-        let mut dialog_handler = DialogCli::new(std::io::stdout());
         let mut got_user_input = false;
         while let Some(impl_item) = {
             let next_item_option = self
                 .iter_impl_items_without_required_link_in_required_impl_block()
-                .filter_map(|(n, _)| (!seen_impl_items.contains_key(&n)).then_some(n))
-                .next();
+                .find_map(|(n, _)| (!seen_impl_items.contains_key(&n)).then_some(n));
             next_item_option
         } {
             let impl_block = self
                 .get_parent_index_by_edge_type(impl_item, EdgeType::Syn)
                 .unwrap();
-            if let Some(include) = impl_options.get(&impl_item) {
-                if *include {
+            match (
+                impl_options.get(&impl_item),
+                self.options.processing().process_all_impl_items,
+            ) {
+                (Some(true), _) | (_, Some(true)) => {
                     self.add_required_by_challenge_link(impl_block, impl_item)?;
                     self.add_challenge_links_for_referenced_nodes_of_item(
                         impl_item,
                         &mut seen_check_items,
                     )?;
-                } else if self.options.verbose() {
-                    println!(
-                        "Excluding impl item '{}'",
-                        self.get_verbose_name_of_tree_node(impl_item)?
-                    );
+                    seen_impl_items.insert(impl_item, true);
                 }
-                seen_impl_items.insert(impl_item, *include);
-                continue;
+                (Some(false), _) | (_, Some(false)) => {
+                    if self.options.verbose() {
+                        println!(
+                            "Excluding impl item '{}'",
+                            self.get_verbose_name_of_tree_node(impl_item)?
+                        );
+                    }
+                    seen_impl_items.insert(impl_item, false);
+                }
+                _ => {
+                    // no  configuration for impl_item -> do user dialog
+                    got_user_input = true;
+                    let user_input = self.impl_item_dialog(
+                        impl_item,
+                        impl_block,
+                        &mut dialog_handler,
+                        &mut seen_impl_items,
+                    )?;
+                    if user_input {
+                        self.add_required_by_challenge_link(impl_block, impl_item)?;
+                        self.add_challenge_links_for_referenced_nodes_of_item(
+                            impl_item,
+                            &mut seen_check_items,
+                        )?;
+                    }
+                    seen_impl_items.insert(impl_item, user_input);
+                }
             }
-            got_user_input = true;
-            let user_input = self.impl_item_dialog(
-                impl_item,
-                impl_block,
-                &mut dialog_handler,
-                &mut seen_impl_items,
-            )?;
-            if user_input {
-                self.add_required_by_challenge_link(impl_block, impl_item)?;
-                self.add_challenge_links_for_referenced_nodes_of_item(
-                    impl_item,
-                    &mut seen_check_items,
-                )?;
-            }
-            seen_impl_items.insert(impl_item, user_input);
         }
         // if at least once user input was required, show dialog to save impl config file.
         if got_user_input {
@@ -124,6 +130,8 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         }
         Ok(self.set_state(FuseChallengeState))
     }
+
+    fn check_impl_blocks_required_by_challenge(&mut self) {}
 
     fn impl_item_dialog(
         &self,

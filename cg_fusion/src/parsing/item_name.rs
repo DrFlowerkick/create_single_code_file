@@ -1,17 +1,15 @@
 // extract item name from syn::Item, syn::ImplItem, syn::TraitItem
 
-use super::SourcePath;
+use super::{SourcePath, ToTokensExt};
 
-use quote::ToTokens;
-use std::fmt::Display;
-use syn::{Ident, ImplItem, Item, ItemUse, TraitItem, Type};
+use std::fmt::{Display, Write};
+use syn::{Ident, ImplItem, Item, ItemUse, TraitItem};
 
 #[derive(Debug)]
 pub enum ItemName {
     TypeStringAndIdent(String, Ident),
     TypeStringAndRenamed(String, Ident, Ident),
-    TypeStringAndNameString(String, String),
-    TypeStringAndTraitAndNameString(String, Ident, String),
+    ImplBlockIdentifier(String),
     TypeString(String),
     Group,
     Glob,
@@ -25,10 +23,7 @@ impl Display for ItemName {
             Self::TypeStringAndRenamed(ts, i, r) => {
                 write!(f, "{} as {} ({ts})", i, r)
             }
-            Self::TypeStringAndNameString(ts, ns) => write!(f, "{ns} ({ts})"),
-            Self::TypeStringAndTraitAndNameString(ts, t, ns) => {
-                write!(f, "{} for {ns} ({ts})", t)
-            }
+            Self::ImplBlockIdentifier(impl_block_ident) => write!(f, "{impl_block_ident}"),
             Self::TypeString(ts) => write!(f, "({ts})"),
             Self::Group => write!(f, "(group)"),
             Self::Glob => write!(f, "(glob *)"),
@@ -82,7 +77,24 @@ impl From<&Item> for ItemName {
             }
             Item::ForeignMod(_) => ItemName::TypeString("ForeignMod".into()),
             Item::Impl(item_impl) => {
-                let trait_ident: Option<Ident> = if let Some((_, ref trait_, _)) = item_impl.trait_
+                let mut impl_type_string =
+                    format!("impl{}", item_impl.generics.to_trimmed_token_string());
+                if let Some((_, ref trait_, _)) = item_impl.trait_ {
+                    write!(
+                        &mut impl_type_string,
+                        " {} for",
+                        trait_.to_trimmed_token_string()
+                    )
+                    .expect("Expecting formatted trait_ string.");
+                }
+                write!(
+                    &mut impl_type_string,
+                    " {}",
+                    item_impl.self_ty.to_trimmed_token_string()
+                )
+                .expect("Expected formatted self_ty string.");
+                ItemName::ImplBlockIdentifier(impl_type_string)
+                /*let trait_ident: Option<Ident> = if let Some((_, ref trait_, _)) = item_impl.trait_
                 {
                     SourcePath::from(trait_).get_last().map(|i| i.to_owned())
                 } else {
@@ -135,16 +147,16 @@ impl From<&Item> for ItemName {
                             ItemName::TypeStringAndTraitAndNameString(
                                 "Impl".into(),
                                 ti,
-                                item_impl.self_ty.to_token_stream().to_string(),
+                                item_impl.self_ty.to_trimmed_token_string(),
                             )
                         } else {
                             ItemName::TypeStringAndNameString(
                                 "Impl".into(),
-                                item_impl.self_ty.to_token_stream().to_string(),
+                                item_impl.self_ty.to_trimmed_token_string(),
                             )
                         }
                     }
-                }
+                }*/
             }
             Item::Macro(item_macro) => match item_macro.ident {
                 Some(ref ident) => ItemName::TypeStringAndIdent("Macro".into(), ident.to_owned()),

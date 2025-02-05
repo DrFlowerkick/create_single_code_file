@@ -17,17 +17,17 @@ use mockall::predicate::*;
 use once_cell::sync::Lazy;
 use std::{fmt::Display, io::Cursor};
 
-const PROMPT: &str = "Found 'MyMap2D (Impl)::set (Impl Fn)' of required 'MyMap2D (Impl)'.";
+const PROMPT: &str = "Found 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)' of required 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'.";
 const HELP: &str = "↑↓ to move, enter to select, type to filter, and esc to quit.";
 
 static OPTIONS: Lazy<Vec<String>> = Lazy::new(|| {
     vec![
-        String::from("Include 'MyMap2D (Impl)::set (Impl Fn)'."),
-        String::from("Exclude 'MyMap2D (Impl)::set (Impl Fn)'."),
-        String::from("Include all items of 'MyMap2D (Impl)'."),
-        String::from("Exclude all items of 'MyMap2D (Impl)'."),
-        String::from("Show code of 'MyMap2D (Impl)::set (Impl Fn)'."),
-        String::from("Show usage of 'MyMap2D (Impl)::set (Impl Fn)'."),
+        String::from("Include 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
+        String::from("Exclude 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
+        String::from("Include all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'."),
+        String::from("Exclude all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'."),
+        String::from("Show code of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
+        String::from("Show usage of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
     ]
 });
 
@@ -110,7 +110,7 @@ fn prepare_test() -> (
                 .get_parent_index_by_edge_type(*n, EdgeType::Syn)
                 .unwrap();
             let parent_name = cg_data.get_verbose_name_of_tree_node(parent).unwrap();
-            parent_name == "MyMap2D (Impl)"
+            parent_name == "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>"
         })
         .unwrap();
     let my_map_2d_impl_block_index = cg_data

@@ -29,6 +29,7 @@ enum ParsingState {
     CheckForCrate,
     CheckForModule,
     NextModule,
+    UserDefinedTypeInModule,
     UserDefinedType,
     ImplItem,
 }
@@ -42,7 +43,7 @@ impl ParsingState {
         assert!(num_path_elements > index_path_element);
         *self = match num_path_elements - index_path_element {
             3.. => ParsingState::NextModule,
-            2 => ParsingState::UserDefinedType,
+            2 => ParsingState::UserDefinedTypeInModule,
             ..=1 => panic!(
                 "{}",
                 add_context!("Expected num_path_elements to be >= index_path_element + 2")
@@ -173,8 +174,8 @@ impl<O: CgCli, S> CgData<O, S> {
                         }
                     }
                     ParsingState::UserDefinedType => {
-                        let type_node = self
-                            .get_parent_index_by_edge_type(current_index, EdgeType::Implementation)
+                        let (type_node, _) = self
+                            .get_syn_item_of_impl_block(current_index)
                             .context(add_context!(
                                 "Expected node of user defined type referenced by impl block."
                             ))?;
@@ -184,11 +185,9 @@ impl<O: CgCli, S> CgData<O, S> {
                                 .context(add_context!("Expected item ident in name space"))?
                                 .to_string()
                         } else {
-                            return Err(anyhow!(
-                                "{}",
-                                add_context!("Expected user defined type item")
-                            )
-                            .into());
+                            return Err(
+                                anyhow!(add_context!("Expected user defined type item")).into()
+                            );
                         };
                         item_path = format!("{}::{}", type_name, item_path);
                         match self.collect_impl_config_option_indices(&item_path) {
@@ -221,7 +220,9 @@ impl<O: CgCli, S> CgData<O, S> {
                             }
                         }
                     }
-                    ParsingState::CheckForCrate | ParsingState::CheckForModule => {
+                    ParsingState::CheckForCrate
+                    | ParsingState::CheckForModule
+                    | ParsingState::UserDefinedTypeInModule => {
                         unreachable!("Unused states")
                     }
                 }
@@ -247,7 +248,8 @@ impl<O: CgCli, S> CgData<O, S> {
             2 => ParsingState::UserDefinedType,
             3.. => ParsingState::CheckForCrate,
         };
-        let mut current_node_index: Option<NodeIndex> = None;
+        // initialize current_node_index with dummy value
+        let mut current_node_index: NodeIndex = 0.into();
         let mut index_path_element = 0;
         loop {
             if let Some(&path_element) = impl_item_path_elements.get(index_path_element) {
@@ -257,7 +259,7 @@ impl<O: CgCli, S> CgData<O, S> {
                             .iter_crates()
                             .find(|(_, _, cf)| cf.name == *path_element)
                         {
-                            current_node_index = Some(crate_index);
+                            current_node_index = crate_index;
                             index_path_element += 1;
                             name_parsing_mode.next_module_or_user_defined_type(
                                 impl_item_path_elements.len(),
@@ -272,12 +274,11 @@ impl<O: CgCli, S> CgData<O, S> {
                             .iter_crates()
                             .flat_map(|(n, _, _)| self.iter_syn_items(n))
                             .filter_map(|(n, i)| match i {
-                                Item::Mod(_) => ItemName::from(i)
-                                    .get_ident_in_name_space()
-                                    .map(|id| (n, id)),
+                                Item::Mod(item_mod) => {
+                                    (item_mod.ident == path_element).then_some(n)
+                                }
                                 _ => None,
                             })
-                            .filter_map(|(n, id)| (id == path_element).then_some(n))
                             .collect();
                         match modules.len() {
                             0 => {
@@ -286,7 +287,7 @@ impl<O: CgCli, S> CgData<O, S> {
                                 ))
                             }
                             1 => {
-                                current_node_index = Some(modules[0]);
+                                current_node_index = modules[0];
                                 index_path_element += 1;
                                 name_parsing_mode.next_module_or_user_defined_type(
                                     impl_item_path_elements.len(),
@@ -301,109 +302,95 @@ impl<O: CgCli, S> CgData<O, S> {
                         }
                     }
                     ParsingState::NextModule => {
-                        if let Some(module_index) = current_node_index {
-                            if let Some((next_module_index, _)) = self
-                                .iter_syn_item_neighbors(module_index)
-                                .filter_map(|(n, i)| match i {
-                                    Item::Mod(_) => ItemName::from(i)
-                                        .get_ident_in_name_space()
-                                        .map(|id| (n, id)),
-                                    _ => None,
-                                })
-                                .find(|(_, id)| id == path_element)
-                            {
-                                current_node_index = Some(next_module_index);
-                                index_path_element += 1;
-                                name_parsing_mode.next_module_or_user_defined_type(
-                                    impl_item_path_elements.len(),
-                                    index_path_element,
-                                );
-                            }
+                        if let Some((next_module_index, _)) = self
+                            .iter_syn_item_neighbors(current_node_index)
+                            .filter_map(|(n, i)| match i {
+                                Item::Mod(_) => ItemName::from(i)
+                                    .get_ident_in_name_space()
+                                    .map(|id| (n, id)),
+                                _ => None,
+                            })
+                            .find(|(_, id)| id == path_element)
+                        {
+                            current_node_index = next_module_index;
+                            index_path_element += 1;
+                            name_parsing_mode.next_module_or_user_defined_type(
+                                impl_item_path_elements.len(),
+                                index_path_element,
+                            );
                         } else {
-                            unreachable!("Expected module index.");
+                            return Err(anyhow!(add_context!(
+                                "Expected module of next path element."
+                            ))
+                            .into());
+                        }
+                    }
+                    ParsingState::UserDefinedTypeInModule => {
+                        // search in all impl blocks of current module for impl items with given impl name
+                        let impl_item_indices: Vec<NodeIndex> = self
+                            .iter_syn_item_neighbors(current_node_index)
+                            .filter(|(n, _)| {
+                                if let Some((_, name)) = self.get_syn_item_ident_of_impl_block(*n) {
+                                    name == *path_element
+                                } else {
+                                    false
+                                }
+                            })
+                            .flat_map(|(n, _)| self.iter_syn_impl_item(n))
+                            .filter_map(|(n, i)| {
+                                if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
+                                    let impl_item_name =
+                                        impl_item_path_elements[index_path_element + 1];
+                                    (name == impl_item_name || impl_item_name == "*").then_some(n)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if impl_item_path_elements[index_path_element + 1] == "*" {
+                            return Ok(impl_item_indices);
+                        } else {
+                            let impl_item_index = get_index_from_collected_impl_item_indices(
+                                impl_item_indices,
+                                true,
+                                impl_item,
+                            )?;
+                            return Ok(vec![impl_item_index]);
                         }
                     }
                     ParsingState::UserDefinedType => {
-                        if let Some(module_index) = current_node_index {
-                            // search in all impl blocks of current module for impl items with given impl name
-                            let impl_item_indices: Vec<NodeIndex> = self
-                                .iter_syn_item_neighbors(module_index)
-                                .filter(|(_, i)| match i {
-                                    Item::Impl(item_impl) => {
-                                        if let ItemName::TypeStringAndNameString(_, name) =
-                                            ItemName::from(*i)
-                                        {
-                                            item_impl.trait_.is_none() && name == *path_element
-                                        } else {
-                                            false
-                                        }
-                                    }
-                                    _ => false,
-                                })
-                                .flat_map(|(n, _)| self.iter_syn_impl_item(n))
-                                .filter_map(|(n, i)| {
-                                    if let Some(name) = ItemName::from(i).get_ident_in_name_space()
-                                    {
-                                        let impl_item_name =
-                                            impl_item_path_elements[index_path_element + 1];
-                                        (name == impl_item_name || impl_item_name == "*")
-                                            .then_some(n)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-
-                            if impl_item_path_elements[index_path_element + 1] == "*" {
-                                return Ok(impl_item_indices);
-                            } else {
-                                let impl_item_index = get_index_from_collected_impl_item_indices(
-                                    impl_item_indices,
-                                    true,
-                                    impl_item,
-                                )?;
-                                return Ok(vec![impl_item_index]);
-                            }
+                        // search in all impl blocks of all crates and modules for impl items with given impl name
+                        let impl_item_indices: Vec<NodeIndex> = self
+                            .iter_crates()
+                            .flat_map(|(n, _, _)| self.iter_syn_items(n))
+                            .filter(|(n, _)| {
+                                if let Some((_, name)) = self.get_syn_item_ident_of_impl_block(*n) {
+                                    name == *path_element
+                                } else {
+                                    false
+                                }
+                            })
+                            .flat_map(|(n, _)| self.iter_syn_impl_item(n))
+                            .filter_map(|(n, i)| {
+                                if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
+                                    let impl_item_name =
+                                        impl_item_path_elements[index_path_element + 1];
+                                    (name == impl_item_name || impl_item_name == "*").then_some(n)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        if impl_item_path_elements[index_path_element + 1] == "*" {
+                            return Ok(impl_item_indices);
                         } else {
-                            // search in all impl blocks of all crates and modules for impl items with given impl name
-                            let impl_item_indices: Vec<NodeIndex> = self
-                                .iter_crates()
-                                .flat_map(|(n, _, _)| self.iter_syn_items(n))
-                                .filter(|(_, i)| match i {
-                                    Item::Impl(item_impl) => {
-                                        if let ItemName::TypeStringAndNameString(_, name) =
-                                            ItemName::from(*i)
-                                        {
-                                            item_impl.trait_.is_none() && name == *path_element
-                                        } else {
-                                            false
-                                        }
-                                    }
-                                    _ => false,
-                                })
-                                .flat_map(|(n, _)| self.iter_syn_impl_item(n))
-                                .filter_map(|(n, i)| {
-                                    if let Some(name) = ItemName::from(i).get_ident_in_name_space()
-                                    {
-                                        let impl_item_name =
-                                            impl_item_path_elements[index_path_element + 1];
-                                        (name == impl_item_name || impl_item_name == "*")
-                                            .then_some(n)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            if impl_item_path_elements[index_path_element + 1] == "*" {
-                                return Ok(impl_item_indices);
-                            } else {
-                                let impl_item_index = get_index_from_collected_impl_item_indices(
-                                    impl_item_indices,
-                                    true,
-                                    impl_item,
-                                )?;
-                                return Ok(vec![impl_item_index]);
-                            }
+                            let impl_item_index = get_index_from_collected_impl_item_indices(
+                                impl_item_indices,
+                                true,
+                                impl_item,
+                            )?;
+                            return Ok(vec![impl_item_index]);
                         }
                     }
                     ParsingState::ImplItem => {
@@ -552,8 +539,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "MyMap2D"
                 } else {
                     false
@@ -601,8 +588,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "MapPoint"
                 } else {
                     false
@@ -643,8 +630,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "Go"
                 } else {
                     false
@@ -681,8 +668,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "Action"
                 } else {
                     false
@@ -719,8 +706,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "Compass"
                 } else {
                     false
@@ -742,8 +729,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "MyArray"
                 } else {
                     false
@@ -788,8 +775,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "MyMap2D"
                 } else {
                     false
@@ -837,8 +824,8 @@ mod tests {
                 Item::Impl(item_impl) => item_impl.trait_.is_none(),
                 _ => false,
             })
-            .find(|(_, i)| {
-                if let ItemName::TypeStringAndNameString(_, name) = ItemName::from(*i) {
+            .find(|(n, _)| {
+                if let Some((_, name)) = cg_data.get_syn_item_ident_of_impl_block(*n) {
                     name == "Action"
                 } else {
                     false

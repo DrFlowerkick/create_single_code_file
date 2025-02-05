@@ -1,9 +1,10 @@
 // extend syn to fit needs of cg_fusion
 
 use super::ParsingError;
+use quote::ToTokens;
 use syn::{
-    ExprPath, ExprStruct, Ident, ImplItemMacro, Item, ItemUse, Path, TraitItemMacro, TypePath,
-    UseGlob, UseName, UsePath, UseRename, UseTree, VisRestricted, Visibility,
+    ExprPath, ExprStruct, Generics, Ident, ImplItemMacro, Item, ItemUse, Path, TraitItemMacro,
+    Type, TypePath, UseGlob, UseName, UsePath, UseRename, UseTree, VisRestricted, Visibility,
 };
 
 #[derive(Debug, Clone)]
@@ -180,12 +181,12 @@ impl TryFrom<SourcePath> for Path {
     }
 }
 
-pub trait UseTreeExtras {
+pub trait UseTreeExt {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
     fn path_root_is_keyword(&self) -> bool;
 }
 
-impl UseTreeExtras for UseTree {
+impl UseTreeExt for UseTree {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree> {
         let mut use_trees: Vec<UseTree> = Vec::new();
         match self {
@@ -215,14 +216,14 @@ impl UseTreeExtras for UseTree {
     }
 }
 
-pub trait ItemExtras {
+pub trait ItemExt {
     fn get_use_items_of_use_group(&self) -> Vec<Item>;
     fn get_item_use(&self) -> Option<&ItemUse>;
     fn extract_visibility(&self) -> Option<&Visibility>;
     fn replace_glob_with_name_ident(self, ident: Ident) -> Option<Item>;
 }
 
-impl ItemExtras for Item {
+impl ItemExt for Item {
     fn get_use_items_of_use_group(&self) -> Vec<Item> {
         if let Item::Use(item_use) = self {
             let new_items: Vec<Item> = item_use
@@ -281,5 +282,23 @@ impl ItemExtras for Item {
             }
         }
         None
+    }
+}
+
+pub trait ToTokensExt: ToTokens {
+    fn to_trimmed_token_string(&self) -> String {
+        let mut token_string = self.to_token_stream().to_string().trim().to_owned();
+        token_string.retain(|c| !c.is_whitespace());
+        token_string
+    }
+}
+
+impl ToTokensExt for Type {}
+impl ToTokensExt for Path {}
+impl ToTokensExt for Generics {}
+impl ToTokensExt for UseTree {}
+impl ToTokensExt for ItemUse {
+    fn to_trimmed_token_string(&self) -> String {
+        format!("use {};", self.tree.to_trimmed_token_string())
     }
 }

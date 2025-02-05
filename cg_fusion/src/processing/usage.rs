@@ -5,12 +5,11 @@ use crate::{
     add_context,
     challenge_tree::PathElement,
     configuration::CgCli,
-    parsing::{ItemExtras, ItemName, SourcePath},
+    parsing::{ItemExt, ItemName, SourcePath, ToTokensExt},
     CgData,
 };
 use anyhow::{anyhow, Context};
 use petgraph::stable_graph::NodeIndex;
-use quote::ToTokens;
 use std::collections::{HashMap, VecDeque};
 use syn::{Ident, Item, Visibility};
 
@@ -63,10 +62,11 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                                 .get_name_of_crate_or_module(use_statement_owning_module_index)
                                 .context(add_context!("Expected crate or module name."))?;
                             Err(ProcessingError::MaxAttemptsExpandingUseStatement(
-                                self.get_syn_use_tree(use_index)
-                                    .context(add_context!("Expected syn use tree."))?
-                                    .to_token_stream()
-                                    .to_string(),
+                                self.get_syn_item(use_index)
+                                    .context(add_context!("Expected syn item."))?
+                                    .get_item_use()
+                                    .context(add_context!("Expected use item"))?
+                                    .to_trimmed_token_string(),
                                 module,
                             ))?;
                         }
@@ -99,7 +99,10 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             println!(
                 "Expanding use group statement of {}:\n{}",
                 module,
-                old_use_item.get_item_use().unwrap().to_token_stream()
+                old_use_item
+                    .get_item_use()
+                    .unwrap()
+                    .to_trimmed_token_string()
             );
         }
         // expand and collect use globs and add them to tree
@@ -175,9 +178,9 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                                         external use globs during expansion of use globs.\n\
                                         This may result in unwanted behavior. It can be circumvented \
                                         by avoiding use globs of external dependencies.",
-                                        self.get_syn_item(use_glob_index).unwrap().to_token_stream(),
+                                        self.get_syn_item(use_glob_index).unwrap().get_item_use().unwrap().to_trimmed_token_string(),
                                         self.get_verbose_name_of_tree_node(use_statement_owning_module_index)?,
-                                        item_to_import.to_token_stream(),
+                                        item_use.to_trimmed_token_string(),
                                         self.get_verbose_name_of_tree_node(use_glob_target_module_index)?,
                                     );
                                 }
@@ -243,13 +246,19 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 println!(
                     "No visible items for use glob statement of module {}:\n{}",
                     use_statement_owning_module_name,
-                    old_use_item.get_item_use().unwrap().to_token_stream()
+                    old_use_item
+                        .get_item_use()
+                        .unwrap()
+                        .to_trimmed_token_string()
                 );
             } else {
                 println!(
                     "Expanding use glob statement of {}:\n{}",
                     use_statement_owning_module_name,
-                    old_use_item.get_item_use().unwrap().to_token_stream()
+                    old_use_item
+                        .get_item_use()
+                        .unwrap()
+                        .to_trimmed_token_string()
                 );
             }
         }

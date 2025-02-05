@@ -104,7 +104,7 @@ mod tests {
             .unwrap()
             .link_required_by_challenge()
             .unwrap()
-            .check_impl_blocks_required_by_challenge()
+            .check_impl_blocks()
             .unwrap()
             // action to test
             .fuse_challenge()
@@ -173,15 +173,12 @@ mod tests {
             item_names_of_cg_fusion_binary_test,
             [
                 "action (Mod)",
-                "fmt (Use)",
                 "X (Const)",
                 "Y (Const)",
                 "N (Const)",
                 "Value (Enum)",
-                "Display for Value (Impl)",
                 "Go (Struct)",
-                "Default for Go (Impl)",
-                "Go (Impl)",
+                "impl Go",
                 "MyMap2D (Use)",
                 "Action (Use)",
             ]
@@ -205,15 +202,12 @@ mod tests {
                 "action (Mod)",
                 "Action (Use)",
                 "MyMap2D (Use)",
-                "fmt (Use)",
                 "X (Const)",
                 "Y (Const)",
                 "N (Const)",
                 "Value (Enum)",
-                "Display for Value (Impl)",
                 "Go (Struct)",
-                "Default for Go (Impl)",
-                "Go (Impl)",
+                "impl Go",
             ]
         );
     }

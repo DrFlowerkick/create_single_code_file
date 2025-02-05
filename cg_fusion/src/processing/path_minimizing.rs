@@ -50,7 +50,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
         // therefore path minimizing will only be done, if 'crate' keyword is used
         let all_syn_items: Vec<NodeIndex> = self
             .iter_crates()
-            .map(|(n, _, _)| n)
+            .flat_map(|(n, _, _)| self.iter_syn(n).map(|(ns, _)| ns))
             .collect();
         for syn_index in all_syn_items {
             if let Some(cloned_item) = self.clone_syn_item(syn_index) {
@@ -214,7 +214,7 @@ pub struct CratePathFolder<'a, O: CgCli> {
 impl<O: CgCli> Fold for CratePathFolder<'_, O> {
     fn fold_path(&mut self, path: Path) -> Path {
         let source_path = SourcePath::from(&path);
-        if source_path.path_root_is_crate_keyword() {
+        let path = if source_path.path_root_is_crate_keyword() {
             let resolved_path = self
                 .graph
                 .resolving_crate_source_path(self.node, source_path)
@@ -223,38 +223,38 @@ impl<O: CgCli> Fold for CratePathFolder<'_, O> {
                 .try_into()
                 .expect("resolving crate source path failed");
             // rebuild arguments of segments from input path
-            let resolved_path = Path {
-                leading_colon: path.leading_colon,
-                segments: resolved_path
-                    .segments
-                    .iter()
-                    .map(|s| {
-                        if let Some(arguments) = path
-                            .segments
-                            .iter()
-                            .find_map(|p| (p.ident == s.ident).then_some(p.arguments.to_owned()))
-                        {
-                            PathSegment {
-                                ident: s.ident.to_owned(),
-                                arguments,
+            let resolved_path =
+                Path {
+                    leading_colon: path.leading_colon,
+                    segments: resolved_path
+                        .segments
+                        .iter()
+                        .map(|s| {
+                            if let Some(arguments) = path.segments.iter().find_map(|p| {
+                                (p.ident == s.ident).then_some(p.arguments.to_owned())
+                            }) {
+                                PathSegment {
+                                    ident: s.ident.to_owned(),
+                                    arguments,
+                                }
+                            } else {
+                                s.to_owned()
                             }
-                        } else {
-                            s.to_owned()
-                        }
-                    })
-                    .collect(),
-            };
-            return resolved_path
-        }
-        path
+                        })
+                        .collect(),
+                };
+            resolved_path
+        } else {
+            path
+        };
+        syn::fold::fold_path(self, path)
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::parsing::ItemName;
-    use quote::ToTokens;
+    use crate::parsing::{ItemExt, ItemName, SourcePath, ToTokensExt};
     use syn::Item;
 
     use super::super::tests::setup_processing_test;
@@ -295,9 +295,10 @@ mod tests {
         let use_action = cg_data
             .get_syn_item(use_action_index)
             .unwrap()
-            .to_token_stream()
-            .to_string();
-        assert_eq!(use_action, "use action :: Action ;");
+            .get_item_use()
+            .unwrap()
+            .to_trimmed_token_string();
+        assert_eq!(use_action, "use action::Action;");
 
         let (my_map_two_dim_index, ..) = cg_data
             .iter_crates()
@@ -330,16 +331,24 @@ mod tests {
         let use_compass = cg_data
             .get_syn_item(use_compass_index)
             .unwrap()
-            .to_token_stream()
-            .to_string();
-        assert_eq!(use_compass, "use my_compass :: Compass ;");
+            .get_item_use()
+            .unwrap()
+            .to_trimmed_token_string();
+        assert_eq!(use_compass, "use my_compass::Compass;");
 
         let (_, impl_default_block_of_go) = cg_data
             .iter_syn_item_neighbors(cg_fusion_binary_test_lib_index)
             .find(|(_, i)| {
-                let name = ItemName::from(*i);
-                if let ItemName::TypeStringAndTraitAndNameString(_, trait_ident, _) = name {
-                    trait_ident == "Default"
+                if let Item::Impl(item_impl) = i {
+                    if let Some((_, ref trait_path, _)) = item_impl.trait_ {
+                        if let Some(trait_ident) = SourcePath::from(trait_path).get_last() {
+                            trait_ident == "Default"
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
@@ -348,10 +357,8 @@ mod tests {
         let Item::Impl(impl_default_block_of_go) = impl_default_block_of_go else {
             panic!("Expected impl block of Go.");
         };
-        let impl_default_block_of_go_impl_reference = impl_default_block_of_go
-            .self_ty
-            .to_token_stream()
-            .to_string();
+        let impl_default_block_of_go_impl_reference =
+            impl_default_block_of_go.self_ty.to_trimmed_token_string();
         assert_eq!(impl_default_block_of_go_impl_reference, "Go");
 
         let mod_action_index = cg_data
@@ -382,9 +389,10 @@ mod tests {
         let use_fmt = cg_data
             .get_syn_item(use_fmt_index)
             .unwrap()
-            .to_token_stream()
-            .to_string();
-        assert_eq!(use_fmt, "use super :: fmt ;");
+            .get_item_use()
+            .unwrap()
+            .to_trimmed_token_string();
+        assert_eq!(use_fmt, "use super::fmt;");
 
         let use_fmt_display_index = cg_data
             .iter_syn_item_neighbors(mod_action_index)
@@ -403,8 +411,9 @@ mod tests {
         let use_fmt_display = cg_data
             .get_syn_item(use_fmt_display_index)
             .unwrap()
-            .to_token_stream()
-            .to_string();
-        assert_eq!(use_fmt_display, "use super :: fmt :: Display ;");
+            .get_item_use()
+            .unwrap()
+            .to_trimmed_token_string();
+        assert_eq!(use_fmt_display, "use super::fmt::Display;");
     }
 }
