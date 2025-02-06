@@ -460,25 +460,18 @@ impl<O: CgCli, S> CgData<O, S> {
                 }
                 Some(NodeType::SynItem(item)) => {
                     challenge_collector.visit_item(item);
-                    // add impl blocks without a trait. This enables the impl block dialog for these blocks.
-                    for impl_block_index in
-                        self.iter_impl_blocks_of_item(item_to_check)
-                            .filter_map(|(n, i)| {
-                                if let Item::Impl(item_impl) = i {
-                                    item_impl.trait_.is_none().then_some(n)
-                                } else {
-                                    None
-                                }
-                            })
+                }
+                Some(NodeType::SynImplItem(impl_item)) => {
+                    challenge_collector.visit_impl_item(impl_item);
+                    if let Some(impl_block_index) =
+                        self.get_parent_index_by_edge_type(item_to_check, EdgeType::Syn)
                     {
+                        // reference impl block of required impl items
                         challenge_collector.add_reference_node(impl_block_index);
                     }
                 }
-                Some(NodeType::SynImplItem(impl_item)) => {
-                    challenge_collector.visit_impl_item(impl_item)
-                }
                 Some(NodeType::SynTraitItem(trait_item)) => {
-                    challenge_collector.visit_trait_item(trait_item)
+                    challenge_collector.visit_trait_item(trait_item);
                 }
                 _ => return Ok(()),
             }

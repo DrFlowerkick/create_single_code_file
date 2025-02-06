@@ -160,19 +160,16 @@ impl<O, S> CgData<O, S> {
             .filter(|(n, _)| self.is_required_by_challenge(*n))
     }
 
-    pub(crate) fn iter_impl_items_without_required_link_in_required_impl_block(
+    pub(crate) fn iter_impl_items_without_required_link_in_impl_blocks_of_required_items(
         &self,
     ) -> impl Iterator<Item = (NodeIndex, &ImplItem)> {
         self.iter_crates()
-            .flat_map(|(n, _, _)| self.iter_syn(n))
-            .filter_map(|(n, nt)| {
-                if let NodeType::SynItem(Item::Impl(_)) = nt {
-                    self.is_required_by_challenge(n).then_some(n)
-                } else {
-                    None
-                }
+            .flat_map(|(n, _, _)| {
+                self.iter_syn_items(n)
+                    .filter(|(n, _)| self.is_required_by_challenge(*n))
             })
-            .flat_map(|n| {
+            .flat_map(|(n, _)| self.iter_impl_blocks_of_item(n))
+            .flat_map(|(n, _)| {
                 self.iter_syn_impl_item(n).filter(|(n, _)| {
                     !self.is_required_by_challenge(*n)
                         && !self

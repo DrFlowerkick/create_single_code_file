@@ -99,37 +99,6 @@ impl<O, S> CgData<O, S> {
         })
     }
 
-    pub(crate) fn get_syn_item_of_impl_block(&self, node: NodeIndex) -> Option<(NodeIndex, &Item)> {
-        if let Some(Item::Impl(_)) = self.get_syn_item(node) {
-            return self
-                .tree
-                .edges_directed(node, Direction::Incoming)
-                .filter(|e| *e.weight() == EdgeType::Implementation)
-                .map(|e| e.source())
-                .flat_map(|n| self.get_syn_item(n).map(|i| (n, i)))
-                .find(|(n, _)| {
-                    matches!(
-                        self.get_syn_item(*n),
-                        Some(Item::Enum(_)) | Some(Item::Struct(_)) | Some(Item::Union(_))
-                    )
-                });
-        }
-        None
-    }
-
-    pub(crate) fn get_syn_item_ident_of_impl_block(
-        &self,
-        node: NodeIndex,
-    ) -> Option<(NodeIndex, Ident)> {
-        self.get_syn_item_of_impl_block(node)
-            .map(|(n, i)| {
-                ItemName::from(i)
-                    .get_ident_in_name_space()
-                    .map(|id| (n, id))
-            })
-            .flatten()
-    }
-
     pub(crate) fn clone_syn_item(&self, node: NodeIndex) -> Option<Item> {
         self.tree.node_weight(node).and_then(|w| match w {
             NodeType::SynItem(item) => Some(item.clone()),

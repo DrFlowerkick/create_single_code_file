@@ -17,7 +17,8 @@
         "shouty",
         "structopt",
         "thiserror",
-        "tictactoe"
+        "tictactoe",
+        "usize"
     ],
 
     "cSpell.ignorePaths": [

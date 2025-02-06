@@ -114,6 +114,7 @@ mod tests {
                 "my_map_point (Mod)::impl<constX:usize,constY:usize> MapPoint<X,Y>::new (Impl Fn)",
                 "my_map_two_dim (library crate)",
                 "my_map_two_dim (library crate)::MyMap2D (Struct)",
+                "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>",
                 "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>::default (Impl Fn)",
                 "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
                 "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::new (Impl Fn)",    
