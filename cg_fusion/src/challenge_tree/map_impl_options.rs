@@ -2,6 +2,7 @@
 
 use super::{ChallengeTreeError, EdgeType, TreeResult};
 
+use crate::challenge_tree::NodeType;
 use crate::parsing::ItemName;
 use crate::{
     add_context,
@@ -19,9 +20,15 @@ use std::fs;
 use syn::Item;
 
 #[derive(Debug, Deserialize, Default)]
+pub(crate) struct InExClude {
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 pub(crate) struct ImplOptions {
-    pub include_impl_items: Vec<String>,
-    pub exclude_impl_items: Vec<String>,
+    pub impl_items: InExClude,
+    pub impl_blocks: InExClude,
 }
 
 #[derive(Debug)]
@@ -44,6 +51,12 @@ impl From<&bool> for ProcessOption {
     fn from(value: &bool) -> Self {
         ProcessOption::from(*value)
     }
+}
+
+enum ImplOptionType {
+    Item,
+    ItemWithImplBlock,
+    Block,
 }
 
 impl<O: CgCli, S> CgData<O, S> {
@@ -92,14 +105,16 @@ impl<O: CgCli, S> CgData<O, S> {
             .processing()
             .include_impl_item
             .iter()
-            .chain(impl_config.include_impl_items.iter())
+            .chain(impl_config.impl_items.include.iter())
+            .chain(impl_config.impl_blocks.include.iter())
             .map(|ii| (ii, ProcessOption::Include))
             .chain(
                 self.options
                     .processing()
                     .exclude_impl_item
                     .iter()
-                    .chain(impl_config.exclude_impl_items.iter())
+                    .chain(impl_config.impl_items.exclude.iter())
+                    .chain(impl_config.impl_blocks.exclude.iter())
                     .map(|ii| (ii, ProcessOption::Exclude)),
             )
         {
@@ -120,128 +135,191 @@ impl<O: CgCli, S> CgData<O, S> {
     ) -> TreeResult<ImplOptions> {
         let mut include_impl_items: Vec<String> = Vec::new();
         let mut exclude_impl_items: Vec<String> = Vec::new();
+        let mut include_impl_blocks: Vec<String> = Vec::new();
+        let mut exclude_impl_blocks: Vec<String> = Vec::new();
         for (item_index, process_option) in impl_options_map
             .iter()
             .map(|(k, v)| (k, ProcessOption::from(v)))
         {
-            let mut impl_item_path = if let Some(impl_item) = self.get_syn_impl_item(*item_index) {
-                ItemName::from(impl_item)
-                    .get_ident_in_name_space()
-                    .context(add_context!("Expected impl item ident in name space"))?
-                    .to_string()
-            } else {
-                return Err(anyhow!("{}", add_context!("Expected impl item")).into());
-            };
-            let reverse_check = match self.collect_impl_config_option_indices(&impl_item_path) {
-                Ok(impl_item) => impl_item,
-                Err(_) => {
-                    let impl_block_node = self
-                        .get_parent_index_by_edge_type(*item_index, EdgeType::Syn)
-                        .context(add_context!("Expected node of impl block."))?;
-                    if let Some(item) = self.get_syn_item(impl_block_node) {
-                        if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(item) {
-                            impl_item_path = format!("{}::{}", impl_block, impl_item_path);
-                        } else {
-                            return Err(anyhow!(add_context!("Expected impl block name")).into());
-                        }
-                    } else {
-                        return Err(anyhow!(add_context!("Expected impl block item")).into());
+            match self.tree.node_weight(*item_index) {
+                Some(NodeType::SynItem(Item::Impl(item_impl))) => {
+                    let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(item_impl)
+                    else {
+                        return Err(anyhow!(add_context!("Expected impl block name")).into());
                     };
-                    self.collect_impl_config_option_indices(&impl_item_path)?
+                    let reverse_check = self.collect_impl_config_option_indices(&impl_block)?;
+                    assert_eq!(*item_index, reverse_check[0]);
+                    match process_option {
+                        ProcessOption::Include => include_impl_blocks.push(impl_block),
+                        ProcessOption::Exclude => exclude_impl_blocks.push(impl_block),
+                    }
                 }
-            };
-            assert_eq!(*item_index, reverse_check[0]);
-            match process_option {
-                ProcessOption::Include => include_impl_items.push(impl_item_path),
-                ProcessOption::Exclude => exclude_impl_items.push(impl_item_path),
+                Some(NodeType::SynImplItem(impl_item)) => {
+                    let mut impl_item_path = ItemName::from(impl_item)
+                        .get_ident_in_name_space()
+                        .context(add_context!("Expected impl item ident in name space"))?
+                        .to_string();
+                    let reverse_check = match self
+                        .collect_impl_config_option_indices(&impl_item_path)
+                    {
+                        Ok(impl_item_node) => impl_item_node,
+                        Err(_) => {
+                            let impl_block_node = self
+                                .get_parent_index_by_edge_type(*item_index, EdgeType::Syn)
+                                .context(add_context!("Expected node of impl block."))?;
+                            if let Some(item) = self.get_syn_item(impl_block_node) {
+                                if let ItemName::ImplBlockIdentifier(impl_block) =
+                                    ItemName::from(item)
+                                {
+                                    impl_item_path = format!("{}@{}", impl_item_path, impl_block);
+                                } else {
+                                    return Err(
+                                        anyhow!(add_context!("Expected impl block name")).into()
+                                    );
+                                }
+                            } else {
+                                return Err(
+                                    anyhow!(add_context!("Expected impl block item")).into()
+                                );
+                            };
+                            self.collect_impl_config_option_indices(&impl_item_path)?
+                        }
+                    };
+                    assert_eq!(*item_index, reverse_check[0]);
+                    match process_option {
+                        ProcessOption::Include => include_impl_items.push(impl_item_path),
+                        ProcessOption::Exclude => exclude_impl_items.push(impl_item_path),
+                    }
+                }
+                _ => return Err(anyhow!("{}", add_context!("Expected impl item or block.")).into()),
             }
         }
         include_impl_items.sort();
         exclude_impl_items.sort();
         Ok(ImplOptions {
-            include_impl_items,
-            exclude_impl_items,
+            impl_items: InExClude {
+                include: include_impl_items,
+                exclude: exclude_impl_items,
+            },
+            impl_blocks: InExClude {
+                include: include_impl_blocks,
+                exclude: exclude_impl_blocks,
+            },
         })
     }
 
     fn collect_impl_config_option_indices(&self, impl_item: &str) -> TreeResult<Vec<NodeIndex>> {
-        let impl_item_path_elements: Vec<&str> = impl_item.split("::").collect();
+        let impl_item_path_elements: Vec<&str> = impl_item.split("@").collect();
         let with_fully_qualified_impl_block = match impl_item_path_elements.len() {
             0 => {
                 return Err(ChallengeTreeError::InvalidImplConfigOption(
                     impl_item.to_string(),
                 ))
             }
-            1 => false,
-            2 => true,
+            1 => {
+                // functions do not contain whitespace, but every impl name contains at least one whitespace
+                if impl_item.chars().any(|c| c.is_whitespace()) {
+                    ImplOptionType::Block
+                } else {
+                    ImplOptionType::Item
+                }
+            }
+            2 => ImplOptionType::ItemWithImplBlock,
             3.. => {
                 return Err(ChallengeTreeError::InvalidImplConfigOption(
                     impl_item.to_string(),
                 ))
             }
         };
-        if with_fully_qualified_impl_block {
-            // search in all impl blocks of all crates and modules for impl items with given impl name
-            let impl_item_indices: Vec<NodeIndex> = self
-                .iter_crates()
-                .flat_map(|(n, _, _)| self.iter_syn_items(n))
-                .filter(|(_, i)| {
-                    if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
-                        impl_block == impl_item_path_elements[0]
-                    } else {
-                        false
-                    }
-                })
-                .flat_map(|(n, _)| self.iter_syn_impl_item(n))
-                .filter_map(|(n, i)| {
-                    if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
-                        (name == impl_item_path_elements[1] || impl_item_path_elements[1] == "*")
-                            .then_some(n)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if impl_item_path_elements[1] == "*" || impl_item_indices.len() == 1 {
-                Ok(impl_item_indices)
-            } else if impl_item_indices.is_empty() {
-                Err(ChallengeTreeError::NotExistingImplItemOfConfig(
-                    impl_item.to_owned(),
-                ))
-            } else {
-                unreachable!(
-                    "Name space rules of rust prevent multiple items with the same name \
-                     in a fully qualified impl block."
-                );
+        match with_fully_qualified_impl_block {
+            ImplOptionType::ItemWithImplBlock => {
+                // search in all impl blocks of all crates and modules for impl items with given impl name
+                let impl_item_indices: Vec<NodeIndex> = self
+                    .iter_crates()
+                    .flat_map(|(n, _, _)| self.iter_syn_items(n))
+                    .filter(|(_, i)| {
+                        if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
+                            impl_block == impl_item_path_elements[1]
+                        } else {
+                            false
+                        }
+                    })
+                    .flat_map(|(n, _)| self.iter_syn_impl_item(n))
+                    .filter_map(|(n, i)| {
+                        if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
+                            (name == impl_item_path_elements[0]
+                                || impl_item_path_elements[0] == "*")
+                                .then_some(n)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if impl_item_path_elements[0] == "*" || impl_item_indices.len() == 1 {
+                    Ok(impl_item_indices)
+                } else if impl_item_indices.is_empty() {
+                    Err(ChallengeTreeError::NotExistingImplItemOfConfig(
+                        impl_item.to_owned(),
+                    ))
+                } else {
+                    unreachable!(
+                        "Name space rules of rust prevent multiple items with the same name \
+                         in a fully qualified impl block."
+                    );
+                }
             }
-        } else {
-            if impl_item_path_elements[0] == "*" {
-                return Err(ChallengeTreeError::InvalidImplConfigOption(
-                    impl_item.to_owned(),
-                ));
+            ImplOptionType::Item => {
+                if impl_item_path_elements[0] == "*" {
+                    return Err(ChallengeTreeError::InvalidImplConfigOption(
+                        impl_item.to_owned(),
+                    ));
+                }
+                // search in all impl blocks of all crates and modules for impl item with given impl name
+                let impl_item_indices: Vec<NodeIndex> = self
+                    .iter_crates()
+                    .flat_map(|(n, _, _)| self.iter_syn_items(n))
+                    .filter(|(_, i)| matches!(i, Item::Impl(_)))
+                    .flat_map(|(n, _)| self.iter_syn_impl_item(n))
+                    .filter_map(|(n, i)| {
+                        if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
+                            (name == impl_item_path_elements[0]).then_some(n)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if impl_item_indices.len() == 1 {
+                    Ok(impl_item_indices)
+                } else if impl_item_indices.is_empty() {
+                    Err(ChallengeTreeError::NotExistingImplItemOfConfig(
+                        impl_item.to_owned(),
+                    ))
+                } else {
+                    Err(ChallengeTreeError::NotUniqueImplItem(impl_item.to_owned()))
+                }
             }
-            // search in all impl blocks of all crates and modules for impl item with given impl name
-            let impl_item_indices: Vec<NodeIndex> = self
-                .iter_crates()
-                .flat_map(|(n, _, _)| self.iter_syn_items(n))
-                .filter(|(_, i)| matches!(i, Item::Impl(_)))
-                .flat_map(|(n, _)| self.iter_syn_impl_item(n))
-                .filter_map(|(n, i)| {
-                    if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
-                        (name == impl_item_path_elements[0]).then_some(n)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if impl_item_indices.len() == 1 {
-                Ok(impl_item_indices)
-            } else if impl_item_indices.is_empty() {
-                Err(ChallengeTreeError::NotExistingImplItemOfConfig(
-                    impl_item.to_owned(),
-                ))
-            } else {
-                Err(ChallengeTreeError::NotUniqueImplItem(impl_item.to_owned()))
+            ImplOptionType::Block => {
+                // search all impl blocks; it is possible to have multiple impl blocks with the same
+                // fully qualified name, e.g. 'impl TypeFoo' may be used multiple times
+                let impl_block_indices: Vec<NodeIndex> = self
+                    .iter_crates()
+                    .flat_map(|(n, _, _)| self.iter_syn_items(n))
+                    .filter_map(|(n, i)| {
+                        if let ItemName::ImplBlockIdentifier(name) = ItemName::from(i) {
+                            dbg!(&name);
+                            (name == impl_item_path_elements[0]).then_some(n)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if impl_block_indices.is_empty() {
+                    Err(ChallengeTreeError::NotExistingImplItemOfConfig(
+                        impl_item.to_owned(),
+                    ))
+                } else {
+                    Ok(impl_block_indices)
+                }
             }
         }
     }
@@ -306,13 +384,17 @@ mod tests {
             .unwrap()
             .link_required_by_challenge()
             .unwrap();
-        let include_items: Vec<String> = vec!["apply_action".into(), "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set".into()];
+
+        let include_items: Vec<String> = vec![
+            "apply_action".into(),
+            "set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>".into(),
+            "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>".into(),
+        ];
         let exclude_items: Vec<String> = vec![
             "set_black".into(),
-            "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::get".into(),
-            "impl<constX:usize,constY:usize> MapPoint<X,Y>::delta_xy".into(),
-            "impl<constX:usize,constY:usize> MapPoint<X,Y>::map_position".into(),
-            "impl Compass::*".into(),
+            "impl Display for Action".into(),
+            "get@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>".into(),
+            "*@impl Compass".into(),
         ];
         cg_data.options.set_impl_include(include_items);
         cg_data.options.set_impl_exclude(exclude_items);
@@ -327,6 +409,21 @@ mod tests {
             .iter_crates()
             .find(|(_, _, cf)| cf.name == "my_map_two_dim")
             .unwrap();
+        let (my_map_two_dim_impl_default_index, _) = cg_data
+            .iter_syn_item_neighbors(my_map_two_dim_crate_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_some(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
+                    impl_block == "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        assert_eq!(mapping.get(&my_map_two_dim_impl_default_index), Some(&true));
         let (my_map_two_dim_impl_index, _) = cg_data
             .iter_syn_item_neighbors(my_map_two_dim_crate_index)
             .filter(|(_, i)| match i {
@@ -363,55 +460,6 @@ mod tests {
             })
             .unwrap();
         assert_eq!(mapping.get(&my_map_two_dim_set_index), Some(&true));
-
-        // check impl items of my_map_two_dim
-        let (my_map_point_module_index, _) = cg_data
-            .iter_syn_item_neighbors(my_map_two_dim_crate_index)
-            .filter(|(_, i)| matches!(i, Item::Mod(_)))
-            .find(|(_, i)| {
-                if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
-                    name == "my_map_point"
-                } else {
-                    false
-                }
-            })
-            .unwrap();
-        let (my_map_point_impl_index, _) = cg_data
-            .iter_syn_item_neighbors(my_map_point_module_index)
-            .filter(|(_, i)| match i {
-                Item::Impl(item_impl) => item_impl.trait_.is_none(),
-                _ => false,
-            })
-            .find(|(_, i)| {
-                if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
-                    impl_block == "impl<constX:usize,constY:usize> MapPoint<X,Y>"
-                } else {
-                    false
-                }
-            })
-            .unwrap();
-        let (my_map_point_delta_xy_index, _) = cg_data
-            .iter_syn_impl_item(my_map_point_impl_index)
-            .find(|(_, i)| {
-                if let Some(id) = ItemName::from(*i).get_ident_in_name_space() {
-                    id == "delta_xy"
-                } else {
-                    false
-                }
-            })
-            .unwrap();
-        assert_eq!(mapping.get(&my_map_point_delta_xy_index), Some(&false));
-        let (my_map_point_map_position_index, _) = cg_data
-            .iter_syn_impl_item(my_map_point_impl_index)
-            .find(|(_, i)| {
-                if let Some(id) = ItemName::from(*i).get_ident_in_name_space() {
-                    id == "map_position"
-                } else {
-                    false
-                }
-            })
-            .unwrap();
-        assert_eq!(mapping.get(&my_map_point_map_position_index), Some(&false));
 
         // check impl items of cg_fusion_binary_test
         let (cg_fusion_binary_test_lib_crate_index, _, _) = cg_data
@@ -456,6 +504,21 @@ mod tests {
                 }
             })
             .unwrap();
+        let (action_impl_display_index, _) = cg_data
+            .iter_syn_item_neighbors(action_module_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_some(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
+                    impl_block == "impl Display for Action"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        assert_eq!(mapping.get(&action_impl_display_index), Some(&false));
         let (action_impl_index, _) = cg_data
             .iter_syn_item_neighbors(action_module_index)
             .filter(|(_, i)| match i {
@@ -483,6 +546,17 @@ mod tests {
         assert_eq!(mapping.get(&action_set_black_index), Some(&false));
 
         // check impl items of Compass
+        let (my_map_point_module_index, _) = cg_data
+            .iter_syn_item_neighbors(my_map_two_dim_crate_index)
+            .filter(|(_, i)| matches!(i, Item::Mod(_)))
+            .find(|(_, i)| {
+                if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
+                    name == "my_map_point"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
         let (my_compass_module_index, _) = cg_data
             .iter_syn_item_neighbors(my_map_point_module_index)
             .filter(|(_, i)| matches!(i, Item::Mod(_)))
@@ -517,6 +591,39 @@ mod tests {
             .iter_crates()
             .find(|(_, _, cf)| cf.name == "my_array")
             .unwrap();
+        let (my_array_impl_default_index, _) = cg_data
+            .iter_syn_item_neighbors(my_array_crate_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_some(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
+                    impl_block == "impl<T:Copy+Clone+Default,constN:usize> Default for MyArray<T,N>"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        assert_eq!(mapping.get(&my_array_impl_default_index), Some(&true));
+        let (my_array_impl_from_iterator_index, _) = cg_data
+            .iter_syn_item_neighbors(my_array_crate_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_some(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
+                    impl_block == "impl<T,constN:usize> FromIterator<T> for MyArray<T,N> whereT:Copy+Clone+Default,"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        assert_eq!(
+            mapping.get(&my_array_impl_from_iterator_index),
+            Some(&false)
+        );
         let (my_array_impl_index, _) = cg_data
             .iter_syn_item_neighbors(my_array_crate_index)
             .filter(|(_, i)| match i {
@@ -577,6 +684,20 @@ mod tests {
                 }
             })
             .unwrap();
+        let (my_map_two_dim_impl_default_index, _) = cg_data
+            .iter_syn_item_neighbors(my_map_two_dim_crate_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_some(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
+                    impl_block == "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
         let (my_map_two_dim_get_index, _) = cg_data
             .iter_syn_impl_item(my_map_two_dim_impl_index)
             .find(|(_, i)| {
@@ -626,6 +747,20 @@ mod tests {
                 }
             })
             .unwrap();
+        let (action_impl_display_index, _) = cg_data
+            .iter_syn_item_neighbors(action_module_index)
+            .filter(|(_, i)| match i {
+                Item::Impl(item_impl) => item_impl.trait_.is_some(),
+                _ => false,
+            })
+            .find(|(_, i)| {
+                if let ItemName::ImplBlockIdentifier(impl_block) = ItemName::from(*i) {
+                    impl_block == "impl Display for Action"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
         let (action_set_black_index, _) = cg_data
             .iter_syn_impl_item(action_impl_index)
             .find(|(_, i)| {
@@ -641,19 +776,26 @@ mod tests {
         mapping.insert(my_map_two_dim_get_index, true);
         mapping.insert(my_map_two_dim_set_index, true);
         mapping.insert(action_set_black_index, false);
+        mapping.insert(my_map_two_dim_impl_default_index, true);
+        mapping.insert(action_impl_display_index, false);
 
         // assert
         let mut impl_options = cg_data
             .map_node_indices_to_impl_config_options(&mapping)
             .unwrap();
-        impl_options.include_impl_items.sort();
+        impl_options.impl_items.include.sort();
         assert_eq!(
-            impl_options.include_impl_items,
+            impl_options.impl_items.include,
             [
-                "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::get",
-                "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set",
+                "get@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
+                "set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
             ]
         );
-        assert_eq!(impl_options.exclude_impl_items, ["set_black"]);
+        assert_eq!(impl_options.impl_items.exclude, ["set_black"]);
+        assert_eq!(impl_options.impl_blocks.include, ["impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"]);
+        assert_eq!(
+            impl_options.impl_blocks.exclude,
+            ["impl Display for Action"]
+        );
     }
 }

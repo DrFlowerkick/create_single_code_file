@@ -28,36 +28,62 @@ use toml_edit::{value, Array, DocumentMut};
 
 pub struct ProcessingImplItemDialogState;
 
-const IMPL_CONFIG_TOML_TEMPLATE: &str = r#"# impl config file in TOML format to configure impl items of specific impl blocks to 
+const IMPL_CONFIG_TOML_TEMPLATE: &str = r#"# impl config file in TOML format to configure impl items of specific impl blocks to
 # include in or exclude from challenge.
 # file structure:
-# include_impl_items = [include_item_1, include_item_2]
-# exclude_impl_items = [exclude_item_1, exclude_item_2]
+# [impl_items]
+# include = [include_item_1, include_item_2]
+# exclude = [exclude_item_1, exclude_item_2]
+# [impl_blocks]
+# include = [include_impl_block_1, include_impl_block_2]
+# exclude = [exclude_impl_block_1, exclude_impl_block_2]
 #
+# If in conflict with other impl options (item or block), the 'include' option always wins.
+#
+# --- impl items of impl blocks ---
+# impl items are identified by their plain name, e.g.
+# fn my_function() --> my_function
+# const MY_CONST --> MY_CONST
 # If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add the fully
 # qualified name of the impl block containing the impl item. Use the following naming
 # schema:
-# fully_qualified_name_of_impl_block::impl_item_name
-# 
-# A fully qualified name of an impl block consists of two (no trait) or three (with trait)
-# components:
-# 1. impl with lifetime and type parameters if applicable, e.g. impl<'a,T:Display>
-# 2. path to trait with lifetime and type parameters if applicable and 'for' keyword, e.g.
+# impl_item_name@fully_qualified_name_of_impl_block
+#
+# A fully qualified name of an impl block consists of up to four components:
+# 1. impl with lifetime and type parameters if applicable, e.g. impl<'a, T: Display>
+# 2. if impl with a trait, than path to trait with lifetime and type parameters if applicable and 'for' keyword, e.g.
 #    convert::From<&str> for
 # 3. path to user defined type with lifetime and type parameters if applicable referenced by impl
-#    block, e.g. map::TwoDim<X,Y>
+#    block, e.g. map::TwoDim<X, Y>
+# 4. if impl has a where clause, than where clause for type parameters, e.g. where D: Display
+#
 # Specify the components without any whitespace with the exception of one space between trait and
-# 'for' keyword. The two or three parts are seperated by one space.
-# Example 1: impl<X:usize,Y:usize> map::TwoDim<X,Y>
-# Example 2: impl From<&str> for FooType
+# 'for' keyword. The components are seperated each by one space.
+# Example 1: impl<constX:usize,constY:usize> map::TwoDim<X,Y>
+# Example 2: impl<'a> From<&'astr> for FooType<'a>
+# Example 3: impl<D> MyPrint for MyType<D> whereD:Display
 #
 # Usage of wildcard '*' for impl item name is possible, but requires a fully qualified name of an
-# impl block, e.g.: impl<X:usize,Y:usize> map::TwoDim<X,Y>::*
-# This will include all impl item of the corresponding impl block(s)
+# impl block, e.g.: *@impl StructFoo
+# This will include all impl items of the corresponding impl block(s)
 #
-# If in conflict with other impl options, the 'include' option always wins.
-include_impl_items = []
-exclude_impl_items = []
+# --- impl block ---
+# cg-fusion uses a simple approach to identify required items of src code, which is in most cases not
+# capable of identifying dependencies on traits like Display or From. To include these traits in the
+# fusion of challenge, add all required impl blocks by their fully qualified name (see above) to the
+# configuration. If an impl block with a trait is included, than all items of the impl block will be
+# required by fusion of challenge.
+# If you configure an impl block without a trait, the impl items of this block will be added to the
+# impl user dialog. If you want to avoid this dialog, add the required impl items with the above impl
+# item include options to the configuration. In this case you do not need to add the corresponding
+# impl block to the configuration, because every impl block, which contains required items, will be
+# pulled into the fusion automatically.
+[impl_items]
+include = []
+exclude = []
+[impl_blocks]
+include = []
+exclude = []
 "#;
 
 impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
@@ -72,8 +98,13 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         let mut got_user_input = false;
         while let Some(impl_item) = {
             let next_item_option = self
-                .iter_impl_items_without_required_link_in_impl_blocks_of_required_items()
-                .find_map(|(n, _)| (!seen_impl_items.contains_key(&n)).then_some(n));
+                .iter_impl_blocks_without_required_link_of_required_items()
+                .map(|(n, _)| n)
+                .chain(
+                    self.iter_impl_items_without_required_link_in_required_impl_blocks()
+                        .map(|(n, _)| n),
+                )
+                .find(|n| (!seen_impl_items.contains_key(n)));
             next_item_option
         } {
             let impl_block = self
@@ -308,15 +339,25 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             let mut doc = toml_str.parse::<DocumentMut>()?;
             let impl_config = self.map_node_indices_to_impl_config_options(seen_impl_items)?;
             let mut include_impl_items = Array::new();
-            for include_impl_item in impl_config.include_impl_items.iter() {
+            for include_impl_item in impl_config.impl_items.include.iter() {
                 include_impl_items.push(include_impl_item);
             }
             let mut exclude_impl_items = Array::new();
-            for exclude_impl_item in impl_config.exclude_impl_items.iter() {
+            for exclude_impl_item in impl_config.impl_items.exclude.iter() {
                 exclude_impl_items.push(exclude_impl_item);
             }
-            doc["include_impl_items"] = value(include_impl_items);
-            doc["exclude_impl_items"] = value(exclude_impl_items);
+            let mut include_impl_blocks = Array::new();
+            for include_impl_block in impl_config.impl_blocks.include.iter() {
+                include_impl_blocks.push(include_impl_block);
+            }
+            let mut exclude_impl_blocks = Array::new();
+            for exclude_impl_block in impl_config.impl_blocks.exclude.iter() {
+                exclude_impl_blocks.push(exclude_impl_block);
+            }
+            doc["impl_items"]["include"] = value(include_impl_items);
+            doc["impl_items"]["exclude"] = value(exclude_impl_items);
+            doc["impl_blocks"]["include"] = value(include_impl_blocks);
+            doc["impl_blocks"]["exclude"] = value(exclude_impl_blocks);
 
             return Ok(Some((file_path, doc.to_string())));
         }

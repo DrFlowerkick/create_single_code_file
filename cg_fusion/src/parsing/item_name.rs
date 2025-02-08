@@ -3,7 +3,7 @@
 use super::{SourcePath, ToTokensExt};
 
 use std::fmt::{Display, Write};
-use syn::{Ident, ImplItem, Item, ItemUse, TraitItem};
+use syn::{Ident, ImplItem, Item, ItemImpl, ItemUse, TraitItem};
 
 #[derive(Debug)]
 pub enum ItemName {
@@ -76,88 +76,7 @@ impl From<&Item> for ItemName {
                 ItemName::TypeStringAndIdent("Fn".into(), item_fn.sig.ident.to_owned())
             }
             Item::ForeignMod(_) => ItemName::TypeString("ForeignMod".into()),
-            Item::Impl(item_impl) => {
-                let mut impl_type_string =
-                    format!("impl{}", item_impl.generics.to_trimmed_token_string());
-                if let Some((_, ref trait_, _)) = item_impl.trait_ {
-                    write!(
-                        &mut impl_type_string,
-                        " {} for",
-                        trait_.to_trimmed_token_string()
-                    )
-                    .expect("Expecting formatted trait_ string.");
-                }
-                write!(
-                    &mut impl_type_string,
-                    " {}",
-                    item_impl.self_ty.to_trimmed_token_string()
-                )
-                .expect("Expected formatted self_ty string.");
-                ItemName::ImplBlockIdentifier(impl_type_string)
-                /*let trait_ident: Option<Ident> = if let Some((_, ref trait_, _)) = item_impl.trait_
-                {
-                    SourcePath::from(trait_).get_last().map(|i| i.to_owned())
-                } else {
-                    None
-                };
-                match item_impl.self_ty.as_ref() {
-                    // at current state of code, we only support Path and Reference
-                    Type::Path(type_path) => {
-                        let path_target = match SourcePath::from(type_path).get_last() {
-                            Some(ident) => ident.to_owned(),
-                            None => unreachable!("Path must have at least one segment."),
-                        };
-                        if let Some(ti) = trait_ident {
-                            ItemName::TypeStringAndTraitAndNameString(
-                                "Impl".into(),
-                                ti,
-                                path_target.to_string(),
-                            )
-                        } else {
-                            ItemName::TypeStringAndNameString(
-                                "Impl".into(),
-                                path_target.to_string(),
-                            )
-                        }
-                    }
-                    Type::Reference(type_ref) => {
-                        if let Type::Path(type_path) = type_ref.elem.as_ref() {
-                            let path_target = match SourcePath::from(type_path).get_last() {
-                                Some(ident) => ident.to_owned(),
-                                None => unreachable!("Path must have at least one segment."),
-                            };
-                            if let Some(ti) = trait_ident {
-                                ItemName::TypeStringAndTraitAndNameString(
-                                    "Impl".into(),
-                                    ti,
-                                    path_target.to_string(),
-                                )
-                            } else {
-                                ItemName::TypeStringAndNameString(
-                                    "Impl".into(),
-                                    path_target.to_string(),
-                                )
-                            }
-                        } else {
-                            ItemName::TypeString("Impl".into())
-                        }
-                    }
-                    _ => {
-                        if let Some(ti) = trait_ident {
-                            ItemName::TypeStringAndTraitAndNameString(
-                                "Impl".into(),
-                                ti,
-                                item_impl.self_ty.to_trimmed_token_string(),
-                            )
-                        } else {
-                            ItemName::TypeStringAndNameString(
-                                "Impl".into(),
-                                item_impl.self_ty.to_trimmed_token_string(),
-                            )
-                        }
-                    }
-                }*/
-            }
+            Item::Impl(item_impl) => ItemName::from(item_impl),
             Item::Macro(item_macro) => match item_macro.ident {
                 Some(ref ident) => ItemName::TypeStringAndIdent("Macro".into(), ident.to_owned()),
                 None => ItemName::None,
@@ -187,6 +106,35 @@ impl From<&Item> for ItemName {
             Item::Verbatim(_) => ItemName::TypeString("Verbatim".into()),
             _ => ItemName::None, // Item is #[non_exhaustive]
         }
+    }
+}
+
+impl From<&ItemImpl> for ItemName {
+    fn from(item_impl: &ItemImpl) -> Self {
+        let mut impl_type_string = format!("impl{}", item_impl.generics.to_trimmed_token_string());
+        if let Some((_, ref trait_, _)) = item_impl.trait_ {
+            write!(
+                &mut impl_type_string,
+                " {} for",
+                trait_.to_trimmed_token_string()
+            )
+            .expect("Expecting formatted trait_ string.");
+        }
+        write!(
+            &mut impl_type_string,
+            " {}",
+            item_impl.self_ty.to_trimmed_token_string()
+        )
+        .expect("Expected formatted self_ty string.");
+        if let Some(ref where_) = item_impl.generics.where_clause {
+            write!(
+                &mut impl_type_string,
+                " {}",
+                where_.to_trimmed_token_string()
+            )
+            .expect("Expected formatted self_ty string.");
+        }
+        ItemName::ImplBlockIdentifier(impl_type_string)
     }
 }
 

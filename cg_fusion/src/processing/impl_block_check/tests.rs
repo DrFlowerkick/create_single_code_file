@@ -479,7 +479,7 @@ fn test_impl_config_toml_dialog() {
     let base_dir = cg_data.challenge_package().path.to_owned();
 
     // get impl item index not required by challenge
-    let set_and_get_mapping: HashMap<NodeIndex, bool> = cg_data
+    let impl_config_mapping: HashMap<NodeIndex, bool> = cg_data
         .iter_crates()
         .flat_map(|(n, _, _)| cg_data.iter_syn(n))
         .filter_map(|(n, nt)| match nt {
@@ -490,18 +490,33 @@ fn test_impl_config_toml_dialog() {
                     None
                 }
             }
+            NodeType::SynItem(item) => {
+                if let ItemName::ImplBlockIdentifier(name) = ItemName::from(item) {
+                    (name.contains("Default for") && name.contains("T:")).then_some(n)
+                } else {
+                    None
+                }
+            }
             _ => None,
         })
         .map(|n| {
-            let impl_block_index = cg_data
-                .get_parent_index_by_edge_type(n, EdgeType::Syn)
-                .unwrap();
-            let item_node = cg_data
-                .get_parent_index_by_edge_type(impl_block_index, EdgeType::Implementation)
-                .unwrap();
-            let item = cg_data.get_syn_item(item_node).unwrap();
-            let item_ident = ItemName::from(item).get_ident_in_name_space().unwrap();
-            (n, item_ident == "MyMap2D")
+            if cg_data.is_syn_impl_item(n) {
+                let impl_block_index = cg_data
+                    .get_parent_index_by_edge_type(n, EdgeType::Syn)
+                    .unwrap();
+                let item_node = cg_data
+                    .get_parent_index_by_edge_type(impl_block_index, EdgeType::Implementation)
+                    .unwrap();
+                let item = cg_data.get_syn_item(item_node).unwrap();
+                let item_ident = ItemName::from(item).get_ident_in_name_space().unwrap();
+                (n, item_ident == "MyMap2D")
+            } else {
+                let item = cg_data.get_syn_item(n).unwrap();
+                let ItemName::ImplBlockIdentifier(name) = ItemName::from(item) else {
+                    panic!("Expected name of impl block");
+                };
+                (n, name.ends_with("MyMap2D<T,X,Y,N>"))
+            }
         })
         .collect();
 
@@ -549,7 +564,7 @@ fn test_impl_config_toml_dialog() {
     // assert
     // returning new toml file path and content
     let (toml_path, toml_content) = cg_data
-        .impl_config_toml_dialog(&mut mock, &set_and_get_mapping)
+        .impl_config_toml_dialog(&mut mock, &impl_config_mapping)
         .unwrap()
         .unwrap();
     assert_eq!(
@@ -558,41 +573,67 @@ fn test_impl_config_toml_dialog() {
     );
     assert_eq!(
         toml_content,
-        r#"# impl config file in TOML format to configure impl items of specific impl blocks to 
+        r#"# impl config file in TOML format to configure impl items of specific impl blocks to
 # include in or exclude from challenge.
 # file structure:
-# include_impl_items = [include_item_1, include_item_2]
-# exclude_impl_items = [exclude_item_1, exclude_item_2]
+# [impl_items]
+# include = [include_item_1, include_item_2]
+# exclude = [exclude_item_1, exclude_item_2]
+# [impl_blocks]
+# include = [include_impl_block_1, include_impl_block_2]
+# exclude = [exclude_impl_block_1, exclude_impl_block_2]
 #
+# If in conflict with other impl options (item or block), the 'include' option always wins.
+#
+# --- impl items of impl blocks ---
+# impl items are identified by their plain name, e.g.
+# fn my_function() --> my_function
+# const MY_CONST --> MY_CONST
 # If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add the fully
 # qualified name of the impl block containing the impl item. Use the following naming
 # schema:
-# fully_qualified_name_of_impl_block::impl_item_name
-# 
-# A fully qualified name of an impl block consists of two (no trait) or three (with trait)
-# components:
-# 1. impl with lifetime and type parameters if applicable, e.g. impl<'a,T:Display>
-# 2. path to trait with lifetime and type parameters if applicable and 'for' keyword, e.g.
+# impl_item_name@fully_qualified_name_of_impl_block
+#
+# A fully qualified name of an impl block consists of up to four components:
+# 1. impl with lifetime and type parameters if applicable, e.g. impl<'a, T: Display>
+# 2. if impl with a trait, than path to trait with lifetime and type parameters if applicable and 'for' keyword, e.g.
 #    convert::From<&str> for
 # 3. path to user defined type with lifetime and type parameters if applicable referenced by impl
-#    block, e.g. map::TwoDim<X,Y>
+#    block, e.g. map::TwoDim<X, Y>
+# 4. if impl has a where clause, than where clause for type parameters, e.g. where D: Display
+#
 # Specify the components without any whitespace with the exception of one space between trait and
-# 'for' keyword. The two or three parts are seperated by one space.
-# Example 1: impl<X:usize,Y:usize> map::TwoDim<X,Y>
-# Example 2: impl From<&str> for FooType
+# 'for' keyword. The components are seperated each by one space.
+# Example 1: impl<constX:usize,constY:usize> map::TwoDim<X,Y>
+# Example 2: impl<'a> From<&'astr> for FooType<'a>
+# Example 3: impl<D> MyPrint for MyType<D> whereD:Display
 #
 # Usage of wildcard '*' for impl item name is possible, but requires a fully qualified name of an
-# impl block, e.g.: impl<X:usize,Y:usize> map::TwoDim<X,Y>::*
-# This will include all impl item of the corresponding impl block(s)
+# impl block, e.g.: *@impl StructFoo
+# This will include all impl items of the corresponding impl block(s)
 #
-# If in conflict with other impl options, the 'include' option always wins.
-include_impl_items = ["impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::get", "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set"]
-exclude_impl_items = ["impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>::get", "impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>::set"]
+# --- impl block ---
+# cg-fusion uses a simple approach to identify required items of src code, which is in most cases not
+# capable of identifying dependencies on traits like Display or From. To include these traits in the
+# fusion of challenge, add all required impl blocks by their fully qualified name (see above) to the
+# configuration. If an impl block with a trait is included, than all items of the impl block will be
+# required by fusion of challenge.
+# If you configure an impl block without a trait, the impl items of this block will be added to the
+# impl user dialog. If you want to avoid this dialog, add the required impl items with the above impl
+# item include options to the configuration. In this case you do not need to add the corresponding
+# impl block to the configuration, because every impl block, which contains required items, will be
+# pulled into the fusion automatically.
+[impl_items]
+include = ["get@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>", "set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>"]
+exclude = ["get@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>", "set@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>"]
+[impl_blocks]
+include = ["impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"]
+exclude = ["impl<T:Copy+Clone+Default,constN:usize> Default for MyArray<T,N>"]
 "#
     );
 
     // returning error because of invalid path
-    let test_result = cg_data.impl_config_toml_dialog(&mut mock, &set_and_get_mapping);
+    let test_result = cg_data.impl_config_toml_dialog(&mut mock, &impl_config_mapping);
     assert!(matches!(
         test_result,
         Err(ProcessingError::ChallengeTreeError(
@@ -602,7 +643,7 @@ exclude_impl_items = ["impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>::get
 
     // returning Ok(None) if user skips file path dialog
     let test_result = cg_data
-        .impl_config_toml_dialog(&mut mock, &set_and_get_mapping)
+        .impl_config_toml_dialog(&mut mock, &impl_config_mapping)
         .unwrap();
     assert!(test_result.is_none());
 }

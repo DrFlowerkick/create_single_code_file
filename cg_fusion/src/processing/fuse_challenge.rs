@@ -68,7 +68,6 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
             self.update_required_mod_content(item_mod_index)?;
         }
         // get sorted list of mod items
-        // ToDo: rework get_sorted_mod_content to use item_order and node_mapping
         let mod_content: Vec<Item> = self.get_sorted_mod_content(mod_index)?;
 
         // update current mod
@@ -178,6 +177,7 @@ mod tests {
                 "N (Const)",
                 "Value (Enum)",
                 "Go (Struct)",
+                "impl Default for Go",
                 "impl Go",
                 "MyMap2D (Use)",
                 "Action (Use)",
@@ -207,6 +207,7 @@ mod tests {
                 "N (Const)",
                 "Value (Enum)",
                 "Go (Struct)",
+                "impl Default for Go",
                 "impl Go",
             ]
         );

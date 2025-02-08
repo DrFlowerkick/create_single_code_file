@@ -105,6 +105,8 @@ mod tests {
                 "cg_fusion_binary_test (library crate)::X (Const)",
                 "cg_fusion_binary_test (library crate)::Y (Const)",
                 "cg_fusion_binary_test (library crate)::action (Mod)",
+                "cg_fusion_binary_test (library crate)::impl Default for Go",
+                "cg_fusion_binary_test (library crate)::impl Default for Go::default (Impl Fn)",
                 "cg_fusion_binary_test (library crate)::impl Go",
                 "cg_fusion_binary_test (library crate)::impl Go::apply_action (Impl Fn)",
                 "cg_fusion_binary_test (library crate)::impl Go::new (Impl Fn)",

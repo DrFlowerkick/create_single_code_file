@@ -1,18 +1,56 @@
-# impl config file in TOML format to configure included or excluded impl items of
-# specific user defined types in respectively from challenge.
+# impl config file in TOML format to configure impl items of specific impl blocks to
+# include in or exclude from challenge.
 # file structure:
-# include_impl_items = [include_item_1, include_item_2]
-# exclude_impl_items = [exclude_item_1, exclude_item_2]
+# [impl_items]
+# include = [include_item_1, include_item_2]
+# exclude = [exclude_item_1, exclude_item_2]
+# [impl_blocks]
+# include = [include_impl_block_1, include_impl_block_2]
+# exclude = [exclude_impl_block_1, exclude_impl_block_2]
 #
-# If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add as much
-# information to the name as is required to make the name unique including the name of
-# the user defined type:
-# path::to::module::of::impl_block_of_user_defined_type_name::user_defined_type_name::impl_item_name.
+# If in conflict with other impl options (item or block), the 'include' option always wins.
 #
-# Usage of wildcard '*' for impl item is possible, if at least the name of the user defined type is
-# given. E.g. 'user_defined_type_name::*' will include or exclude all impl items of
-# 'user_defined_type_name'.
+# --- impl items of impl blocks ---
+# impl items are identified by their plain name, e.g.
+# fn my_function() --> my_function
+# const MY_CONST --> MY_CONST
+# If the name of the impl item is ambiguous (e.g. push(), next(), etc.), add the fully
+# qualified name of the impl block containing the impl item. Use the following naming
+# schema:
+# impl_item_name@fully_qualified_name_of_impl_block
 #
-# If in conflict with other impl options, the 'include' option always wins.
-include_impl_items = ["impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set", "x", "y"]
-exclude_impl_items = []
+# A fully qualified name of an impl block consists of up to four components:
+# 1. impl with lifetime and type parameters if applicable, e.g. impl<'a, T: Display>
+# 2. if impl with a trait, than path to trait with lifetime and type parameters if applicable and 'for' keyword, e.g.
+#    convert::From<&str> for
+# 3. path to user defined type with lifetime and type parameters if applicable referenced by impl
+#    block, e.g. map::TwoDim<X, Y>
+# 4. if impl has a where clause, than where clause for type parameters, e.g. where D: Display
+#
+# Specify the components without any whitespace with the exception of one space between trait and
+# 'for' keyword. The components are seperated each by one space.
+# Example 1: impl<constX:usize,constY:usize> map::TwoDim<X,Y>
+# Example 2: impl<'a> From<&'astr> for FooType<'a>
+# Example 3: impl<D> MyPrint for MyType<D> whereD:Display
+#
+# Usage of wildcard '*' for impl item name is possible, but requires a fully qualified name of an
+# impl block, e.g.: impl *@StructFoo
+# This will include all impl items of the corresponding impl block(s)
+#
+# --- impl block ---
+# cg-fusion uses a simple approach to identify required items of src code, which is in most cases not
+# capable of identifying dependencies on traits like Display or From. To include these traits in the
+# fusion of challenge, add all required impl blocks by their fully qualified name (see above) to the
+# configuration. If an impl block with a trait is included, than all items of the impl block will be
+# required by fusion of challenge.
+# If you configure an impl block without a trait, the impl items of this block will be added to the
+# impl user dialog. If you want to avoid this dialog, add the required impl items with the above impl
+# item include options to the configuration. In this case you do not need to add the corresponding
+# impl block to the configuration, because every impl block, which contains required items, will be
+# pulled into the fusion automatically.
+[impl_items]
+include = ["set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>", "x", "y"]
+exclude = []
+[impl_blocks]
+include = []
+exclude = ["impl fmt::Display for Value", "impl Display for Action"]

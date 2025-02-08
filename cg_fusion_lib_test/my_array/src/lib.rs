@@ -127,7 +127,10 @@ impl<T: Copy + Clone + Default, const N: usize> MyArray<T, N> {
     }
 }
 
-impl<T: Copy + Clone + Default, const N: usize> FromIterator<T> for MyArray<T, N> {
+impl<T, const N: usize> FromIterator<T> for MyArray<T, N>
+where
+    T: Copy + Clone + Default,
+{
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut my_array: MyArray<T, N> = MyArray::new();
 

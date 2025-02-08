@@ -5,6 +5,7 @@ use quote::ToTokens;
 use syn::{
     ExprPath, ExprStruct, Generics, Ident, ImplItemMacro, Item, ItemUse, Path, TraitItemMacro,
     Type, TypePath, UseGlob, UseName, UsePath, UseRename, UseTree, VisRestricted, Visibility,
+    WhereClause,
 };
 
 #[derive(Debug, Clone)]
@@ -297,6 +298,7 @@ impl ToTokensExt for Type {}
 impl ToTokensExt for Path {}
 impl ToTokensExt for Generics {}
 impl ToTokensExt for UseTree {}
+impl ToTokensExt for WhereClause {}
 impl ToTokensExt for ItemUse {
     fn to_trimmed_token_string(&self) -> String {
         format!("use {};", self.tree.to_trimmed_token_string())
