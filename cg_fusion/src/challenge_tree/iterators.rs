@@ -161,6 +161,9 @@ impl<O, S> CgData<O, S> {
     }
 }
 
+// ToDo: perhaps we although need an iter over items (enums, structs, unions) of challenge bin and lib,
+// which are not detected as required?
+
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn iter_impl_blocks_without_required_link_of_required_items(
         &self,
@@ -169,7 +172,7 @@ impl<O: CgCli, S> CgData<O, S> {
             .into_iter()
             .flat_map(|v| v.into_iter())
             .flat_map(|n| {
-                self.iter_syn_items(n)
+                self.iter_syn_item_neighbors(n)
                     .filter(|(n, _)| self.is_required_by_challenge(*n))
             })
             .flat_map(|(n, _)| {
@@ -184,7 +187,7 @@ impl<O: CgCli, S> CgData<O, S> {
         self.get_required_crates_and_modules_sorted_by_relevance()
             .into_iter()
             .flat_map(|v| v.into_iter())
-            .flat_map(|n| self.iter_syn_items(n))
+            .flat_map(|n| self.iter_syn_item_neighbors(n))
             .flat_map(|(n, _)| {
                 self.iter_impl_blocks_of_item(n)
                     .filter(|(n, _)| self.is_required_by_challenge(*n))

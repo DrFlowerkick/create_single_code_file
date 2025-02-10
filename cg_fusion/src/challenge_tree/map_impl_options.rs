@@ -223,6 +223,8 @@ impl<O: CgCli, S> CgData<O, S> {
         }
         include_impl_items.sort();
         exclude_impl_items.sort();
+        include_impl_blocks.sort();
+        exclude_impl_blocks.sort();
         Ok(ImplOptions {
             impl_items: InExClude {
                 include: include_impl_items,

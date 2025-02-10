@@ -236,8 +236,6 @@ fn test_impl_item_dialog_include() {
     // preparation
     let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
-    let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
-
     // prepare mock for include
     let mut mock = TestCgDialog::new();
     mock.mock
@@ -248,23 +246,16 @@ fn test_impl_item_dialog_include() {
 
     // assert
     let test_result = cg_data
-        .impl_item_dialog(
-            set_index,
-            my_map_2d_impl_block_index,
-            &mut mock,
-            &mut seen_impl_items,
-        )
+        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
 
-    assert_eq!(test_result, true);
+    assert_eq!(test_result, vec![(set_index, true)]);
 }
 
 #[test]
 fn test_impl_item_dialog_exclude() {
     // preparation
     let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
     // prepare mock for exclude
     let mut mock = TestCgDialog::new();
@@ -276,23 +267,16 @@ fn test_impl_item_dialog_exclude() {
 
     // assert
     let test_result = cg_data
-        .impl_item_dialog(
-            set_index,
-            my_map_2d_impl_block_index,
-            &mut mock,
-            &mut seen_impl_items,
-        )
+        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
 
-    assert_eq!(test_result, false);
+    assert_eq!(test_result, vec![(set_index, false)]);
 }
 
 #[test]
 fn test_impl_item_dialog_include_block_items() {
     // preparation
     let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
     // prepare mock for include all block items
     let mut mock = TestCgDialog::new();
@@ -304,37 +288,21 @@ fn test_impl_item_dialog_include_block_items() {
 
     // assert
     let test_result = cg_data
-        .impl_item_dialog(
-            set_index,
-            my_map_2d_impl_block_index,
-            &mut mock,
-            &mut seen_impl_items,
-        )
+        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
 
-    assert_eq!(test_result, true);
+    let expected_result: Vec<(NodeIndex, bool)> = cg_data
+        .iter_syn_impl_item(my_map_2d_impl_block_index)
+        .filter_map(|(n, _)| (!cg_data.is_required_by_challenge(n)).then_some((n, true)))
+        .collect();
 
-    for (item_index, item) in cg_data.iter_syn_impl_item(my_map_2d_impl_block_index) {
-        match ItemName::from(item)
-            .get_ident_in_name_space()
-            .unwrap()
-            .to_string()
-            .as_str()
-        {
-            // new is required by challenge -> will not be included in seen_impl_items
-            "new" => assert_eq!(seen_impl_items.get(&item_index), None),
-            // everything else is now included in seen_impl_items
-            _ => assert_eq!(seen_impl_items.get(&item_index), Some(&true)),
-        }
-    }
+    assert_eq!(test_result, expected_result);
 }
 
 #[test]
 fn test_impl_item_dialog_exclude_block_items() {
     // preparation
     let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
     // prepare mock for exclude all block items
     let mut mock = TestCgDialog::new();
@@ -346,37 +314,21 @@ fn test_impl_item_dialog_exclude_block_items() {
 
     // assert
     let test_result = cg_data
-        .impl_item_dialog(
-            set_index,
-            my_map_2d_impl_block_index,
-            &mut mock,
-            &mut seen_impl_items,
-        )
+        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
 
-    assert_eq!(test_result, false);
+    let expected_result: Vec<(NodeIndex, bool)> = cg_data
+        .iter_syn_impl_item(my_map_2d_impl_block_index)
+        .filter_map(|(n, _)| (!cg_data.is_required_by_challenge(n)).then_some((n, false)))
+        .collect();
 
-    for (item_index, item) in cg_data.iter_syn_impl_item(my_map_2d_impl_block_index) {
-        match ItemName::from(item)
-            .get_ident_in_name_space()
-            .unwrap()
-            .to_string()
-            .as_str()
-        {
-            // new is required by challenge -> will not be included in seen_impl_items
-            "new" => assert_eq!(seen_impl_items.get(&item_index), None),
-            // everything else is now included in seen_impl_items
-            _ => assert_eq!(seen_impl_items.get(&item_index), Some(&false)),
-        }
-    }
+    assert_eq!(test_result, expected_result);
 }
 
 #[test]
 fn test_impl_item_dialog_show_item_and_include() {
     // preparation
     let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
 
     // prepare mock for include
     let mut mock = TestCgDialog::new();
@@ -393,15 +345,10 @@ fn test_impl_item_dialog_show_item_and_include() {
 
     // assert
     let test_result = cg_data
-        .impl_item_dialog(
-            set_index,
-            my_map_2d_impl_block_index,
-            &mut mock,
-            &mut seen_impl_items,
-        )
+        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
 
-    assert_eq!(test_result, true);
+    assert_eq!(test_result, vec![(set_index, true)]);
     let writer_content = String::from_utf8(mock.dialog.writer.into_inner()).unwrap();
     assert_eq!(
         writer_content,
@@ -421,8 +368,6 @@ fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
     // preparation
     let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
 
-    let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
-
     // prepare mock for include
     let mut mock = TestCgDialog::new();
     mock.mock
@@ -438,15 +383,10 @@ fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
 
     // assert
     let test_result = cg_data
-        .impl_item_dialog(
-            set_index,
-            my_map_2d_impl_block_index,
-            &mut mock,
-            &mut seen_impl_items,
-        )
+        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
         .unwrap();
 
-    assert_eq!(test_result, false);
+    assert_eq!(test_result, vec![(set_index, false)]);
     let writer_content = String::from_utf8(mock.dialog.writer.into_inner()).unwrap();
     assert_eq!(
         writer_content,

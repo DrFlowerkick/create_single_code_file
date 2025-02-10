@@ -4,6 +4,9 @@ use clap::Args;
 use std::fmt::{self, Display};
 use std::path::PathBuf;
 
+// ToDo: add option to include all unambiguous items of required impl blocks, which are used in code
+// ToDo: add option to include all items of challenge crate (bin and lib). Maybe set this default true?
+
 #[derive(Debug, Args)]
 pub struct ProcessingOptions {
     /// If a use glob '*' points to a module, which itself has use globs, these use globs must
@@ -60,7 +63,7 @@ pub struct ProcessingOptions {
     /// 4. if impl has a where clause, than where clause for type parameters, e.g. where D: Display
     ///
     /// Specify the components without any whitespace with the exception of one space between trait and
-    /// 'for' keyword. The components are seperated each by one space.
+    /// 'for' keyword. The components are separated each by one space.
     /// Example 1: impl<constX:usize,constY:usize> map::TwoDim<X,Y>
     /// Example 2: impl<'a> From<&'astr> for FooType<'a>
     /// Example 3: impl<D> MyPrint for MyType<D> whereD:Display

@@ -138,20 +138,20 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 _ => {
                     // no  configuration for impl_item -> do user dialog
                     got_user_input = true;
-                    let user_input = self.impl_item_dialog(
-                        impl_item,
-                        impl_block,
-                        &mut dialog_handler,
-                        &mut seen_impl_items,
-                    )?;
-                    if user_input {
-                        self.add_required_by_challenge_link(impl_block, impl_item)?;
-                        self.add_challenge_links_for_referenced_nodes_of_item(
-                            impl_item,
-                            &mut seen_check_items,
-                        )?;
+                    let user_input =
+                        self.impl_item_dialog(impl_item, impl_block, &mut dialog_handler)?;
+                    for (node, selection) in user_input {
+                        if selection {
+                            self.add_required_by_challenge_link(impl_block, node)?;
+                            self.add_challenge_links_for_referenced_nodes_of_item(
+                                impl_item,
+                                &mut seen_check_items,
+                            )?;
+                            seen_impl_items.insert(node, true);
+                        } else if let Entry::Vacant(entry) = seen_impl_items.entry(node) {
+                            entry.insert(false);
+                        }
                     }
-                    seen_impl_items.insert(impl_item, user_input);
                 }
             }
         }
@@ -183,31 +183,26 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         dialog_item: NodeIndex,
         impl_block: NodeIndex,
         dialog_handler: &mut impl CgDialog<String, String>,
-        seen_impl_items: &mut HashMap<NodeIndex, bool>,
-    ) -> ProcessingResult<bool> {
+    ) -> ProcessingResult<Vec<(NodeIndex, bool)>> {
         loop {
             match self.impl_item_selection(dialog_item, impl_block, dialog_handler)? {
-                UserSelection::IncludeItem => return Ok(true),
-                UserSelection::ExcludeItem => return Ok(false),
+                UserSelection::IncludeItem => return Ok(vec![(dialog_item, true)]),
+                UserSelection::ExcludeItem => return Ok(vec![(dialog_item, false)]),
                 UserSelection::IncludeAllItemsOfImplBlock => {
-                    for (item_index, _) in self
+                    return Ok(self
                         .iter_syn_impl_item(impl_block)
-                        .filter(|(n, _)| !self.is_required_by_challenge(*n))
-                    {
-                        seen_impl_items.insert(item_index, true);
-                    }
-                    return Ok(true);
+                        .filter_map(|(n, _)| {
+                            (!self.is_required_by_challenge(n)).then_some((n, true))
+                        })
+                        .collect());
                 }
                 UserSelection::ExcludeAllItemsOfImplBlock => {
-                    for (item_index, _) in self
+                    return Ok(self
                         .iter_syn_impl_item(impl_block)
-                        .filter(|(n, _)| !self.is_required_by_challenge(*n))
-                    {
-                        if let Entry::Vacant(entry) = seen_impl_items.entry(item_index) {
-                            entry.insert(false);
-                        }
-                    }
-                    return Ok(false);
+                        .filter_map(|(n, _)| {
+                            (!self.is_required_by_challenge(n)).then_some((n, false))
+                        })
+                        .collect());
                 }
                 UserSelection::ShowItem => {
                     let mut message = String::new();
