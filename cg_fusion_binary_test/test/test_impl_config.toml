@@ -1,7 +1,16 @@
 # test config file, see ../cg_fusion/src/challenge_tree/map_impl_options.rs
 [impl_items]
-include = ["new@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>", "set@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>"]
-exclude = ["*@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>"]
+include = [
+    "new@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>",
+    "set@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>"
+]
+exclude = [
+    "*@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>"
+]
 [impl_blocks]
-include = ["impl<T:Copy+Clone+Default,constN:usize> Default for MyArray<T,N>"]
-exclude = ["impl<T,constN:usize> FromIterator<T> for MyArray<T,N> whereT:Copy+Clone+Default,"]
+include = [
+    "impl<T:Copy+Clone+Default,constN:usize> Default for MyArray<T,N>"
+]
+exclude = [
+    "impl<T,constN:usize> FromIterator<T> for MyArray<T,N> whereT:Copy+Clone+Default,"
+]

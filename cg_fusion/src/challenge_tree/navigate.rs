@@ -16,6 +16,7 @@ use anyhow::{anyhow, Context};
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use proc_macro2::Span;
+use std::collections::{HashSet, VecDeque};
 use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, TraitItem};
 
 impl<O, S> CgData<O, S> {
@@ -438,8 +439,80 @@ impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn get_challenge_bin_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
         let bin_name = self.get_challenge_bin_name();
         self.iter_package_crates(0.into())
-            .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
-            .find(|(_, cf)| cf.name == bin_name)
+            .find_map(|(n, crate_type, cf)| (!crate_type && cf.name == bin_name).then_some((n, cf)))
+    }
+
+    pub(crate) fn get_required_crates_and_modules_sorted_by_relevance(
+        &self,
+    ) -> TreeResult<VecDeque<NodeIndex>> {
+        let mut seen: HashSet<NodeIndex> = HashSet::new();
+        let (bin_node, _) = self
+            .get_challenge_bin_crate()
+            .context(add_context!("Expected challenge bin."))?;
+        let sorted_list =
+            self.recursive_list_of_required_crates_and_modules(bin_node, &mut seen)?;
+        Ok(sorted_list)
+    }
+
+    fn recursive_list_of_required_crates_and_modules(
+        &self,
+        node: NodeIndex,
+        seen: &mut HashSet<NodeIndex>,
+    ) -> TreeResult<VecDeque<NodeIndex>> {
+        let mut sorted_list: VecDeque<NodeIndex> = VecDeque::new();
+        if seen.insert(node) {
+            // collect crate dependencies
+            let current_crate_node = self
+                .get_crate_index(node)
+                .context(add_context!("Expected crate index."))?;
+            for crate_node in self
+                .iter_syn_item_neighbors(node)
+                .filter(|(n, _)| self.is_required_by_challenge(*n))
+                .filter_map(|(n, i)| match i {
+                    Item::Use(item_use) => {
+                        if let Ok(PathElement::Item(root_node)) =
+                            self.get_path_root(n, item_use.into())
+                        {
+                            self.get_crate_index(root_node).and_then(|root_crate| {
+                                (root_crate != current_crate_node).then_some(root_crate)
+                            })
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+            {
+                let crate_dependencies =
+                    self.recursive_list_of_required_crates_and_modules(crate_node, seen)?;
+                sorted_list.extend(crate_dependencies);
+            }
+
+            // collect modules of crate
+            let mut modules: VecDeque<NodeIndex> = VecDeque::new();
+            for mod_node in self
+                .iter_syn_item_neighbors(node)
+                .filter(|(n, _)| self.is_required_by_challenge(*n))
+                .filter_map(|(n, i)| match i {
+                    Item::Mod(_) => Some(n),
+                    _ => None,
+                })
+            {
+                let sub_modules =
+                    self.recursive_list_of_required_crates_and_modules(mod_node, seen)?;
+                modules.extend(sub_modules);
+            }
+            // push modules to front
+            if !modules.is_empty() {
+                modules.extend(sorted_list);
+                sorted_list = modules;
+            }
+
+            // add current node to list
+            sorted_list.push_front(node);
+        }
+
+        Ok(sorted_list)
     }
 
     pub(crate) fn get_fusion_file_name(&self) -> String {

@@ -24,7 +24,7 @@ use std::{
     io::Write,
 };
 use syn::spanned::Spanned;
-use toml_edit::{value, Array, DocumentMut};
+use toml_edit::{value, DocumentMut};
 
 pub struct ProcessingImplItemDialogState;
 
@@ -58,7 +58,7 @@ const IMPL_CONFIG_TOML_TEMPLATE: &str = r#"# impl config file in TOML format to 
 # 4. if impl has a where clause, than where clause for type parameters, e.g. where D: Display
 #
 # Specify the components without any whitespace with the exception of one space between trait and
-# 'for' keyword. The components are seperated each by one space.
+# 'for' keyword. The components are separated each by one space.
 # Example 1: impl<constX:usize,constY:usize> map::TwoDim<X,Y>
 # Example 2: impl<'a> From<&'astr> for FooType<'a>
 # Example 3: impl<D> MyPrint for MyType<D> whereD:Display
@@ -86,6 +86,10 @@ include = []
 exclude = []
 "#;
 
+// ToDo: first check items only of challenge package (bin and lib crate)
+// after this check dependencies of challenge
+// ToDo: impl blocks need their own user dialog
+
 impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
     pub fn check_impl_blocks(mut self) -> ProcessingResult<CgData<O, FuseChallengeState>> {
         let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
@@ -98,10 +102,10 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         let mut got_user_input = false;
         while let Some(impl_item) = {
             let next_item_option = self
-                .iter_impl_blocks_without_required_link_of_required_items()
+                .iter_impl_items_without_required_link_in_required_impl_blocks()
                 .map(|(n, _)| n)
                 .chain(
-                    self.iter_impl_items_without_required_link_in_required_impl_blocks()
+                    self.iter_impl_blocks_without_required_link_of_required_items()
                         .map(|(n, _)| n),
                 )
                 .find(|n| (!seen_impl_items.contains_key(n)));
@@ -338,22 +342,10 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             };
             let mut doc = toml_str.parse::<DocumentMut>()?;
             let impl_config = self.map_node_indices_to_impl_config_options(seen_impl_items)?;
-            let mut include_impl_items = Array::new();
-            for include_impl_item in impl_config.impl_items.include.iter() {
-                include_impl_items.push(include_impl_item);
-            }
-            let mut exclude_impl_items = Array::new();
-            for exclude_impl_item in impl_config.impl_items.exclude.iter() {
-                exclude_impl_items.push(exclude_impl_item);
-            }
-            let mut include_impl_blocks = Array::new();
-            for include_impl_block in impl_config.impl_blocks.include.iter() {
-                include_impl_blocks.push(include_impl_block);
-            }
-            let mut exclude_impl_blocks = Array::new();
-            for exclude_impl_block in impl_config.impl_blocks.exclude.iter() {
-                exclude_impl_blocks.push(exclude_impl_block);
-            }
+            let include_impl_items = impl_config.impl_items_include_to_toml_array();
+            let exclude_impl_items = impl_config.impl_items_exclude_to_toml_array();
+            let include_impl_blocks = impl_config.impl_blocks_include_to_toml_array();
+            let exclude_impl_blocks = impl_config.impl_blocks_exclude_to_toml_array();
             doc["impl_items"]["include"] = value(include_impl_items);
             doc["impl_items"]["exclude"] = value(exclude_impl_items);
             doc["impl_blocks"]["include"] = value(include_impl_blocks);

@@ -18,6 +18,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fs;
 use syn::Item;
+use toml_edit::{Array, Value};
 
 #[derive(Debug, Deserialize, Default)]
 pub(crate) struct InExClude {
@@ -29,6 +30,32 @@ pub(crate) struct InExClude {
 pub(crate) struct ImplOptions {
     pub impl_items: InExClude,
     pub impl_blocks: InExClude,
+}
+
+impl ImplOptions {
+    pub(crate) fn impl_items_include_to_toml_array(&self) -> Array {
+        convert_vec_string_to_toml_array(&self.impl_items.include)
+    }
+    pub(crate) fn impl_items_exclude_to_toml_array(&self) -> Array {
+        convert_vec_string_to_toml_array(&self.impl_items.exclude)
+    }
+    pub(crate) fn impl_blocks_include_to_toml_array(&self) -> Array {
+        convert_vec_string_to_toml_array(&self.impl_blocks.include)
+    }
+    pub(crate) fn impl_blocks_exclude_to_toml_array(&self) -> Array {
+        convert_vec_string_to_toml_array(&self.impl_blocks.exclude)
+    }
+}
+
+fn convert_vec_string_to_toml_array(vec_string: &[String]) -> Array {
+    let mut toml_array = Array::new();
+    for element in vec_string.iter() {
+        let formatted = Value::from(element);
+        let formatted = formatted.decorated("\n    ", "");
+        toml_array.push_formatted(formatted);
+    }
+    toml_array.set_trailing("\n");
+    toml_array
 }
 
 #[derive(Debug)]

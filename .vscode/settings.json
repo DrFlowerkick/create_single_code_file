@@ -12,7 +12,6 @@
         "mockall",
         "petgraph",
         "rustup",
-        "seperated",
         "serde",
         "shouty",
         "structopt",

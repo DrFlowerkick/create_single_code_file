@@ -1,7 +1,7 @@
 // iterator fn for the challenge tree
 
 use super::{BfsByEdgeType, EdgeType, LocalPackage, NodeType, SrcFile};
-use crate::CgData;
+use crate::{configuration::CgCli, CgData};
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use syn::{ImplItem, Item, TraitItem};
 
@@ -159,12 +159,16 @@ impl<O, S> CgData<O, S> {
             .flat_map(|(n, _, _)| self.iter_syn(n))
             .filter(|(n, _)| self.is_required_by_challenge(*n))
     }
+}
 
+impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn iter_impl_blocks_without_required_link_of_required_items(
         &self,
     ) -> impl Iterator<Item = (NodeIndex, &Item)> {
-        self.iter_crates()
-            .flat_map(|(n, _, _)| {
+        self.get_required_crates_and_modules_sorted_by_relevance()
+            .into_iter()
+            .flat_map(|v| v.into_iter())
+            .flat_map(|n| {
                 self.iter_syn_items(n)
                     .filter(|(n, _)| self.is_required_by_challenge(*n))
             })
@@ -177,8 +181,10 @@ impl<O, S> CgData<O, S> {
     pub(crate) fn iter_impl_items_without_required_link_in_required_impl_blocks(
         &self,
     ) -> impl Iterator<Item = (NodeIndex, &ImplItem)> {
-        self.iter_crates()
-            .flat_map(|(n, _, _)| self.iter_syn_items(n))
+        self.get_required_crates_and_modules_sorted_by_relevance()
+            .into_iter()
+            .flat_map(|v| v.into_iter())
+            .flat_map(|n| self.iter_syn_items(n))
             .flat_map(|(n, _)| {
                 self.iter_impl_blocks_of_item(n)
                     .filter(|(n, _)| self.is_required_by_challenge(*n))

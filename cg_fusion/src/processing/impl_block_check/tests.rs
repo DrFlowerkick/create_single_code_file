@@ -461,6 +461,31 @@ pub fn apply_action(&mut self, action: Action) {
 }
 
 #[test]
+fn test_list_order_required_modules_and_crates() {
+    // preparation
+    let cg_data = setup_processing_test(false)
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap()
+        .expand_use_statements()
+        .unwrap()
+        .path_minimizing_of_use_and_path_statements()
+        .unwrap()
+        .link_impl_blocks_with_corresponding_item()
+        .unwrap()
+        .link_required_by_challenge()
+        .unwrap();
+
+    let list = cg_data
+        .get_required_crates_and_modules_sorted_by_relevance()
+        .unwrap();
+    for node in list {
+        println!("{}", cg_data.get_verbose_name_of_tree_node(node).unwrap());
+    }
+}
+
+#[test]
 fn test_impl_config_toml_dialog() {
     // preparation
     let cg_data = setup_processing_test(false)
@@ -603,7 +628,7 @@ fn test_impl_config_toml_dialog() {
 # 4. if impl has a where clause, than where clause for type parameters, e.g. where D: Display
 #
 # Specify the components without any whitespace with the exception of one space between trait and
-# 'for' keyword. The components are seperated each by one space.
+# 'for' keyword. The components are separated each by one space.
 # Example 1: impl<constX:usize,constY:usize> map::TwoDim<X,Y>
 # Example 2: impl<'a> From<&'astr> for FooType<'a>
 # Example 3: impl<D> MyPrint for MyType<D> whereD:Display
@@ -624,11 +649,21 @@ fn test_impl_config_toml_dialog() {
 # impl block to the configuration, because every impl block, which contains required items, will be
 # pulled into the fusion automatically.
 [impl_items]
-include = ["get@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>", "set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>"]
-exclude = ["get@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>", "set@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>"]
+include = [
+    "get@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
+    "set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>"
+]
+exclude = [
+    "get@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>",
+    "set@impl<T:Copy+Clone+Default,constN:usize> MyArray<T,N>"
+]
 [impl_blocks]
-include = ["impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"]
-exclude = ["impl<T:Copy+Clone+Default,constN:usize> Default for MyArray<T,N>"]
+include = [
+    "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
+]
+exclude = [
+    "impl<T:Copy+Clone+Default,constN:usize> Default for MyArray<T,N>"
+]
 "#
     );
 
