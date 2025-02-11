@@ -105,6 +105,8 @@ mod tests {
             .unwrap()
             .check_impl_blocks()
             .unwrap()
+            .process_external_dependencies()
+            .unwrap()
             // action to test
             .fuse_challenge()
             .unwrap();

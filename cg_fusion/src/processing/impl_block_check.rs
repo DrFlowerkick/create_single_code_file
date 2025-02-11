@@ -4,7 +4,7 @@
 
 mod inquire_dialog;
 
-use super::{FuseChallengeState, ProcessingError, ProcessingResult};
+use super::{ProcessingError, ProcessingRequiredExternals, ProcessingResult};
 use crate::{
     add_context,
     challenge_tree::EdgeType,
@@ -86,12 +86,10 @@ include = []
 exclude = []
 "#;
 
-// ToDo: first check items only of challenge package (bin and lib crate)
-// after this check dependencies of challenge
 // ToDo: impl blocks need their own user dialog
 
 impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
-    pub fn check_impl_blocks(mut self) -> ProcessingResult<CgData<O, FuseChallengeState>> {
+    pub fn check_impl_blocks(mut self) -> ProcessingResult<CgData<O, ProcessingRequiredExternals>> {
         let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
         let impl_options = self.map_impl_config_options_to_node_indices()?;
         let mut dialog_handler = DialogCli::new(std::io::stdout());
@@ -175,7 +173,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 }
             }
         }
-        Ok(self.set_state(FuseChallengeState))
+        Ok(self.set_state(ProcessingRequiredExternals))
     }
 
     fn impl_item_dialog(

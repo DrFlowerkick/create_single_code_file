@@ -119,5 +119,26 @@ impl<'ast> Visit<'ast> for IdentCollector {
         if *ident == self.ident_name {
             self.ident_collector.push(ident.to_owned());
         }
+        syn::visit::visit_ident(self, ident);
+    }
+}
+
+// visitor to identify write! and writeln! macro usage
+pub struct MacroWriteFinder {
+    pub found_write: bool,
+}
+
+impl MacroWriteFinder {
+    pub fn new() -> Self {
+        Self { found_write: false }
+    }
+}
+
+impl<'ast> Visit<'ast> for MacroWriteFinder {
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        if mac.path.is_ident("write") {
+            self.found_write = true;
+        }
+        syn::visit::visit_macro(self, mac);
     }
 }

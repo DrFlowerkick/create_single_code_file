@@ -2,6 +2,7 @@
 
 use super::{BfsByEdgeType, EdgeType, LocalPackage, NodeType, SrcFile};
 use crate::{configuration::CgCli, CgData};
+use either::Either;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use syn::{ImplItem, Item, TraitItem};
 
@@ -110,6 +111,29 @@ impl<O, S> CgData<O, S> {
             .into_iter(&self.tree)
             .filter_map(|n| self.tree.node_weight(n).map(|w| (n, w)))
             .fuse()
+    }
+
+    pub(crate) fn iter_syn_of_crate_or_module(
+        &self,
+        node: NodeIndex,
+    ) -> impl Iterator<Item = (NodeIndex, &NodeType)> {
+        if !self.is_crate_or_module(node) {
+            return Either::Left(std::iter::empty());
+        }
+        Either::Right(
+            self.iter_syn_item_neighbors(node)
+                .flat_map(|(n, i)| match i {
+                    Item::Mod(_) => Either::Left(std::iter::empty()),
+                    Item::Impl(_) => Either::Right(Either::Left(Either::Left(
+                        self.iter_syn_impl_item(n).map(|(n, _)| n),
+                    ))),
+                    Item::Trait(_) => Either::Right(Either::Left(Either::Right(
+                        self.iter_syn_trait_item(n).map(|(n, _)| n),
+                    ))),
+                    _ => Either::Right(Either::Right(std::iter::once(n))),
+                })
+                .filter_map(|n| self.tree.node_weight(n).map(|nt| (n, nt))),
+        )
     }
 
     pub(crate) fn iter_syn_item_neighbors(

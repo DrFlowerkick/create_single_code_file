@@ -9,9 +9,6 @@ use syn::Item;
 
 pub struct ProcessingRequiredByChallengeState;
 
-// ToDo: if write! is detected, search for use statements, which contain the Write trait and add it.
-// ToDo: add any use statement, which starts with a supported external crate. Or do a dialog for it.
-
 impl<O: CgCli> CgData<O, ProcessingRequiredByChallengeState> {
     pub fn link_required_by_challenge(
         mut self,

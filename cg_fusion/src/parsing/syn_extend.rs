@@ -25,6 +25,14 @@ impl SourcePath {
             SourcePath::Group => None,
         }
     }
+    pub fn get_segments(&self) -> Option<&Vec<Ident>> {
+        match self {
+            SourcePath::Name(segments)
+            | SourcePath::Glob(segments)
+            | SourcePath::Rename(segments, _) => Some(segments),
+            SourcePath::Group => None,
+        }
+    }
     pub fn path_root_is_keyword(&self) -> bool {
         if let SourcePath::Name(segments) = self {
             return segments[0] == "crate" || segments[0] == "super" || segments[0] == "self";

@@ -9,6 +9,7 @@ mod impl_block_check;
 mod impl_linking;
 mod path_minimizing;
 mod required_by_challenge;
+mod required_external_deps;
 mod usage;
 
 pub use crate_src_files::ProcessingSrcFilesState;
@@ -20,6 +21,7 @@ pub use impl_block_check::ProcessingImplItemDialogState;
 pub use impl_linking::ProcessingImplBlocksState;
 pub use path_minimizing::ProcessingCrateUseAndPathState;
 pub use required_by_challenge::ProcessingRequiredByChallengeState;
+pub use required_external_deps::ProcessingRequiredExternals;
 pub use usage::ProcessingUsageState;
 
 use crate::CgData;

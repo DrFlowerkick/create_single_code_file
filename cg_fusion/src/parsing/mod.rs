@@ -5,7 +5,9 @@ mod fold_and_visit;
 mod item_name;
 mod syn_extend;
 pub use error::{ParsingError, ParsingResult};
-pub use fold_and_visit::{FoldRemoveAttrDocComments, IdentCollector, VisitVerbatim};
+pub use fold_and_visit::{
+    FoldRemoveAttrDocComments, IdentCollector, MacroWriteFinder, VisitVerbatim,
+};
 pub use item_name::ItemName;
 pub use syn_extend::{ItemExt, SourcePath, ToTokensExt, UseTreeExt};
 
