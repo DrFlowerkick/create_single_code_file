@@ -191,7 +191,7 @@ impl<O, S> CgData<O, S> {
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn iter_impl_blocks_without_required_link_of_required_items(
         &self,
-    ) -> impl Iterator<Item = (NodeIndex, &Item)> {
+    ) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + use<'_, O, S> {
         self.get_required_crates_and_modules_sorted_by_relevance()
             .into_iter()
             .flat_map(|v| v.into_iter())
@@ -199,15 +199,16 @@ impl<O: CgCli, S> CgData<O, S> {
                 self.iter_syn_item_neighbors(n)
                     .filter(|(n, _)| self.is_required_by_challenge(*n))
             })
-            .flat_map(|(n, _)| {
-                self.iter_impl_blocks_of_item(n)
-                    .filter(|(n, _)| !self.is_required_by_challenge(*n))
+            .flat_map(move |(rn, _)| {
+                self.iter_impl_blocks_of_item(rn).filter_map(move |(n, _)| {
+                    (!self.is_required_by_challenge(n)).then_some((n, rn))
+                })
             })
     }
 
     pub(crate) fn iter_impl_items_without_required_link_in_required_impl_blocks(
         &self,
-    ) -> impl Iterator<Item = (NodeIndex, &ImplItem)> {
+    ) -> impl Iterator<Item = (NodeIndex, NodeIndex)> + use<'_, O, S> {
         self.get_required_crates_and_modules_sorted_by_relevance()
             .into_iter()
             .flat_map(|v| v.into_iter())
@@ -216,12 +217,13 @@ impl<O: CgCli, S> CgData<O, S> {
                 self.iter_impl_blocks_of_item(n)
                     .filter(|(n, _)| self.is_required_by_challenge(*n))
             })
-            .flat_map(|(n, _)| {
-                self.iter_syn_impl_item(n).filter(|(n, _)| {
-                    !self.is_required_by_challenge(*n)
+            .flat_map(move |(rn, _)| {
+                self.iter_syn_impl_item(rn).filter_map(move |(n, _)| {
+                    (!self.is_required_by_challenge(n)
                         && !self
-                            .get_possible_usage_of_impl_item_in_required_items(*n)
-                            .is_empty()
+                            .get_possible_usage_of_impl_item_in_required_items(n)
+                            .is_empty())
+                    .then_some((n, rn))
                 })
             })
     }

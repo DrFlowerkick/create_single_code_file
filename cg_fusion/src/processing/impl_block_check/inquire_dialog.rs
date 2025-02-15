@@ -10,7 +10,7 @@ use inquire::{
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum UserSelection {
+pub enum DialogImplItemSelection {
     IncludeItem,
     ExcludeItem,
     IncludeAllItemsOfImplBlock,
@@ -20,25 +20,85 @@ pub enum UserSelection {
     Quit,
 }
 
-impl TryFrom<Option<usize>> for UserSelection {
+impl TryFrom<Option<usize>> for DialogImplItemSelection {
     type Error = anyhow::Error;
 
     fn try_from(value: Option<usize>) -> Result<Self, Self::Error> {
         if let Some(selection) = value {
             match selection {
-                0 => Ok(UserSelection::IncludeItem),
-                1 => Ok(UserSelection::ExcludeItem),
-                2 => Ok(UserSelection::IncludeAllItemsOfImplBlock),
-                3 => Ok(UserSelection::ExcludeAllItemsOfImplBlock),
-                4 => Ok(UserSelection::ShowItem),
-                5 => Ok(UserSelection::ShowUsageOfItem),
+                0 => Ok(DialogImplItemSelection::IncludeItem),
+                1 => Ok(DialogImplItemSelection::ExcludeItem),
+                2 => Ok(DialogImplItemSelection::IncludeAllItemsOfImplBlock),
+                3 => Ok(DialogImplItemSelection::ExcludeAllItemsOfImplBlock),
+                4 => Ok(DialogImplItemSelection::ShowItem),
+                5 => Ok(DialogImplItemSelection::ShowUsageOfItem),
                 _ => Err(anyhow!(
                     "{}",
-                    add_context!("Expected selection in range of UserSelection.")
+                    add_context!("Expected selection in range of DialogImplItemSelection.")
                 )),
             }
         } else {
-            Ok(UserSelection::Quit)
+            Ok(DialogImplItemSelection::Quit)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum DialogImplBlockSelection {
+    IncludeImplBlock,
+    ExcludeImplBlock,
+    IncludeAllItemsOfImplBlock,
+    ShowImplBlock,
+    Quit,
+}
+
+impl TryFrom<Option<usize>> for DialogImplBlockSelection {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Option<usize>) -> Result<Self, Self::Error> {
+        if let Some(selection) = value {
+            match selection {
+                0 => Ok(DialogImplBlockSelection::IncludeImplBlock),
+                1 => Ok(DialogImplBlockSelection::ExcludeImplBlock),
+                2 => Ok(DialogImplBlockSelection::IncludeAllItemsOfImplBlock),
+                3 => Ok(DialogImplBlockSelection::ShowImplBlock),
+                _ => Err(anyhow!(
+                    "{}",
+                    add_context!("Expected selection in range of DialogImplBlockSelection.")
+                )),
+            }
+        } else {
+            Ok(DialogImplBlockSelection::Quit)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum DialogImplBlockWithTraitSelection {
+    IncludeImplBlock,
+    ExcludeImplBlock,
+    ShowImplBlock,
+    Quit,
+}
+
+impl TryFrom<Option<usize>> for DialogImplBlockWithTraitSelection {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Option<usize>) -> Result<Self, Self::Error> {
+        if let Some(selection) = value {
+            match selection {
+                0 => Ok(DialogImplBlockWithTraitSelection::IncludeImplBlock),
+                1 => Ok(DialogImplBlockWithTraitSelection::ExcludeImplBlock),
+                2 => Ok(DialogImplBlockWithTraitSelection::ShowImplBlock),
+                _ => Err(anyhow!(
+                    "{}",
+                    add_context!(
+                        "Expected selection in range of DialogImplBlockWithTraitSelection."
+                    )
+                )),
+            }
+        } else {
+            Ok(DialogImplBlockWithTraitSelection::Quit)
         }
     }
 }

@@ -1,7 +1,7 @@
 // testing selection and dialog
 
 use crate::{
-    challenge_tree::{ChallengeTreeError, NodeType},
+    challenge_tree::{ChallengeTreeError, EdgeType, NodeType},
     configuration::FusionCli,
     parsing::ItemName,
     utilities::MockCgDialog,
@@ -16,20 +16,6 @@ use inquire::validator::StringValidator;
 use mockall::predicate::*;
 use once_cell::sync::Lazy;
 use std::{fmt::Display, io::Cursor};
-
-const PROMPT: &str = "Found 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)' of required 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'.";
-const HELP: &str = "↑↓ to move, enter to select, type to filter, and esc to quit.";
-
-static OPTIONS: Lazy<Vec<String>> = Lazy::new(|| {
-    vec![
-        String::from("Include 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
-        String::from("Exclude 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
-        String::from("Include all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'."),
-        String::from("Exclude all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'."),
-        String::from("Show code of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
-        String::from("Show usage of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
-    ]
-});
 
 // Wrapper of Mock
 struct TestCgDialog<S: Display + 'static, M: Display + 'static> {
@@ -71,13 +57,43 @@ impl<S: Display + 'static, M: Display + 'static> CgDialog<S, M> for TestCgDialog
     }
 }
 
-fn prepare_test() -> (
-    CgData<FusionCli, ProcessingImplItemDialogState>,
-    NodeIndex,
-    NodeIndex,
-) {
+#[cfg(test)]
+mod impl_item;
+
+#[cfg(test)]
+mod impl_block;
+
+#[cfg(test)]
+mod impl_block_with_trait;
+
+// ToDo: delete this later. Just keep it for further debugging
+use crate::{configuration::CargoCli, CgDataBuilder, CgMode, ProcessingDependenciesState};
+use petgraph::{visit::EdgeRef, Direction};
+
+fn setup_processing_test_ult_tic_tac_toe(
+    impl_config: bool,
+) -> CgData<FusionCli, ProcessingDependenciesState> {
+    let mut fusion_options = FusionCli::default();
+    fusion_options.set_manifest_path("../../cg_ultimate_tic_tac_toe/Cargo.toml".into());
+    if impl_config {
+        fusion_options
+            .set_impl_item_toml("../../cg_ultimate_tic_tac_toe/cg-fusion_config.toml".into());
+    }
+
+    let cg_data = match CgDataBuilder::new()
+        .set_options(CargoCli::CgFusion(fusion_options))
+        .set_command()
+        .build()
+        .unwrap()
+    {
+        CgMode::Fusion(cg_data) => cg_data,
+    };
+    cg_data
+}
+#[test]
+fn test_whats_up_with_tictactoe_status() {
     // preparation
-    let cg_data = setup_processing_test(false)
+    let cg_data = setup_processing_test_ult_tic_tac_toe(false)
         .add_challenge_dependencies()
         .unwrap()
         .add_src_files()
@@ -91,337 +107,107 @@ fn prepare_test() -> (
         .link_required_by_challenge()
         .unwrap();
 
-    // get impl item index not required by challenge
-    let set_index = cg_data
+    let enum_tictactoe_status_node = cg_data
         .iter_crates()
         .flat_map(|(n, _, _)| cg_data.iter_syn(n))
-        .filter_map(|(n, nt)| match nt {
-            NodeType::SynImplItem(impl_item) => {
-                if let Some(name) = ItemName::from(impl_item).get_ident_in_name_space() {
-                    (name == "set").then_some(n)
+        .find_map(|(n, i)| {
+            if let NodeType::SynItem(Item::Enum(item_enum)) = i {
+                (item_enum.ident == "TicTacToeStatus").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    println!(
+        "linked nodes for {}",
+        cg_data
+            .get_verbose_name_of_tree_node(enum_tictactoe_status_node)
+            .unwrap()
+    );
+    for (linked_node, edge_type, direction) in cg_data
+        .tree
+        .edges_directed(enum_tictactoe_status_node, Direction::Incoming)
+        .map(|e| (e.source(), e.weight(), Direction::Incoming))
+        .chain(
+            cg_data
+                .tree
+                .edges_directed(enum_tictactoe_status_node, Direction::Outgoing)
+                .map(|e| (e.target(), e.weight(), Direction::Outgoing)),
+        )
+    {
+        println!(
+            "'{}', et: {:?}, dir: {:?}",
+            cg_data.get_verbose_name_of_tree_node(linked_node).unwrap(),
+            edge_type,
+            direction
+        );
+    }
+
+    let impl_tictactoe_status_node = cg_data
+        .iter_crates()
+        .flat_map(|(n, _, _)| cg_data.iter_syn(n))
+        .find_map(|(n, i)| {
+            if let NodeType::SynItem(item) = i {
+                if let ItemName::ImplBlockIdentifier(name) = ItemName::from(item) {
+                    (name == "impl TicTacToeStatus").then_some(n)
                 } else {
                     None
                 }
+            } else {
+                None
             }
-            _ => None,
-        })
-        .find(|n| {
-            let parent = cg_data
-                .get_parent_index_by_edge_type(*n, EdgeType::Syn)
-                .unwrap();
-            let parent_name = cg_data.get_verbose_name_of_tree_node(parent).unwrap();
-            parent_name == "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>"
         })
         .unwrap();
-    let my_map_2d_impl_block_index = cg_data
-        .get_parent_index_by_edge_type(set_index, EdgeType::Syn)
-        .unwrap();
-    (cg_data, set_index, my_map_2d_impl_block_index)
-}
 
-#[test]
-fn test_impl_item_selection() {
-    // preparation
-    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    // prepare mock for include
-    let mut mock = TestCgDialog::new();
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[0].to_owned())));
-
-    // prepare mock for exclude
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[1].to_owned())));
-
-    // prepare mock for include block items
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[2].to_owned())));
-
-    // prepare mock for exclude block items
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[3].to_owned())));
-
-    // prepare mock for show item
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[4].to_owned())));
-
-    // prepare mock for show usage of item
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[5].to_owned())));
-
-    // prepare mock for use quits
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(None));
-
-    // prepare mock for show usage of item
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some("Some bad output".into())));
-
-    // test and assert
-    // include
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::IncludeItem);
-
-    // exclude
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::ExcludeItem);
-
-    // include block items
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::IncludeAllItemsOfImplBlock);
-
-    // exclude block items
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::ExcludeAllItemsOfImplBlock);
-
-    // show item
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::ShowItem);
-
-    // show usage of item
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::ShowUsageOfItem);
-
-    // user quits
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::Quit);
-
-    // bad output
-    let test_result = cg_data
-        .impl_item_selection(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-    assert_eq!(test_result, UserSelection::Quit);
-}
-
-#[test]
-fn test_impl_item_dialog_include() {
-    // preparation
-    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    // prepare mock for include
-    let mut mock = TestCgDialog::new();
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[0].to_owned())));
-
-    // assert
-    let test_result = cg_data
-        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-
-    assert_eq!(test_result, vec![(set_index, true)]);
-}
-
-#[test]
-fn test_impl_item_dialog_exclude() {
-    // preparation
-    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    // prepare mock for exclude
-    let mut mock = TestCgDialog::new();
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[1].to_owned())));
-
-    // assert
-    let test_result = cg_data
-        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-
-    assert_eq!(test_result, vec![(set_index, false)]);
-}
-
-#[test]
-fn test_impl_item_dialog_include_block_items() {
-    // preparation
-    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    // prepare mock for include all block items
-    let mut mock = TestCgDialog::new();
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[2].to_owned())));
-
-    // assert
-    let test_result = cg_data
-        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-
-    let expected_result: Vec<(NodeIndex, bool)> = cg_data
-        .iter_syn_impl_item(my_map_2d_impl_block_index)
-        .filter_map(|(n, _)| (!cg_data.is_required_by_challenge(n)).then_some((n, true)))
-        .collect();
-
-    assert_eq!(test_result, expected_result);
-}
-
-#[test]
-fn test_impl_item_dialog_exclude_block_items() {
-    // preparation
-    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    // prepare mock for exclude all block items
-    let mut mock = TestCgDialog::new();
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[3].to_owned())));
-
-    // assert
-    let test_result = cg_data
-        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-
-    let expected_result: Vec<(NodeIndex, bool)> = cg_data
-        .iter_syn_impl_item(my_map_2d_impl_block_index)
-        .filter_map(|(n, _)| (!cg_data.is_required_by_challenge(n)).then_some((n, false)))
-        .collect();
-
-    assert_eq!(test_result, expected_result);
-}
-
-#[test]
-fn test_impl_item_dialog_show_item_and_include() {
-    // preparation
-    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    // prepare mock for include
-    let mut mock = TestCgDialog::new();
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[4].to_owned())));
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[0].to_owned())));
-
-    // assert
-    let test_result = cg_data
-        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-
-    assert_eq!(test_result, vec![(set_index, true)]);
-    let writer_content = String::from_utf8(mock.dialog.writer.into_inner()).unwrap();
-    assert_eq!(
-        writer_content,
-        r#"
-C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\lib.rs:50:5
-pub fn set(&mut self, coordinates: MapPoint<X, Y>, value: T) -> &T {
-        self.items[coordinates.y()][coordinates.x()] = value;
-        &self.items[coordinates.y()][coordinates.x()]
+    println!(
+        "linked nodes for {}",
+        cg_data
+            .get_verbose_name_of_tree_node(impl_tictactoe_status_node)
+            .unwrap()
+    );
+    for (linked_node, edge_type, direction) in cg_data
+        .tree
+        .edges_directed(impl_tictactoe_status_node, Direction::Incoming)
+        .map(|e| (e.source(), e.weight(), Direction::Incoming))
+        .chain(
+            cg_data
+                .tree
+                .edges_directed(impl_tictactoe_status_node, Direction::Outgoing)
+                .map(|e| (e.target(), e.weight(), Direction::Outgoing)),
+        )
+    {
+        println!(
+            "'{}', et: {:?}, dir: {:?}",
+            cg_data.get_verbose_name_of_tree_node(linked_node).unwrap(),
+            edge_type,
+            direction
+        );
     }
 
-"#
-    );
-}
-
-#[test]
-fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
-    // preparation
-    let (cg_data, set_index, my_map_2d_impl_block_index) = prepare_test();
-
-    // prepare mock for include
-    let mut mock = TestCgDialog::new();
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[5].to_owned())));
-    mock.mock
-        .expect_select_option()
-        .times(1)
-        .with(eq(PROMPT), eq(HELP), eq(OPTIONS.to_owned()))
-        .return_once(|_, _, _| Ok(Some(OPTIONS[1].to_owned())));
-
-    // assert
-    let test_result = cg_data
-        .impl_item_dialog(set_index, my_map_2d_impl_block_index, &mut mock)
-        .unwrap();
-
-    assert_eq!(test_result, vec![(set_index, false)]);
-    let writer_content = String::from_utf8(mock.dialog.writer.into_inner()).unwrap();
-    assert_eq!(
-        writer_content,
-        r#"
-C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_binary_test\src\lib.rs:48:20
-pub fn apply_action(&mut self, action: Action) {
-        self.board.set(action.cell, action.value);
-    }
-
-"#
-    );
-}
-
-#[test]
-fn test_list_order_required_modules_and_crates() {
-    // preparation
-    let cg_data = setup_processing_test(false)
-        .add_challenge_dependencies()
-        .unwrap()
-        .add_src_files()
-        .unwrap()
-        .expand_use_statements()
-        .unwrap()
-        .path_minimizing_of_use_and_path_statements()
-        .unwrap()
-        .link_impl_blocks_with_corresponding_item()
-        .unwrap()
-        .link_required_by_challenge()
-        .unwrap();
-
-    let list = cg_data
-        .get_required_crates_and_modules_sorted_by_relevance()
-        .unwrap();
-    for node in list {
-        println!("{}", cg_data.get_verbose_name_of_tree_node(node).unwrap());
+    for (impl_item, _) in cg_data.iter_syn_impl_item(impl_tictactoe_status_node) {
+        println!(
+            "linked nodes for {}",
+            cg_data.get_verbose_name_of_tree_node(impl_item).unwrap()
+        );
+        for (linked_node, edge_type, direction) in cg_data
+            .tree
+            .edges_directed(impl_item, Direction::Incoming)
+            .map(|e| (e.source(), e.weight(), Direction::Incoming))
+            .chain(
+                cg_data
+                    .tree
+                    .edges_directed(impl_item, Direction::Outgoing)
+                    .map(|e| (e.target(), e.weight(), Direction::Outgoing)),
+            )
+        {
+            println!(
+                "'{}', et: {:?}, dir: {:?}",
+                cg_data.get_verbose_name_of_tree_node(linked_node).unwrap(),
+                edge_type,
+                direction
+            );
+        }
     }
 }
 

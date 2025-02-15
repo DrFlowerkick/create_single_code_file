@@ -16,7 +16,6 @@ use syn::{visit::Visit, Item};
 
 pub struct ProcessingRequiredExternals;
 
-// ToDo: add verbose output
 impl<O: CgCli> CgData<O, ProcessingRequiredExternals> {
     pub fn process_external_dependencies(
         mut self,

@@ -7,14 +7,17 @@ mod inquire_dialog;
 use super::{ProcessingError, ProcessingRequiredExternals, ProcessingResult};
 use crate::{
     add_context,
-    challenge_tree::EdgeType,
+    challenge_tree::NodeType,
     configuration::CgCliImplDialog,
     utilities::{clean_absolute_utf8, current_dir_utf8, get_relative_path, CgDialog, DialogCli},
     CgData,
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use cargo_metadata::camino::Utf8PathBuf;
-use inquire_dialog::{ConfigFilePathValidator, UserSelection};
+use inquire_dialog::{
+    ConfigFilePathValidator, DialogImplBlockSelection, DialogImplBlockWithTraitSelection,
+    DialogImplItemSelection,
+};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::hash_map::Entry;
 use std::{
@@ -23,7 +26,7 @@ use std::{
     fs,
     io::Write,
 };
-use syn::spanned::Spanned;
+use syn::{spanned::Spanned, Item};
 use toml_edit::{value, DocumentMut};
 
 pub struct ProcessingImplItemDialogState;
@@ -86,11 +89,9 @@ include = []
 exclude = []
 "#;
 
-// ToDo: impl blocks need their own user dialog
-
 impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
     pub fn check_impl_blocks(mut self) -> ProcessingResult<CgData<O, ProcessingRequiredExternals>> {
-        let mut seen_impl_items: HashMap<NodeIndex, bool> = HashMap::new();
+        let mut seen_dialog_items: HashMap<NodeIndex, bool> = HashMap::new();
         let impl_options = self.map_impl_config_options_to_node_indices()?;
         let mut dialog_handler = DialogCli::new(std::io::stdout());
         let mut seen_check_items: HashSet<NodeIndex> = self
@@ -98,55 +99,48 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             .map(|(n, _)| n)
             .collect();
         let mut got_user_input = false;
-        while let Some(impl_item) = {
+        while let Some((dialog_item, required_node)) = {
             let next_item_option = self
                 .iter_impl_items_without_required_link_in_required_impl_blocks()
-                .map(|(n, _)| n)
-                .chain(
-                    self.iter_impl_blocks_without_required_link_of_required_items()
-                        .map(|(n, _)| n),
-                )
-                .find(|n| (!seen_impl_items.contains_key(n)));
+                .chain(self.iter_impl_blocks_without_required_link_of_required_items())
+                .find(|(n, _)| (!seen_dialog_items.contains_key(n)));
             next_item_option
         } {
-            let impl_block = self
-                .get_parent_index_by_edge_type(impl_item, EdgeType::Syn)
-                .unwrap();
             match (
-                impl_options.get(&impl_item),
+                impl_options.get(&dialog_item),
                 self.options.processing().process_all_impl_items,
             ) {
                 (Some(true), _) | (_, Some(true)) => {
-                    self.add_required_by_challenge_link(impl_block, impl_item)?;
+                    self.add_required_by_challenge_link(required_node, dialog_item)?;
                     self.add_challenge_links_for_referenced_nodes_of_item(
-                        impl_item,
+                        dialog_item,
                         &mut seen_check_items,
                     )?;
-                    seen_impl_items.insert(impl_item, true);
+                    seen_dialog_items.insert(dialog_item, true);
                 }
                 (Some(false), _) | (_, Some(false)) => {
                     if self.options.verbose() {
                         println!(
                             "Excluding impl item '{}'",
-                            self.get_verbose_name_of_tree_node(impl_item)?
+                            self.get_verbose_name_of_tree_node(dialog_item)?
                         );
                     }
-                    seen_impl_items.insert(impl_item, false);
+                    seen_dialog_items.insert(dialog_item, false);
                 }
                 _ => {
-                    // no  configuration for impl_item -> do user dialog
+                    // no  configuration for dialog_item -> do user dialog
                     got_user_input = true;
                     let user_input =
-                        self.impl_item_dialog(impl_item, impl_block, &mut dialog_handler)?;
+                        self.impl_dialog(dialog_item, required_node, &mut dialog_handler)?;
                     for (node, selection) in user_input {
                         if selection {
-                            self.add_required_by_challenge_link(impl_block, node)?;
+                            self.add_required_by_challenge_link(required_node, node)?;
                             self.add_challenge_links_for_referenced_nodes_of_item(
-                                impl_item,
+                                node,
                                 &mut seen_check_items,
                             )?;
-                            seen_impl_items.insert(node, true);
-                        } else if let Entry::Vacant(entry) = seen_impl_items.entry(node) {
+                            seen_dialog_items.insert(node, true);
+                        } else if let Entry::Vacant(entry) = seen_dialog_items.entry(node) {
                             entry.insert(false);
                         }
                     }
@@ -156,7 +150,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         // if at least once user input was required, show dialog to save impl config file.
         if got_user_input {
             if let Some((toml_path, toml_content)) =
-                self.impl_config_toml_dialog(&mut dialog_handler, &seen_impl_items)?
+                self.impl_config_toml_dialog(&mut dialog_handler, &seen_dialog_items)?
             {
                 let confirmation = if toml_path.exists() {
                     let prompt = format!("Overwriting existing impl config file '{}'?", toml_path);
@@ -176,17 +170,38 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
         Ok(self.set_state(ProcessingRequiredExternals))
     }
 
-    fn impl_item_dialog(
+    fn impl_dialog(
         &self,
         dialog_item: NodeIndex,
+        required_node: NodeIndex,
+        dialog_handler: &mut impl CgDialog<String, String>,
+    ) -> ProcessingResult<Vec<(NodeIndex, bool)>> {
+        if self.is_syn_impl_item(dialog_item) {
+            self.impl_item_dialog(dialog_item, required_node, dialog_handler)
+        } else if let Some(NodeType::SynItem(Item::Impl(item_impl))) =
+            self.tree.node_weight(dialog_item)
+        {
+            if item_impl.trait_.is_some() {
+                self.impl_block_with_trait_dialog(dialog_item, required_node, dialog_handler)
+            } else {
+                self.impl_block_dialog(dialog_item, required_node, dialog_handler)
+            }
+        } else {
+            Err(anyhow!(add_context!("Expected either impl item or block")).into())
+        }
+    }
+
+    fn impl_item_dialog(
+        &self,
+        impl_item: NodeIndex,
         impl_block: NodeIndex,
         dialog_handler: &mut impl CgDialog<String, String>,
     ) -> ProcessingResult<Vec<(NodeIndex, bool)>> {
         loop {
-            match self.impl_item_selection(dialog_item, impl_block, dialog_handler)? {
-                UserSelection::IncludeItem => return Ok(vec![(dialog_item, true)]),
-                UserSelection::ExcludeItem => return Ok(vec![(dialog_item, false)]),
-                UserSelection::IncludeAllItemsOfImplBlock => {
+            match self.impl_item_selection(impl_item, impl_block, dialog_handler)? {
+                DialogImplItemSelection::IncludeItem => return Ok(vec![(impl_item, true)]),
+                DialogImplItemSelection::ExcludeItem => return Ok(vec![(impl_item, false)]),
+                DialogImplItemSelection::IncludeAllItemsOfImplBlock => {
                     return Ok(self
                         .iter_syn_impl_item(impl_block)
                         .filter_map(|(n, _)| {
@@ -194,7 +209,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                         })
                         .collect());
                 }
-                UserSelection::ExcludeAllItemsOfImplBlock => {
+                DialogImplItemSelection::ExcludeAllItemsOfImplBlock => {
                     return Ok(self
                         .iter_syn_impl_item(impl_block)
                         .filter_map(|(n, _)| {
@@ -202,12 +217,12 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                         })
                         .collect());
                 }
-                UserSelection::ShowItem => {
+                DialogImplItemSelection::ShowItem => {
                     let mut message = String::new();
                     // extracting source code span of dialog item
-                    if let Some(impl_item) = self.get_syn_impl_item(dialog_item) {
-                        if let Some(src_file) = self.get_src_file_containing_item(dialog_item) {
-                            let span = impl_item.span();
+                    if let Some(ii) = self.get_syn_impl_item(impl_item) {
+                        if let Some(src_file) = self.get_src_file_containing_item(impl_item) {
+                            let span = ii.span();
                             if let Some(impl_item_source) = span.source_text() {
                                 writeln!(
                                     &mut message,
@@ -223,16 +238,16 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                     if message.is_empty() {
                         message = format!(
                             "Something went wrong with extracting source code span of '{}'",
-                            self.get_verbose_name_of_tree_node(dialog_item)?
+                            self.get_verbose_name_of_tree_node(impl_item)?
                         );
                     }
                     dialog_handler.write_output(message)?;
                 }
-                UserSelection::ShowUsageOfItem => {
+                DialogImplItemSelection::ShowUsageOfItem => {
                     let mut message = String::new();
                     // extracting source code span of dialog item
                     for (node_index, src_span, ident) in self
-                        .get_possible_usage_of_impl_item_in_required_items(dialog_item)
+                        .get_possible_usage_of_impl_item_in_required_items(impl_item)
                         .iter()
                     {
                         if let Some(src_file) = self.get_src_file_containing_item(*node_index) {
@@ -252,35 +267,35 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                     if message.is_empty() {
                         message = format!(
                             "Something went wrong with extracting source code span using '{}'",
-                            self.get_verbose_name_of_tree_node(dialog_item)?
+                            self.get_verbose_name_of_tree_node(impl_item)?
                         );
                     }
                     dialog_handler.write_output(message)?;
                 }
-                UserSelection::Quit => return Err(ProcessingError::UserCanceledDialog),
+                DialogImplItemSelection::Quit => return Err(ProcessingError::UserCanceledDialog),
             }
         }
     }
 
     fn impl_item_selection(
         &self,
-        dialog_item: NodeIndex,
+        impl_item: NodeIndex,
         impl_block: NodeIndex,
         dialog_handler: &mut impl CgDialog<String, String>,
-    ) -> ProcessingResult<UserSelection> {
-        let dialog_item_name = self.get_verbose_name_of_tree_node(dialog_item)?;
+    ) -> ProcessingResult<DialogImplItemSelection> {
+        let impl_item_name = self.get_verbose_name_of_tree_node(impl_item)?;
         let impl_block_name = self.get_verbose_name_of_tree_node(impl_block)?;
         let prompt = format!(
             "Found '{}' of required '{}'.",
-            dialog_item_name, impl_block_name
+            impl_item_name, impl_block_name
         );
         let options = vec![
-            format!("Include '{}'.", dialog_item_name),
-            format!("Exclude '{}'.", dialog_item_name),
+            format!("Include '{}'.", impl_item_name),
+            format!("Exclude '{}'.", impl_item_name),
             format!("Include all items of '{}'.", impl_block_name),
             format!("Exclude all items of '{}'.", impl_block_name),
-            format!("Show code of '{}'.", dialog_item_name),
-            format!("Show usage of '{}'.", dialog_item_name),
+            format!("Show code of '{}'.", impl_item_name),
+            format!("Show usage of '{}'.", impl_item_name),
         ];
         if let Some(selection) = dialog_handler.select_option(
             &prompt,
@@ -288,16 +303,174 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             options.clone(),
         )? {
             let user_selection =
-                UserSelection::try_from(options.iter().position(|o| *o == selection))?;
+                DialogImplItemSelection::try_from(options.iter().position(|o| *o == selection))?;
             return Ok(user_selection);
         }
-        Ok(UserSelection::Quit)
+        Ok(DialogImplItemSelection::Quit)
+    }
+
+    fn impl_block_dialog(
+        &self,
+        impl_block: NodeIndex,
+        required_node: NodeIndex,
+        dialog_handler: &mut impl CgDialog<String, String>,
+    ) -> ProcessingResult<Vec<(NodeIndex, bool)>> {
+        loop {
+            match self.impl_block_selection(impl_block, required_node, dialog_handler)? {
+                DialogImplBlockSelection::IncludeImplBlock => return Ok(vec![(impl_block, true)]),
+                DialogImplBlockSelection::ExcludeImplBlock => return Ok(vec![(impl_block, false)]),
+                DialogImplBlockSelection::IncludeAllItemsOfImplBlock => {
+                    // by adding impl items of impl block, impl block will automatically link as required
+                    return Ok(self
+                        .iter_syn_impl_item(impl_block)
+                        .filter_map(|(n, _)| {
+                            (!self.is_required_by_challenge(n)).then_some((n, true))
+                        })
+                        .collect());
+                }
+                DialogImplBlockSelection::ShowImplBlock => {
+                    let mut message = String::new();
+                    // extracting source code span of dialog item
+                    if let Some(item) = self.get_syn_item(impl_block) {
+                        if let Some(src_file) = self.get_src_file_containing_item(impl_block) {
+                            let span = item.span();
+                            if let Some(impl_item_source) = span.source_text() {
+                                writeln!(
+                                    &mut message,
+                                    "\n{}:{}:{}\n{}\n",
+                                    src_file.path,
+                                    span.start().line,
+                                    span.start().column + 1,
+                                    impl_item_source,
+                                )?;
+                            }
+                        }
+                    }
+                    if message.is_empty() {
+                        message = format!(
+                            "Something went wrong with extracting source code span of '{}'",
+                            self.get_verbose_name_of_tree_node(impl_block)?
+                        );
+                    }
+                    dialog_handler.write_output(message)?;
+                }
+                DialogImplBlockSelection::Quit => return Err(ProcessingError::UserCanceledDialog),
+            }
+        }
+    }
+
+    fn impl_block_selection(
+        &self,
+        impl_block: NodeIndex,
+        required_node: NodeIndex,
+        dialog_handler: &mut impl CgDialog<String, String>,
+    ) -> ProcessingResult<DialogImplBlockSelection> {
+        let impl_block_name = self.get_verbose_name_of_tree_node(impl_block)?;
+        let required_node_name = self.get_verbose_name_of_tree_node(required_node)?;
+        let prompt = format!(
+            "Found '{}' of required '{}'.",
+            impl_block_name, required_node_name
+        );
+        let options = vec![
+            format!("Include '{}'.", impl_block_name),
+            format!("Exclude '{}'.", impl_block_name),
+            format!("Include all items of '{}'.", impl_block_name),
+            format!("Show code of '{}'.", impl_block_name),
+        ];
+        if let Some(selection) = dialog_handler.select_option(
+            &prompt,
+            "↑↓ to move, enter to select, type to filter, and esc to quit.",
+            options.clone(),
+        )? {
+            let user_selection =
+                DialogImplBlockSelection::try_from(options.iter().position(|o| *o == selection))?;
+            return Ok(user_selection);
+        }
+        Ok(DialogImplBlockSelection::Quit)
+    }
+
+    fn impl_block_with_trait_dialog(
+        &self,
+        impl_block: NodeIndex,
+        required_node: NodeIndex,
+        dialog_handler: &mut impl CgDialog<String, String>,
+    ) -> ProcessingResult<Vec<(NodeIndex, bool)>> {
+        loop {
+            match self.impl_block_with_trait_selection(impl_block, required_node, dialog_handler)? {
+                DialogImplBlockWithTraitSelection::IncludeImplBlock => {
+                    return Ok(vec![(impl_block, true)])
+                }
+                DialogImplBlockWithTraitSelection::ExcludeImplBlock => {
+                    return Ok(vec![(impl_block, false)])
+                }
+                DialogImplBlockWithTraitSelection::ShowImplBlock => {
+                    let mut message = String::new();
+                    // extracting source code span of dialog item
+                    if let Some(item) = self.get_syn_item(impl_block) {
+                        if let Some(src_file) = self.get_src_file_containing_item(impl_block) {
+                            let span = item.span();
+                            if let Some(impl_item_source) = span.source_text() {
+                                writeln!(
+                                    &mut message,
+                                    "\n{}:{}:{}\n{}\n",
+                                    src_file.path,
+                                    span.start().line,
+                                    span.start().column + 1,
+                                    impl_item_source,
+                                )?;
+                            }
+                        }
+                    }
+                    if message.is_empty() {
+                        message = format!(
+                            "Something went wrong with extracting source code span of '{}'",
+                            self.get_verbose_name_of_tree_node(impl_block)?
+                        );
+                    }
+                    dialog_handler.write_output(message)?;
+                }
+                DialogImplBlockWithTraitSelection::Quit => {
+                    return Err(ProcessingError::UserCanceledDialog)
+                }
+            }
+        }
+    }
+
+    fn impl_block_with_trait_selection(
+        &self,
+        impl_block: NodeIndex,
+        required_node: NodeIndex,
+        dialog_handler: &mut impl CgDialog<String, String>,
+    ) -> ProcessingResult<DialogImplBlockWithTraitSelection> {
+        let impl_block_name = self.get_verbose_name_of_tree_node(impl_block)?;
+        let required_node_name = self.get_verbose_name_of_tree_node(required_node)?;
+        let prompt = format!(
+            "Found '{}' of required '{}'.",
+            impl_block_name, required_node_name
+        );
+        let options = vec![
+            format!("Include '{}'.", impl_block_name),
+            format!("Exclude '{}'.", impl_block_name),
+            format!("Show code of '{}'.", impl_block_name),
+        ];
+
+        if let Some(selection) = dialog_handler.select_option(
+            &prompt,
+            "↑↓ to move, enter to select, type to filter, and esc to quit.",
+            options.clone(),
+        )? {
+            let user_selection = DialogImplBlockWithTraitSelection::try_from(
+                options.iter().position(|o| *o == selection),
+            )?;
+            return Ok(user_selection);
+        }
+        Ok(DialogImplBlockWithTraitSelection::Quit)
     }
 
     fn impl_config_toml_dialog(
         &self,
         dialog_handler: &mut impl CgDialog<String, String>,
-        seen_impl_items: &HashMap<NodeIndex, bool>,
+        seen_dialog_items: &HashMap<NodeIndex, bool>,
     ) -> ProcessingResult<Option<(Utf8PathBuf, String)>> {
         let toml_config_path = self.get_impl_config_toml_path()?;
         let initial_value: String = if let Some(ref toml_path) = toml_config_path {
@@ -334,7 +507,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 IMPL_CONFIG_TOML_TEMPLATE.into()
             };
             let mut doc = toml_str.parse::<DocumentMut>()?;
-            let impl_config = self.map_node_indices_to_impl_config_options(seen_impl_items)?;
+            let impl_config = self.map_node_indices_to_impl_config_options(seen_dialog_items)?;
             let include_impl_items = impl_config.impl_items_include_to_toml_array();
             let exclude_impl_items = impl_config.impl_items_exclude_to_toml_array();
             let include_impl_blocks = impl_config.impl_blocks_include_to_toml_array();

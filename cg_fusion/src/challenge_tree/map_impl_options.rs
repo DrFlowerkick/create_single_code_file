@@ -110,9 +110,6 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(())
     }
 
-    // ToDo: we although need the option to add impl blocks, which will
-    // 1.) automatically include all items of the impl block, if it has a trait
-    // 2.) only add the block without it items, if it does not have a trait
     pub(crate) fn map_impl_config_options_to_node_indices(
         &self,
     ) -> TreeResult<HashMap<NodeIndex, bool>> {
@@ -335,7 +332,6 @@ impl<O: CgCli, S> CgData<O, S> {
                     .flat_map(|(n, _, _)| self.iter_syn_items(n))
                     .filter_map(|(n, i)| {
                         if let ItemName::ImplBlockIdentifier(name) = ItemName::from(i) {
-                            dbg!(&name);
                             (name == impl_item_path_elements[0]).then_some(n)
                         } else {
                             None
