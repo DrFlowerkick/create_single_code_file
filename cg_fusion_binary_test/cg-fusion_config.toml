@@ -28,7 +28,7 @@
 # 4. if impl has a where clause, than where clause for type parameters, e.g. where D: Display
 #
 # Specify the components without any whitespace with the exception of one space between trait and
-# 'for' keyword. The components are seperated each by one space.
+# 'for' keyword. The components are separated each by one space.
 # Example 1: impl<constX:usize,constY:usize> map::TwoDim<X,Y>
 # Example 2: impl<'a> From<&'astr> for FooType<'a>
 # Example 3: impl<D> MyPrint for MyType<D> whereD:Display
@@ -49,7 +49,7 @@
 # impl block to the configuration, because every impl block, which contains required items, will be
 # pulled into the fusion automatically.
 [impl_items]
-include = ["set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>", "x", "y"]
+include = ["set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>"]
 exclude = []
 [impl_blocks]
 include = []

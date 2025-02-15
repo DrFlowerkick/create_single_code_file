@@ -185,9 +185,6 @@ impl<O, S> CgData<O, S> {
     }
 }
 
-// ToDo: perhaps we although need an iter over items (enums, structs, unions) of challenge bin and lib,
-// which are not detected as required?
-
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn iter_impl_blocks_without_required_link_of_required_items(
         &self,

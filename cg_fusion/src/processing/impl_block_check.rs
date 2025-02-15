@@ -106,11 +106,24 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 .find(|(n, _)| (!seen_dialog_items.contains_key(n)));
             next_item_option
         } {
-            match (
-                impl_options.get(&dialog_item),
-                self.options.processing().process_all_impl_items,
-            ) {
-                (Some(true), _) | (_, Some(true)) => {
+            let processing = if (!self.options.processing().challenge_items_dialog
+                && self.is_challenge_item(dialog_item))
+                || (!self.options.processing().unambiguous_impl_items_dialog
+                    && self.is_unambiguous_impl_item(dialog_item))
+            {
+                Some(true)
+            } else {
+                match (
+                    impl_options.get(&dialog_item),
+                    self.options.processing().process_all_impl_items,
+                ) {
+                    (Some(true), _) | (_, Some(true)) => Some(true),
+                    (Some(false), _) | (_, Some(false)) => Some(false),
+                    _ => None,
+                }
+            };
+            match processing {
+                Some(true) => {
                     self.add_required_by_challenge_link(required_node, dialog_item)?;
                     self.add_challenge_links_for_referenced_nodes_of_item(
                         dialog_item,
@@ -118,7 +131,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                     )?;
                     seen_dialog_items.insert(dialog_item, true);
                 }
-                (Some(false), _) | (_, Some(false)) => {
+                Some(false) => {
                     if self.options.verbose() {
                         println!(
                             "Excluding impl item '{}'",
@@ -127,7 +140,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                     }
                     seen_dialog_items.insert(dialog_item, false);
                 }
-                _ => {
+                None => {
                     // no  configuration for dialog_item -> do user dialog
                     got_user_input = true;
                     let user_input =

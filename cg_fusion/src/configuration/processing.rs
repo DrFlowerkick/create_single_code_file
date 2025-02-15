@@ -4,9 +4,6 @@ use clap::Args;
 use std::fmt::{self, Display};
 use std::path::PathBuf;
 
-// ToDo: add option to include all unambiguous items of required impl blocks, which are used in code
-// ToDo: add option to include all items of challenge crate (bin and lib). Maybe set this default true?
-
 #[derive(Debug, Args)]
 pub struct ProcessingOptions {
     /// If a use glob '*' points to a module, which itself has use globs, these use globs must
@@ -22,6 +19,26 @@ pub struct ProcessingOptions {
         help = "Max number of attempts to expand use globs."
     )]
     pub glob_expansion_max_attempts: u8,
+
+    /// Normally all items of challenge bin and lib crate are included in fusion of challenge,
+    /// which are not automatically detected as required for fusion.
+    /// Setting this option activates dialog for these items instead of pulling them in automatically.
+    #[arg(
+        short,
+        long,
+        help = "Activate dialog to process challenge items for fusion."
+    )]
+    pub challenge_items_dialog: bool,
+
+    /// Normally all unambiguous items of required impl blocks, which have been found in required
+    /// items, are included in fusion of challenge.
+    /// Setting this option activates dialog for these items instead of pulling them in automatically.
+    #[arg(
+        short,
+        long,
+        help = "Activate dialog to process unambiguous impl items of required impl blocks for fusion."
+    )]
+    pub unambiguous_impl_items_dialog: bool,
 
     /// Either include or exclude impl blocks and items:
     /// true:  include all impl blocks and items of all required user defined types.
@@ -122,6 +139,16 @@ impl Display for ProcessingOptions {
         )?;
         writeln!(
             f,
+            "challenge-items-dialog: {:?}",
+            self.challenge_items_dialog
+        )?;
+        writeln!(
+            f,
+            "unambiguous-impl-items-dialog: {:?}",
+            self.unambiguous_impl_items_dialog
+        )?;
+        writeln!(
+            f,
             "process-all-impl-items: {:?}",
             self.process_all_impl_items
         )?;
@@ -136,6 +163,8 @@ impl Default for ProcessingOptions {
     fn default() -> Self {
         Self {
             glob_expansion_max_attempts: 5,
+            challenge_items_dialog: false,
+            unambiguous_impl_items_dialog: false,
             process_all_impl_items: None,
             impl_item_toml: None,
             include_impl_item: Vec::new(),

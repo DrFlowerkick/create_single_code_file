@@ -279,14 +279,6 @@ impl<O, S> CgData<O, S> {
         false
     }
 
-    #[allow(dead_code)] // ToDo: check if we need this function
-    pub(crate) fn is_syn_trait_item(&self, node: NodeIndex) -> bool {
-        if let Some(node_weight) = self.tree.node_weight(node) {
-            return matches!(node_weight, NodeType::SynTraitItem(_));
-        }
-        false
-    }
-
     pub(crate) fn get_syn_impl_item_self_type_node(&self, node: NodeIndex) -> Option<NodeIndex> {
         if !self.is_syn_impl_item(node) {
             return None;
@@ -312,6 +304,29 @@ impl<O, S> CgData<O, S> {
                 }
                 module_index = mi;
             }
+        }
+        false
+    }
+
+    pub(crate) fn is_unambiguous_impl_item(&self, node: NodeIndex) -> bool {
+        if let Some(impl_item) = self.get_syn_impl_item(node) {
+            let Some(impl_item_name) = ItemName::from(impl_item).get_ident_in_name_space() else {
+                return false;
+            };
+            return !self
+                .iter_crates()
+                .flat_map(|(n, ..)| self.iter_syn(n))
+                .any(|(n, nt)| {
+                    if let NodeType::SynImplItem(ii) = nt {
+                        if let Some(iin) = ItemName::from(ii).get_ident_in_name_space() {
+                            node != n && impl_item_name == iin
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                });
         }
         false
     }
@@ -440,6 +455,29 @@ impl<O: CgCli, S> CgData<O, S> {
         let bin_name = self.get_challenge_bin_name();
         self.iter_package_crates(0.into())
             .find_map(|(n, crate_type, cf)| (!crate_type && cf.name == bin_name).then_some((n, cf)))
+    }
+
+    pub(crate) fn get_challenge_lib_crate(&self) -> Option<(NodeIndex, &SrcFile)> {
+        let bin_name = self.get_challenge_bin_name();
+        self.iter_package_crates(0.into())
+            .find_map(|(n, crate_type, cf)| (crate_type && cf.name == bin_name).then_some((n, cf)))
+    }
+
+    pub(crate) fn is_challenge_item(&self, node: NodeIndex) -> bool {
+        let Some(node_crate) = self.get_crate_index(node) else {
+            return false;
+        };
+        if let Some((challenge_bin_crate, _)) = self.get_challenge_bin_crate() {
+            if node_crate == challenge_bin_crate {
+                return true;
+            }
+        }
+        if let Some((challenge_lib_crate, _)) = self.get_challenge_lib_crate() {
+            if node_crate == challenge_lib_crate {
+                return true;
+            }
+        };
+        false
     }
 
     pub(crate) fn get_required_crates_and_modules_sorted_by_relevance(
