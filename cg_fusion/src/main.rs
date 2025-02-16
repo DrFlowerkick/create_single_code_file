@@ -32,6 +32,7 @@ fn run(options: CargoCli) -> CgResult<()> {
                 .check_impl_blocks()?
                 .process_external_dependencies()?
                 .fuse_challenge()?
+                .flatten_fusion()?
                 .forge_fused_challenge_and_library_code()?;
         }
     }

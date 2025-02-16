@@ -128,6 +128,17 @@ pub struct ProcessingOptions {
         help = "Select specific impl items of specific impl blocks to exclude from challenge."
     )]
     pub exclude_impl_item: Vec<String>,
+
+    /// Normally the module structure in fusion will be flattened, merging recursively mod content into
+    /// the parent mod until all modules are removed. Name space conflicts with parent module content
+    /// prevent flattening of the conflicting module.
+    /// Setting this option activates dialog for these items instead of pulling them in automatically.
+    #[arg(
+        short = 'k',
+        long,
+        help = "Skip flattening module structure in fusion."
+    )]
+    pub skip_flatten: bool,
 }
 
 impl Display for ProcessingOptions {
@@ -154,7 +165,8 @@ impl Display for ProcessingOptions {
         )?;
         writeln!(f, "impl-item-toml: {:?}", self.impl_item_toml)?;
         writeln!(f, "include-impl-item: {:?}", self.include_impl_item)?;
-        writeln!(f, "exclude-impl-item: {:?}", self.exclude_impl_item)
+        writeln!(f, "exclude-impl-item: {:?}", self.exclude_impl_item)?;
+        writeln!(f, "skip-flatten: {:?}", self.skip_flatten)
     }
 }
 
@@ -169,6 +181,7 @@ impl Default for ProcessingOptions {
             impl_item_toml: None,
             include_impl_item: Vec::new(),
             exclude_impl_item: Vec::new(),
+            skip_flatten: false,
         }
     }
 }

@@ -1,16 +1,15 @@
 // fuse all item required by challenge into a new binary crate in challenge tree
 
-use super::{ForgeState, ProcessingResult};
-use crate::{add_context, challenge_tree::NodeType, configuration::CgCli, CgData};
+use super::{FlattenFusionState, ProcessingResult};
+use crate::{add_context, configuration::CgCli, CgData};
 
 use anyhow::Context;
 use petgraph::stable_graph::NodeIndex;
-use syn::{token, Item};
 
 pub struct FuseChallengeState;
 
 impl<O: CgCli> CgData<O, FuseChallengeState> {
-    pub fn fuse_challenge(mut self) -> ProcessingResult<CgData<O, ForgeState>> {
+    pub fn fuse_challenge(mut self) -> ProcessingResult<CgData<O, FlattenFusionState>> {
         // 1. create a new binary crate in challenge package
         // 2. copy all required items to new binary crate -> Pre-Order Traversal
         // 2.1 local crates (including lib of challenge) will be added as inline mod in binary crate
@@ -22,8 +21,6 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
         // --> no sub nodes of impl_items are required
         // 3. recursive update of mod / crate items to include all of their sub items in syn mod / file statement
         // --> go down to leave of tree and than upwards -> Post-Order Traversal
-        // ToDo: add option flatten: collapse as many modules into their parent module or crate, flattening module
-        // structure. Collapse is possible, if no name conflict exists. This Option is useful to reduce code size.
 
         // create a new binary crate in challenge package
         let fusion_bin_index = self.add_fusion_bin_crate()?;
@@ -52,30 +49,7 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
         // recursive update of mod / crate items to include all of their sub items in syn mod / file statement
         self.update_required_mod_content(fusion_bin_index)?;
 
-        Ok(self.set_state(ForgeState))
-    }
-
-    fn update_required_mod_content(&mut self, mod_index: NodeIndex) -> ProcessingResult<()> {
-        // recursive tree traversal to mod without further mods
-        let item_mod_indices: Vec<NodeIndex> = self
-            .iter_syn_item_neighbors(mod_index)
-            .filter_map(|(n, i)| match i {
-                Item::Mod(_) => Some(n),
-                _ => None,
-            })
-            .collect();
-        for item_mod_index in item_mod_indices {
-            self.update_required_mod_content(item_mod_index)?;
-        }
-        // get sorted list of mod items
-        let mod_content: Vec<Item> = self.get_sorted_mod_content(mod_index)?;
-
-        // update current mod
-        if let Some(NodeType::SynItem(Item::Mod(item_mod))) = self.tree.node_weight_mut(mod_index) {
-            item_mod.content = Some((token::Brace::default(), mod_content));
-            item_mod.semi = None;
-        }
-        Ok(())
+        Ok(self.set_state(FlattenFusionState))
     }
 }
 
@@ -85,7 +59,7 @@ mod tests {
     use crate::parsing::ItemName;
 
     use super::super::tests::setup_processing_test;
-    use super::*;
+    use syn::Item;
 
     #[test]
     fn test_fuse_challenge() {
