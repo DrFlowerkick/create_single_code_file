@@ -12,7 +12,7 @@ use std::{
     process::{Command, Output},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MetaWrapper(Metadata);
 
 // try from path of Cargo.toml file

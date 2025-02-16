@@ -259,10 +259,7 @@ impl SourcePathWalker {
                     graph.get_syn_item(self.current_node_index),
                     Some(Item::Enum(_)) | Some(Item::Struct(_)) | Some(Item::Union(_))
                 ) {
-                    // iter all impl items of all impl blocks linked to current_node_index
-                    // ToDo: names in different impl blocks for the same type may not be unique
-                    // How should this be handled?
-                    graph
+                    let impl_items: Vec<(NodeIndex, &NodeType, Ident)> = graph
                         .iter_impl_blocks_of_item(self.current_node_index)
                         .flat_map(|(n, _)| {
                             graph
@@ -274,13 +271,27 @@ impl SourcePathWalker {
                                     _ => None,
                                 })
                         })
-                        .find(|(_, _, id)| *id == segment)
+                        .filter(|(_, _, id)| *id == segment)
+                        .collect();
+                    if impl_items.len() == 1 {
+                        Some((
+                            impl_items[0].0,
+                            impl_items[0].1.to_owned(),
+                            impl_items[0].2.clone(),
+                        ))
+                    } else {
+                        // if segment cannot be found or is found multiple times, path cannot be parsed
+                        None
+                    }
                 } else {
-                    // iter all syn neighbors, which can although be trait items
+                    // iter all syn neighbors, which can although be impl or trait items
                     graph
                         .iter_syn_neighbors(self.current_node_index)
                         .filter_map(|(n, nt)| match nt {
                             NodeType::SynItem(item) => ItemName::from(item)
+                                .get_ident_in_name_space()
+                                .map(|id| (n, nt, id)),
+                            NodeType::SynImplItem(impl_item) => ItemName::from(impl_item)
                                 .get_ident_in_name_space()
                                 .map(|id| (n, nt, id)),
                             NodeType::SynTraitItem(trait_item) => ItemName::from(trait_item)
@@ -289,6 +300,7 @@ impl SourcePathWalker {
                             _ => None,
                         })
                         .find(|(_, _, id)| *id == segment)
+                        .map(|(n, nt, i)| (n, nt.to_owned(), i))
                 };
 
                 if let Some((item_index, node_type, _)) = next_item {
@@ -303,7 +315,7 @@ impl SourcePathWalker {
                             }
                             return Some(PathElement::Item(self.current_node_index));
                         }
-                        NodeType::SynItem(Item::Use(item_use)) => {
+                        NodeType::SynItem(Item::Use(ref item_use)) => {
                             // found reimported item -> get index of it
                             if let Ok(path_element) =
                                 graph.get_path_leaf(item_index, item_use.into())

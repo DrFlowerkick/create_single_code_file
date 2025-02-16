@@ -19,7 +19,7 @@ use syn::{Attribute, ImplItem, Item, TraitItem};
 
 pub type ChallengeTree = StableDiGraph<NodeType, EdgeType>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NodeType {
     LocalPackage(LocalPackage),
     ExternalSupportedPackage(String),
@@ -42,7 +42,7 @@ impl NodeType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalPackage {
     pub name: String,
     pub path: Utf8PathBuf,
@@ -58,7 +58,7 @@ impl LocalPackage {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SrcFile {
     pub name: String,
     pub path: Utf8PathBuf,
