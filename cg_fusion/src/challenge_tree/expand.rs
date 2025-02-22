@@ -666,4 +666,32 @@ impl<O: CgCli, S> CgData<O, S> {
         }
         Ok(fusion_node_index)
     }
+
+    pub(crate) fn update_required_mod_content(&mut self, mod_index: NodeIndex) -> TreeResult<()> {
+        // recursive tree traversal to mod without further mods
+        let item_mod_indices: Vec<NodeIndex> = self
+            .iter_syn_item_neighbors(mod_index)
+            .filter_map(|(n, i)| match i {
+                Item::Mod(_) => Some(n),
+                _ => None,
+            })
+            .collect();
+        for item_mod_index in item_mod_indices {
+            self.update_required_mod_content(item_mod_index)?;
+        }
+
+        if self.is_crate(mod_index) {
+            // end of recursive updating
+            return Ok(());
+        }
+
+        // get sorted list of mod items
+        let mod_content: Vec<Item> = self.get_sorted_mod_content(mod_index)?;
+        // update current mod
+        if let Some(NodeType::SynItem(Item::Mod(item_mod))) = self.tree.node_weight_mut(mod_index) {
+            item_mod.content = Some((token::Brace::default(), mod_content));
+            item_mod.semi = None;
+        }
+        Ok(())
+    }
 }

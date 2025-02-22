@@ -121,7 +121,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                     unreachable!("Local use globs have been expanded before. Only external globs are possible, which will return \
                                   PathElement::ExternalPackage before reaching glob.");
                 }
-                PathElement::ExternalPackage => {
+                PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => {
                     if let Some(leaf_index) = path_leaf {
                         // This is only possible, if a path element points toward a use statement,
                         // which imports external code. Minimize path to this use statement and

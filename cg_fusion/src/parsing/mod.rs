@@ -9,7 +9,7 @@ pub use fold_and_visit::{
     FoldRemoveAttrDocComments, IdentCollector, MacroWriteFinder, VisitVerbatim,
 };
 pub use item_name::ItemName;
-pub use syn_extend::{ItemExt, SourcePath, ToTokensExt, UseTreeExt};
+pub use syn_extend::{ItemExt, SourceLeaf, SourcePath, ToTokensExt, UseTreeExt};
 
 use syn::{fold::Fold, visit::Visit, File, Item};
 

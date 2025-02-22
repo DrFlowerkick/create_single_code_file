@@ -85,7 +85,9 @@ impl<'a, O, S> SynReferenceMapper<'a, O, S> {
                             add_context!("Expected expanded use groups and globs")
                         )))
                     }
-                    PathElement::ExternalPackage | PathElement::PathCouldNotBeParsed => {
+                    PathElement::ExternalItem(_)
+                    | PathElement::ExternalGlob(_)
+                    | PathElement::PathCouldNotBeParsed => {
                         leaf = None;
                         break;
                     }
@@ -193,7 +195,8 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                                     | PathElement::ItemRenamed(_, _) => {
                                         unreachable!("Not possible in syn path")
                                     }
-                                    PathElement::ExternalPackage
+                                    PathElement::ExternalItem(_)
+                                    | PathElement::ExternalGlob(_)
                                     | PathElement::PathCouldNotBeParsed => break,
                                     PathElement::Item(node) => {
                                         let const_type = if let Some(item) =
@@ -296,7 +299,9 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                 PathElement::Glob(_) | PathElement::Group | PathElement::ItemRenamed(_, _) => {
                     unreachable!("syn path does not contain groups, globs, or rename.")
                 }
-                PathElement::ExternalPackage | PathElement::PathCouldNotBeParsed => {
+                PathElement::ExternalItem(_)
+                | PathElement::ExternalGlob(_)
+                | PathElement::PathCouldNotBeParsed => {
                     leaf = None;
                     break;
                 }

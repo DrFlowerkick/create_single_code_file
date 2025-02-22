@@ -1,6 +1,6 @@
 // functions to check usage of external dependencies.
-// most external dependencies will already be pulled in,but some case like
-// external use globs and extension methods an macros imported via traits
+// most external dependencies will already be pulled in, but some case like
+// external use globs and extension methods and macros imported via traits
 // will be handled by this module.
 
 use super::{FuseChallengeState, ProcessingResult};
@@ -36,9 +36,10 @@ impl<O: CgCli> CgData<O, ProcessingRequiredExternals> {
                 .iter_syn_item_neighbors(node)
                 .filter_map(|(n, i)| match i {
                     Item::Use(item_use) => {
-                        if let Ok(PathElement::ExternalPackage) =
-                            self.get_path_leaf(n, item_use.into())
-                        {
+                        if matches!(
+                            self.get_path_leaf(n, item_use.into()),
+                            Ok(PathElement::ExternalGlob(_)) | Ok(PathElement::ExternalItem(_))
+                        ) {
                             if let Some(segments) = SourcePath::from(item_use).get_segments() {
                                 if segments.iter().any(|seg| {
                                     self.iter_accepted_dependencies()

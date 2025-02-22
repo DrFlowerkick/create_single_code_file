@@ -190,6 +190,45 @@ impl TryFrom<SourcePath> for Path {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum SourceLeaf {
+    Name(Ident),
+    Glob(Ident),
+}
+
+impl TryFrom<SourcePath> for SourceLeaf {
+    type Error = ParsingError;
+
+    fn try_from(value: SourcePath) -> Result<Self, Self::Error> {
+        match value {
+            SourcePath::Glob(segments) => {
+                if let Some(ident) = segments.last() {
+                    Ok(SourceLeaf::Glob(ident.to_owned()))
+                } else {
+                    Err(ParsingError::ConvertSourcePathToSourceLeafError)
+                }
+            }
+            SourcePath::Group => Err(ParsingError::ConvertSourcePathToSourceLeafError),
+            SourcePath::Name(segments) => {
+                if let Some(ident) = segments.last() {
+                    Ok(SourceLeaf::Name(ident.to_owned()))
+                } else {
+                    Err(ParsingError::ConvertSourcePathToSourceLeafError)
+                }
+            }
+            SourcePath::Rename(_, rename) => Ok(SourceLeaf::Name(rename)),
+        }
+    }
+}
+
+impl TryFrom<&SourcePath> for SourceLeaf {
+    type Error = ParsingError;
+
+    fn try_from(value: &SourcePath) -> Result<Self, Self::Error> {
+        SourceLeaf::try_from(value.to_owned())
+    }
+}
+
 pub trait UseTreeExt {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
     fn path_root_is_keyword(&self) -> bool;

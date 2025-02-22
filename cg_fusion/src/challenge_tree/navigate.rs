@@ -17,7 +17,7 @@ use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
 use proc_macro2::Span;
 use std::collections::{HashSet, VecDeque};
-use syn::{spanned::Spanned, token, visit::Visit, Ident, ImplItem, Item, TraitItem};
+use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, TraitItem};
 
 impl<O, S> CgData<O, S> {
     pub(crate) fn challenge_package(&self) -> &LocalPackage {
@@ -84,6 +84,43 @@ impl<O, S> CgData<O, S> {
         } else {
             None
         }
+    }
+
+    pub(crate) fn get_use_module(&self, node: NodeIndex) -> Option<NodeIndex> {
+        if let Some(Item::Use(item_use)) = self.get_syn_item(node) {
+            let mut source_path_walker = SourcePathWalker::new(item_use.into(), node);
+            let mut last_path_element: Option<PathElement> = None;
+            while let Some(path_element) = source_path_walker.next(self) {
+                match path_element {
+                    PathElement::Item(_) | PathElement::ItemRenamed(_, _) => {
+                        last_path_element = Some(path_element)
+                    }
+                    PathElement::Glob(glob_module) => return Some(glob_module),
+                    PathElement::Group | PathElement::PathCouldNotBeParsed => return None,
+                    PathElement::ExternalGlob(_) | PathElement::ExternalItem(_) => {
+                        if last_path_element.is_none() {
+                            return self.get_syn_module_index(node);
+                        }
+                    }
+                }
+            }
+            if let Some(leaf) = last_path_element {
+                match leaf {
+                    PathElement::Item(leaf_node) | PathElement::ItemRenamed(leaf_node, _) => {
+                        if self.is_crate_or_module(leaf_node) {
+                            return Some(leaf_node);
+                        }
+                        return self.get_syn_module_index(leaf_node);
+                    }
+                    PathElement::ExternalItem(_)
+                    | PathElement::ExternalGlob(_)
+                    | PathElement::Glob(_)
+                    | PathElement::Group
+                    | PathElement::PathCouldNotBeParsed => (),
+                }
+            }
+        }
+        None
     }
 
     pub(crate) fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {
@@ -589,28 +626,5 @@ impl<O: CgCli, S> CgData<O, S> {
             .filter_map(|n| self.get_syn_item(*n).map(|i| i.to_owned()))
             .collect();
         Ok(new_mod_content)
-    }
-
-    pub(crate) fn update_required_mod_content(&mut self, mod_index: NodeIndex) -> TreeResult<()> {
-        // recursive tree traversal to mod without further mods
-        let item_mod_indices: Vec<NodeIndex> = self
-            .iter_syn_item_neighbors(mod_index)
-            .filter_map(|(n, i)| match i {
-                Item::Mod(_) => Some(n),
-                _ => None,
-            })
-            .collect();
-        for item_mod_index in item_mod_indices {
-            self.update_required_mod_content(item_mod_index)?;
-        }
-        // get sorted list of mod items
-        let mod_content: Vec<Item> = self.get_sorted_mod_content(mod_index)?;
-
-        // update current mod
-        if let Some(NodeType::SynItem(Item::Mod(item_mod))) = self.tree.node_weight_mut(mod_index) {
-            item_mod.content = Some((token::Brace::default(), mod_content));
-            item_mod.semi = None;
-        }
-        Ok(())
     }
 }

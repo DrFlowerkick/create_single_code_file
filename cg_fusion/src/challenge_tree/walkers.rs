@@ -9,7 +9,7 @@ use fixedbitset::FixedBitSet;
 use syn::{Ident, Item};
 
 use crate::{
-    parsing::{ItemName, SourcePath},
+    parsing::{ItemName, SourceLeaf, SourcePath},
     CgData,
 };
 
@@ -86,7 +86,8 @@ impl<T: BfsWalker> Iterator for BfsIterator<'_, T> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PathElement {
-    ExternalPackage,
+    ExternalItem(Ident),
+    ExternalGlob(Ident),
     Group,
     Glob(NodeIndex),
     Item(NodeIndex),
@@ -147,7 +148,15 @@ impl SourcePathWalker {
         }
         if self.next_is_external {
             self.walker_finished = true;
-            return Some(PathElement::ExternalPackage);
+            if let Some(Item::Use(item_use)) = graph.get_syn_item(self.current_node_index) {
+                if let Ok(source_leaf) = SourceLeaf::try_from(SourcePath::from(item_use)) {
+                    match source_leaf {
+                        SourceLeaf::Name(ident) => return Some(PathElement::ExternalItem(ident)),
+                        SourceLeaf::Glob(ident) => return Some(PathElement::ExternalGlob(ident)),
+                    }
+                }
+            }
+            return Some(PathElement::PathCouldNotBeParsed);
         }
         let (segments, glob, rename) = match self.source_path {
             SourcePath::Group => {
@@ -238,7 +247,17 @@ impl SourcePathWalker {
                         .any(|dep_name| segment == dep_name)
                     {
                         self.walker_finished = true;
-                        return Some(PathElement::ExternalPackage);
+                        if let Ok(source_leaf) = SourceLeaf::try_from(&self.source_path) {
+                            match source_leaf {
+                                SourceLeaf::Name(ident) => {
+                                    return Some(PathElement::ExternalItem(ident))
+                                }
+                                SourceLeaf::Glob(ident) => {
+                                    return Some(PathElement::ExternalGlob(ident))
+                                }
+                            }
+                        }
+                        return Some(PathElement::PathCouldNotBeParsed);
                     }
                     // check if path starts with local package dependency
                     if let Some((local_package_index, _)) =
@@ -321,9 +340,10 @@ impl SourcePathWalker {
                                 graph.get_path_leaf(item_index, item_use.into())
                             {
                                 match path_element {
-                                    PathElement::ExternalPackage => {
+                                    PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => {
                                         // return index of use statement, next call will return external package
                                         self.next_is_external = true;
+                                        self.current_node_index = item_index;
                                         return Some(PathElement::Item(item_index));
                                     }
                                     PathElement::Glob(_) | PathElement::Group => {

@@ -371,12 +371,12 @@ fn test_get_path_leaf() {
         .iter()
         .find(|(_, id, _)| id == "my_compass")
         .unwrap();
-    assert_eq!(
+    assert!(matches!(
         cg_data
             .get_path_leaf(*use_extern_ordering, (*use_tree_extern_ordering).into())
             .unwrap(),
-        PathElement::ExternalPackage
-    );
+        PathElement::ExternalItem(_)
+    ));
     assert_eq!(
         cg_data
             .get_path_leaf(
