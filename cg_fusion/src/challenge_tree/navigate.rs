@@ -68,9 +68,12 @@ impl<O, S> CgData<O, S> {
         node: NodeIndex,
         edge_type: EdgeType,
     ) -> Option<NodeIndex> {
+        // in case of flatten there are two parents. With max_by_key the edge with the biggest id is chosen
+        // since this is the newest id.
         self.tree
             .edges_directed(node, Direction::Incoming)
-            .find(|e| *e.weight() == edge_type)
+            .filter(|e| *e.weight() == edge_type)
+            .max_by_key(|e| e.id())
             .map(|e| e.source())
     }
 

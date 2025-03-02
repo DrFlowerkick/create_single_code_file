@@ -1,7 +1,7 @@
 // function to flatten module structure in fusion
 
 use super::{ForgeState, ProcessingResult};
-use crate::{add_context, challenge_tree::PathElement, configuration::CgCli, CgData};
+use crate::{add_context, challenge_tree::{PathElement, EdgeType}, configuration::CgCli, CgData};
 
 use anyhow::anyhow;
 use petgraph::stable_graph::NodeIndex;
@@ -63,6 +63,17 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         flatten_agent.set_flatten_items(self);
 
         // 3. check name space collisions
+        if flatten_agent.is_name_space_conflict(self) {
+            return Ok(());
+        }
+
+        // 4. link flatten items to parent
+        flatten_agent.link_flatten_items_to_parent(self);
+
+        // 5. collect modules, which could contain path statements, that have to change after flatten
+        flatten_agent.collect_sub_and_super_modules(self);
+
+        // 6. check path statements of flatten and parent items
 
         Ok(())
     }
@@ -76,6 +87,8 @@ struct FlattenAgent {
     parent_use_of_flatten: Vec<NodeIndex>,
     parent_use_of_external: Vec<PathElement>,
     flatten_items: Vec<NodeIndex>,
+    sub_modules: Vec<NodeIndex>,
+    super_modules: Vec<NodeIndex>,
 }
 
 impl FlattenAgent {
@@ -87,6 +100,8 @@ impl FlattenAgent {
             parent_use_of_flatten: Vec::new(),
             parent_use_of_external: Vec::new(),
             flatten_items: Vec::new(),
+            sub_modules: Vec::new(),
+            super_modules: Vec::new(),
         }
     }
     fn set_parent<O, S>(&mut self, graph: &CgData<O, S>) {
@@ -105,7 +120,7 @@ impl FlattenAgent {
                 self.parent_items.push(node);
             }
         }
-        //let use_of_external: Vec<PathElement> = self.parent_items
+
         self.parent_use_of_external = self
             .parent_items
             .iter()
@@ -159,255 +174,51 @@ impl FlattenAgent {
             }
         });
     }
-}
 
-#[cfg(test)]
-mod tests {
-
-    use syn::Item;
-
-    use crate::processing::flatten_fusion::FlattenAgent;
-
-    use super::super::tests::setup_processing_test;
-    use super::*;
-
-    #[test]
-    fn test_set_parent() {
-        // preparation
-        let cg_data = setup_processing_test(true)
-            .add_challenge_dependencies()
-            .unwrap()
-            .add_src_files()
-            .unwrap()
-            .expand_use_statements()
-            .unwrap()
-            .path_minimizing_of_use_and_path_statements()
-            .unwrap()
-            .link_impl_blocks_with_corresponding_item()
-            .unwrap()
-            .link_required_by_challenge()
-            .unwrap()
-            .check_impl_blocks()
-            .unwrap()
-            .process_external_dependencies()
-            .unwrap()
-            .fuse_challenge()
-            .unwrap();
-
-        let (fusion_node, _) = cg_data.get_fusion_bin_crate().unwrap();
-
-        // test mod MapPoint
-        let map_point_mod = cg_data
-            .iter_syn_items(fusion_node)
-            .find_map(|(n, i)| {
-                if let Item::Mod(item_mod) = i {
-                    (item_mod.ident == "my_map_point").then_some(n)
-                } else {
-                    None
-                }
+    fn is_name_space_conflict<O, S>(&self, graph: &CgData<O, S>) -> bool {
+        self.flatten_items
+            .iter()
+            .filter_map(|n| graph.get_ident(*n))
+            .any(|flatten_ident| {
+                self.parent_items
+                    .iter()
+                    .filter_map(|n| graph.get_ident(*n))
+                    .any(|parent_ident| flatten_ident == parent_ident)
             })
-            .unwrap();
-        // fusion of my_map_point does not contain further mod
-        assert!(!cg_data
-            .iter_syn_item_neighbors(map_point_mod)
-            .any(|(_, i)| matches!(i, Item::Mod(_))));
-        let mut flatten_agent = FlattenAgent::new(map_point_mod);
+    }
 
-        // action to test
-        flatten_agent.set_parent(&cg_data);
-
-        assert_eq!(
-            cg_data
-                .get_verbose_name_of_tree_node(flatten_agent.parent)
-                .unwrap(),
-            "my_map_two_dim (Mod)"
-        );
-
-        let items: Vec<String> = flatten_agent
-            .parent_items
-            .iter()
-            .filter_map(|n| cg_data.get_verbose_name_of_tree_node(*n).ok())
-            .collect();
-        assert_eq!(
-            items,
-            [
-                "my_map_point (Mod)",
-                "MyMap2D (Struct)",
-                "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
-                "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
-            ]
-        );
-
-        let use_of_flatten: Vec<String> = flatten_agent
-            .parent_use_of_flatten
-            .iter()
-            .filter_map(|n| cg_data.get_verbose_name_of_tree_node(*n).ok())
-            .collect();
-        assert_eq!(use_of_flatten, ["MapPoint (Use)"]);
-
-        assert!(flatten_agent.parent_use_of_external.is_empty());
-
-        // test mod Action
-        let action_mod = cg_data
-            .iter_syn_items(fusion_node)
-            .find_map(|(n, i)| {
-                if let Item::Mod(item_mod) = i {
-                    (item_mod.ident == "action").then_some(n)
-                } else {
-                    None
-                }
-            })
-            .unwrap();
-        // fusion of my_map_point does not contain further mod
-        assert!(!cg_data
-            .iter_syn_item_neighbors(action_mod)
-            .any(|(_, i)| matches!(i, Item::Mod(_))));
-        let mut flatten_agent = FlattenAgent::new(action_mod);
-
-        // action to test
-        flatten_agent.set_parent(&cg_data);
-
-        assert_eq!(
-            cg_data
-                .get_verbose_name_of_tree_node(flatten_agent.parent)
-                .unwrap(),
-            "cg_fusion_binary_test (Mod)"
-        );
-
-        let items: Vec<String> = flatten_agent
-            .parent_items
-            .iter()
-            .filter_map(|n| cg_data.get_verbose_name_of_tree_node(*n).ok())
-            .collect();
-        assert_eq!(
-            items,
-            [
-                "action (Mod)",
-                "fmt (Use)",
-                "X (Const)",
-                "Y (Const)",
-                "N (Const)",
-                "Value (Enum)",
-                "impl fmt::Display for Value",
-                "Go (Struct)",
-                "impl Default for Go",
-                "impl Go",
-                "MyMap2D (Use)"
-            ]
-        );
-
-        let use_of_flatten: Vec<String> = flatten_agent
-            .parent_use_of_flatten
-            .iter()
-            .filter_map(|n| cg_data.get_verbose_name_of_tree_node(*n).ok())
-            .collect();
-        assert_eq!(use_of_flatten, ["Action (Use)"]);
-
-        assert_eq!(flatten_agent.parent_use_of_external.len(), 1);
-        assert!(matches!(
-            flatten_agent.parent_use_of_external[0],
-            PathElement::ExternalItem(_)
-        ));
-        if let PathElement::ExternalItem(ref item) = flatten_agent.parent_use_of_external[0] {
-            assert!(item == "fmt");
+    fn link_flatten_items_to_parent<O, S>(&self, graph: &mut CgData<O, S>) {
+        for flatten_item in self.flatten_items.iter() {
+            graph.tree.add_edge(self.parent, *flatten_item, EdgeType::Syn);
         }
     }
 
-    #[test]
-    fn test_set_flatten_items() {
-        // preparation
-        let cg_data = setup_processing_test(true)
-            .add_challenge_dependencies()
-            .unwrap()
-            .add_src_files()
-            .unwrap()
-            .expand_use_statements()
-            .unwrap()
-            .path_minimizing_of_use_and_path_statements()
-            .unwrap()
-            .link_impl_blocks_with_corresponding_item()
-            .unwrap()
-            .link_required_by_challenge()
-            .unwrap()
-            .check_impl_blocks()
-            .unwrap()
-            .process_external_dependencies()
-            .unwrap()
-            .fuse_challenge()
-            .unwrap();
-
-        let (fusion_node, _) = cg_data.get_fusion_bin_crate().unwrap();
-
-        // test mod MapPoint
-        let map_point_mod = cg_data
-            .iter_syn_items(fusion_node)
-            .find_map(|(n, i)| {
-                if let Item::Mod(item_mod) = i {
-                    (item_mod.ident == "my_map_point").then_some(n)
+    fn collect_sub_and_super_modules<O: CgCli, S>(&mut self, graph: &CgData<O, S>) {
+        self.sub_modules = graph
+            .iter_syn_items(self.node)
+            .filter_map(|(n, i)| {
+                if let Item::Mod(_) = i {
+                    (n != self.node).then_some(n)
                 } else {
                     None
                 }
             })
-            .unwrap();
-        // fusion of my_map_point does not contain further mod
-        assert!(!cg_data
-            .iter_syn_item_neighbors(map_point_mod)
-            .any(|(_, i)| matches!(i, Item::Mod(_))));
-        let mut flatten_agent = FlattenAgent::new(map_point_mod);
-        flatten_agent.set_parent(&cg_data);
-
-        // action to test
-        flatten_agent.set_flatten_items(&cg_data);
-
-        let flatten_items: Vec<String> = flatten_agent
-            .flatten_items
-            .iter()
-            .filter_map(|n| cg_data.get_verbose_name_of_tree_node(*n).ok())
             .collect();
-
-        assert_eq!(
-            flatten_items,
-            [
-                "MapPoint (Struct)",
-                "impl<constX:usize,constY:usize> MapPoint<X,Y>",
-            ]
-        );
-
-        // test mod Action
-        let action_mod = cg_data
-            .iter_syn_items(fusion_node)
-            .find_map(|(n, i)| {
-                if let Item::Mod(item_mod) = i {
-                    (item_mod.ident == "action").then_some(n)
-                } else {
-                    None
-                }
+        let Some((fusion_crate, _)) = graph.get_fusion_bin_crate() else {
+            panic!("{}", add_context!("Expected fusion bin crate."));
+        };
+        self.super_modules = graph
+            .iter_syn_items(fusion_crate)
+            .filter(|(n, _)| {
+                graph.is_crate_or_module(*n)
+                    && *n != self.node
+                    && *n != self.parent
+                    && !self.sub_modules.contains(n)
             })
-            .unwrap();
-        // fusion of my_map_point does not contain further mod
-        assert!(!cg_data
-            .iter_syn_item_neighbors(action_mod)
-            .any(|(_, i)| matches!(i, Item::Mod(_))));
-        let mut flatten_agent = FlattenAgent::new(action_mod);
-        flatten_agent.set_parent(&cg_data);
-
-        // action to test
-        flatten_agent.set_flatten_items(&cg_data);
-
-        let flatten_items: Vec<String> = flatten_agent
-            .flatten_items
-            .iter()
-            .filter_map(|n| cg_data.get_verbose_name_of_tree_node(*n).ok())
+            .map(|(n, _)| n)
             .collect();
-
-        assert_eq!(
-            flatten_items,
-            [
-                "MapPoint (Use)",
-                "Action (Struct)",
-                "impl Display for Action",
-                "impl Action"
-            ]
-        );
     }
 }
+
+#[cfg(test)]
+mod tests;
