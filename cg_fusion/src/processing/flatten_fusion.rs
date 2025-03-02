@@ -126,16 +126,16 @@ impl FlattenAgent {
             .iter()
             .filter_map(|n| {
                 if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
-                    if let Ok(path_leaf) = graph.get_path_leaf(*n, item_use.into()) {
+                    match graph.get_path_leaf(*n, item_use.into()) { Ok(path_leaf) => {
                         match path_leaf {
                             PathElement::ExternalGlob(_) | PathElement::ExternalItem(_) => {
                                 Some(path_leaf)
                             }
                             _ => None,
                         }
-                    } else {
+                    } _ => {
                         None
-                    }
+                    }}
                 } else {
                     None
                 }
@@ -161,14 +161,14 @@ impl FlattenAgent {
         // remove use of external packages, which are already available in parent module
         self.flatten_items.retain(|n| {
             if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
-                if let Ok(path_leaf) = graph.get_path_leaf(*n, item_use.into()) {
+                match graph.get_path_leaf(*n, item_use.into()) { Ok(path_leaf) => {
                     !self
                         .parent_use_of_external
                         .iter()
                         .any(|pl| *pl == path_leaf)
-                } else {
+                } _ => {
                     panic!("{}", add_context!("Expected path leaf of use statement."));
-                }
+                }}
             } else {
                 true
             }

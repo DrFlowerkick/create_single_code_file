@@ -191,17 +191,16 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
     ) -> ProcessingResult<Vec<(NodeIndex, bool)>> {
         if self.is_syn_impl_item(dialog_item) {
             self.impl_item_dialog(dialog_item, required_node, dialog_handler)
-        } else if let Some(NodeType::SynItem(Item::Impl(item_impl))) =
-            self.tree.node_weight(dialog_item)
-        {
+        } else { match self.tree.node_weight(dialog_item)
+        { Some(NodeType::SynItem(Item::Impl(item_impl))) => {
             if item_impl.trait_.is_some() {
                 self.impl_block_with_trait_dialog(dialog_item, required_node, dialog_handler)
             } else {
                 self.impl_block_dialog(dialog_item, required_node, dialog_handler)
             }
-        } else {
+        } _ => {
             Err(anyhow!(add_context!("Expected either impl item or block")).into())
-        }
+        }}}
     }
 
     fn impl_item_dialog(

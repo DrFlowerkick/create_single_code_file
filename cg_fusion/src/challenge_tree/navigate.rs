@@ -21,46 +21,46 @@ use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, TraitItem};
 
 impl<O, S> CgData<O, S> {
     pub(crate) fn challenge_package(&self) -> &LocalPackage {
-        if let NodeType::LocalPackage(ref package) = self.tree.node_weight(0.into()).unwrap() {
+        if let NodeType::LocalPackage(package) = self.tree.node_weight(0.into()).unwrap() {
             return package;
         }
         unreachable!("Challenge package is created at instantiation of CgDate and should always be at index 0.");
     }
 
     pub(crate) fn get_local_package(&self, node: NodeIndex) -> TreeResult<&LocalPackage> {
-        if let NodeType::LocalPackage(dependency) = self
+        match self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
-        {
+        { NodeType::LocalPackage(dependency) => {
             Ok(dependency)
-        } else {
+        } _ => {
             Err(ChallengeTreeError::NotLocalPackage(node))
-        }
+        }}
     }
 
     pub(crate) fn get_binary_crate(&self, node: NodeIndex) -> TreeResult<&SrcFile> {
-        if let NodeType::BinCrate(src_file) = self
+        match self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
-        {
+        { NodeType::BinCrate(src_file) => {
             Ok(src_file)
-        } else {
+        } _ => {
             Err(ChallengeTreeError::NotBinaryCrate(node))
-        }
+        }}
     }
 
     pub(crate) fn get_library_crate(&self, node: NodeIndex) -> TreeResult<&SrcFile> {
-        if let NodeType::LibCrate(src_file) = self
+        match self
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
-        {
+        { NodeType::LibCrate(src_file) => {
             Ok(src_file)
-        } else {
+        } _ => {
             Err(ChallengeTreeError::NotLibraryCrate(node))
-        }
+        }}
     }
 
     pub(crate) fn get_parent_index_by_edge_type(
@@ -464,13 +464,12 @@ impl<O, S> CgData<O, S> {
                     if let Some(module_src_node) =
                         self.get_parent_index_by_edge_type(module_or_crate, EdgeType::Module)
                     {
-                        if let Some(NodeType::Module(src_file)) =
-                            self.tree.node_weight(module_src_node)
-                        {
+                        match self.tree.node_weight(module_src_node)
+                        { Some(NodeType::Module(src_file)) => {
                             Some(src_file)
-                        } else {
+                        } _ => {
                             None
-                        }
+                        }}
                     } else {
                         self.get_src_file_containing_item(module_or_crate)
                     }
@@ -548,15 +547,14 @@ impl<O: CgCli, S> CgData<O, S> {
                 .filter(|(n, _)| self.is_required_by_challenge(*n))
                 .filter_map(|(n, i)| match i {
                     Item::Use(item_use) => {
-                        if let Ok(PathElement::Item(root_node)) =
-                            self.get_path_root(n, item_use.into())
-                        {
+                        match self.get_path_root(n, item_use.into())
+                        { Ok(PathElement::Item(root_node)) => {
                             self.get_crate_index(root_node).and_then(|root_crate| {
                                 (root_crate != current_crate_node).then_some(root_crate)
                             })
-                        } else {
+                        } _ => {
                             None
-                        }
+                        }}
                     }
                     _ => None,
                 })
@@ -594,11 +592,11 @@ impl<O: CgCli, S> CgData<O, S> {
     }
 
     pub(crate) fn get_fusion_file_name(&self) -> String {
-        if let Some(ref name) = self.options.output().filename {
+        match self.options.output().filename { Some(ref name) => {
             name.to_owned()
-        } else {
+        } _ => {
             format!("fusion_of_{}", self.challenge_package().name)
-        }
+        }}
     }
 
     pub(crate) fn get_fusion_file_path(&self) -> TreeResult<Utf8PathBuf> {

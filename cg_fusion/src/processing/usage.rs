@@ -148,9 +148,8 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
         {
             if let Item::Use(item_use) = item_to_import {
                 let item_source_path = SourcePath::from(item_use);
-                if let Ok(ref path_element) =
-                    self.get_path_leaf(index_of_item_to_import, item_source_path.clone())
-                {
+                match self.get_path_leaf(index_of_item_to_import, item_source_path.clone())
+                { Ok(ref path_element) => {
                     match path_element {
                         // first expand all use groups
                         PathElement::Group => return Ok(true),
@@ -212,9 +211,9 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                             }
                         }
                     }
-                } else {
+                } _ => {
                     unreachable!("Every use statement must have a leave.")
-                }
+                }}
             } else {
                 // if not use item, add ident_to_import to list of visible items
                 if let Some(ident_to_import) =

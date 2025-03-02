@@ -68,15 +68,15 @@ mod tests {
         let mut challenge_items_ident: Vec<String> = items_required_by_challenge
             .iter()
             .map(|n| {
-                if let Some(module_index) = cg_data.get_syn_module_index(*n) {
+                match cg_data.get_syn_module_index(*n) { Some(module_index) => {
                     format!(
                         "{}::{}",
                         cg_data.get_verbose_name_of_tree_node(module_index).unwrap(),
                         cg_data.get_verbose_name_of_tree_node(*n).unwrap()
                     )
-                } else {
+                } _ => {
                     format!("{}", cg_data.get_verbose_name_of_tree_node(*n).unwrap())
-                }
+                }}
             })
             .collect();
         challenge_items_ident.sort();

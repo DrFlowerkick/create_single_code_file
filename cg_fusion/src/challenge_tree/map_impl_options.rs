@@ -88,15 +88,15 @@ enum ImplOptionType {
 
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn get_impl_config_toml_path(&self) -> TreeResult<Option<Utf8PathBuf>> {
-        if let Some(ref toml_config_path) = self.options.processing().impl_item_toml {
+        match self.options.processing().impl_item_toml { Some(ref toml_config_path) => {
             let toml_config_path = Utf8PathBuf::try_from(toml_config_path.to_owned())?;
             self.verify_path_points_inside_challenge_dir(&toml_config_path)?;
             let current_dir = current_dir_utf8()?;
             let relative_toml_config_path = get_relative_path(&current_dir, &toml_config_path)?;
             Ok(Some(relative_toml_config_path))
-        } else {
+        } _ => {
             Ok(None)
-        }
+        }}
     }
 
     pub(crate) fn verify_path_points_inside_challenge_dir(
@@ -115,13 +115,13 @@ impl<O: CgCli, S> CgData<O, S> {
     ) -> TreeResult<HashMap<NodeIndex, bool>> {
         let mut impl_options_map: HashMap<NodeIndex, bool> = HashMap::new();
         // load config file if existing
-        let impl_config = if let Some(toml_config_path) = self.get_impl_config_toml_path()? {
+        let impl_config = match self.get_impl_config_toml_path()? { Some(toml_config_path) => {
             let toml_string = fs::read_to_string(toml_config_path)?;
             let toml_options: ImplOptions = toml::from_str(&toml_string)?;
             toml_options
-        } else {
+        } _ => {
             ImplOptions::default()
-        };
+        }};
         // Collect all impl items to include or exclude.
         // If index is already in include, include wins.
         for (impl_item, process_option) in self

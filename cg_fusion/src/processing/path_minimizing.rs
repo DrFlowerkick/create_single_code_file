@@ -102,9 +102,9 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                 unreachable!("use groups have been expanded before.");
             }
             // glob is still possible, if it points to external crate
-            SourcePath::Glob(ref segments) => (segments, true, None),
-            SourcePath::Name(ref segments) => (segments, false, None),
-            SourcePath::Rename(ref segments, ref renamed) => {
+            SourcePath::Glob(segments) => (segments, true, None),
+            SourcePath::Name(segments) => (segments, false, None),
+            SourcePath::Rename(segments, renamed) => {
                 (segments, false, Some(renamed.to_owned()))
             }
         };
@@ -230,16 +230,16 @@ impl<O: CgCli> Fold for CratePathFolder<'_, O> {
                         .segments
                         .iter()
                         .map(|s| {
-                            if let Some(arguments) = path.segments.iter().find_map(|p| {
+                            match path.segments.iter().find_map(|p| {
                                 (p.ident == s.ident).then_some(p.arguments.to_owned())
-                            }) {
+                            }) { Some(arguments) => {
                                 PathSegment {
                                     ident: s.ident.to_owned(),
                                     arguments,
                                 }
-                            } else {
+                            } _ => {
                                 s.to_owned()
-                            }
+                            }}
                         })
                         .collect(),
                 };
@@ -340,15 +340,15 @@ mod tests {
             .iter_syn_item_neighbors(cg_fusion_binary_test_lib_index)
             .find(|(_, i)| {
                 if let Item::Impl(item_impl) = i {
-                    if let Some((_, ref trait_path, _)) = item_impl.trait_ {
+                    match item_impl.trait_ { Some((_, ref trait_path, _)) => {
                         if let Some(trait_ident) = SourcePath::from(trait_path).get_last() {
                             trait_ident == "Default"
                         } else {
                             false
                         }
-                    } else {
+                    } _ => {
                         false
-                    }
+                    }}
                 } else {
                     false
                 }

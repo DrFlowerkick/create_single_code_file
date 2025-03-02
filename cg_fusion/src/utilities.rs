@@ -23,7 +23,7 @@ use std::{
 // macro for adding file and line info to messages
 #[macro_export]
 macro_rules! add_context {
-    ($message:expr) => {
+    ($message:expr_2021) => {
         format!("{} ({}:{})", $message, file!(), line!())
     };
 }

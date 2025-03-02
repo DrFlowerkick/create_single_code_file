@@ -127,11 +127,11 @@ impl<O: CgCli, S> CgData<O, S> {
         package_node_index: NodeIndex,
     ) -> TreeResult<Option<NodeIndex>> {
         // get bin path from metadata
-        if let Some(target) = self
+        match self
             .get_local_package(package_node_index)?
             .metadata
             .get_library_target_of_root_package()?
-        {
+        { Some(target) => {
             // load source code
             let code = fs::read_to_string(&target.src_path)?;
             // get syntax of src file
@@ -159,9 +159,9 @@ impl<O: CgCli, S> CgData<O, S> {
             }
 
             Ok(Some(crate_node_index))
-        } else {
+        } _ => {
             Ok(None)
-        }
+        }}
     }
 
     pub(crate) fn add_syn_item(
@@ -222,10 +222,9 @@ impl<O: CgCli, S> CgData<O, S> {
         dir_path: &Utf8PathBuf,
         item_mod_index: NodeIndex,
     ) -> TreeResult<()> {
-        let (items, mod_src_file) = if let Some(NodeType::SynItem(Item::Mod(item_mod))) =
-            self.tree.node_weight_mut(item_mod_index)
-        {
-            if let Some(mod_content) = item_mod.content.take() {
+        let (items, mod_src_file) = match self.tree.node_weight_mut(item_mod_index)
+        { Some(NodeType::SynItem(Item::Mod(item_mod))) => {
+            match item_mod.content.take() { Some(mod_content) => {
                 // with take() mod_content of item_mod is set to None
                 if self.options.verbose() {
                     println!(
@@ -234,7 +233,7 @@ impl<O: CgCli, S> CgData<O, S> {
                     );
                 }
                 (mod_content.1, None)
-            } else {
+            } _ => {
                 // set module directory
                 let mod_dir = dir_path.join(item_mod.ident.to_string());
                 // set module filename
@@ -257,13 +256,13 @@ impl<O: CgCli, S> CgData<O, S> {
                     attrs: mod_syntax.attrs.to_owned(),
                 };
                 (mod_syntax.items, Some((src_file, mod_dir)))
-            }
-        } else {
+            }}
+        } _ => {
             return Err(anyhow!(add_context!("Expecting item mod.")).into());
-        };
+        }};
 
         let mut item_order: Vec<NodeIndex> = Vec::new();
-        if let Some((src_file, mod_dir)) = mod_src_file {
+        match mod_src_file { Some((src_file, mod_dir)) => {
             // add src file of module to tree
             if self.options.verbose() {
                 println!(
@@ -280,25 +279,24 @@ impl<O: CgCli, S> CgData<O, S> {
             for content_item in items.iter() {
                 item_order.push(self.add_syn_item(content_item, &mod_dir, item_mod_index)?);
             }
-        } else {
+        } _ => {
             for content_item in items.iter() {
                 item_order.push(self.add_syn_item(content_item, dir_path, item_mod_index)?);
             }
-        }
+        }}
         self.item_order.insert(item_mod_index, item_order);
 
         Ok(())
     }
 
     fn add_syn_item_impl(&mut self, item_impl_index: NodeIndex) -> TreeResult<()> {
-        let items = if let Some(NodeType::SynItem(Item::Impl(item_impl))) =
-            self.tree.node_weight_mut(item_impl_index)
-        {
+        let items = match self.tree.node_weight_mut(item_impl_index)
+        { Some(NodeType::SynItem(Item::Impl(item_impl))) => {
             // mem::take takes all items from item_impl.items, leaving it empty
             std::mem::take(&mut item_impl.items)
-        } else {
+        } _ => {
             return Err(anyhow!(add_context!("Expected impl item.")).into());
-        };
+        }};
 
         // Add impl items
         let mut item_order: Vec<NodeIndex> = Vec::new();
@@ -321,14 +319,13 @@ impl<O: CgCli, S> CgData<O, S> {
     }
 
     fn add_syn_item_trait(&mut self, item_trait_index: NodeIndex) -> TreeResult<()> {
-        let items = if let Some(NodeType::SynItem(Item::Trait(trait_impl))) =
-            self.tree.node_weight_mut(item_trait_index)
-        {
+        let items = match self.tree.node_weight_mut(item_trait_index)
+        { Some(NodeType::SynItem(Item::Trait(trait_impl))) => {
             // mem::take takes all items from item_impl.items, leaving it empty
             std::mem::take(&mut trait_impl.items)
-        } else {
+        } _ => {
             return Err(anyhow!(add_context!("Expected trait item.")).into());
-        };
+        }};
 
         // Add trait items
         let mut item_order: Vec<NodeIndex> = Vec::new();
@@ -556,9 +553,8 @@ impl<O: CgCli, S> CgData<O, S> {
                     new_mod_index
                 }
                 Item::Use(mut item_use) => {
-                    let new_item_use = if let PathElement::Item(path_root) =
-                        self.get_path_root(item_index, (&item_use).into())?
-                    {
+                    let new_item_use = match self.get_path_root(item_index, (&item_use).into())?
+                    { PathElement::Item(path_root) => {
                         if self.is_crate(path_root) && !item_use.tree.path_root_is_keyword() {
                             let new_use_root = UsePath {
                                 ident: Ident::new("crate", Span::call_site()),
@@ -570,9 +566,9 @@ impl<O: CgCli, S> CgData<O, S> {
                         } else {
                             item_use
                         }
-                    } else {
+                    } _ => {
                         item_use
-                    };
+                    }};
                     self.tree
                         .add_node(NodeType::SynItem(Item::Use(new_item_use)))
                 }
