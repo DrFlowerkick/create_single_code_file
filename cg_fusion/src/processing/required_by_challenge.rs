@@ -1,7 +1,7 @@
 // Linking all items, which are required by challenge
 
 use super::{ProcessingImplItemDialogState, ProcessingResult};
-use crate::{add_context, configuration::CgCli, CgData};
+use crate::{CgData, add_context, configuration::CgCli};
 use anyhow::Context;
 use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
@@ -67,16 +67,17 @@ mod tests {
             .collect();
         let mut challenge_items_ident: Vec<String> = items_required_by_challenge
             .iter()
-            .map(|n| {
-                match cg_data.get_syn_module_index(*n) { Some(module_index) => {
+            .map(|n| match cg_data.get_syn_module_index(*n) {
+                Some(module_index) => {
                     format!(
                         "{}::{}",
                         cg_data.get_verbose_name_of_tree_node(module_index).unwrap(),
                         cg_data.get_verbose_name_of_tree_node(*n).unwrap()
                     )
-                } _ => {
+                }
+                _ => {
                     format!("{}", cg_data.get_verbose_name_of_tree_node(*n).unwrap())
-                }}
+                }
             })
             .collect();
         challenge_items_ident.sort();
@@ -119,7 +120,7 @@ mod tests {
                 "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>",
                 "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>::default (Impl Fn)",
                 "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
-                "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::new (Impl Fn)",    
+                "my_map_two_dim (library crate)::impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::new (Impl Fn)",
                 "my_map_two_dim (library crate)::my_map_point (Mod)",
             ]
         );

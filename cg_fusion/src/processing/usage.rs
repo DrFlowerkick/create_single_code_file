@@ -2,13 +2,12 @@
 
 use super::{ProcessingCrateUseAndPathState, ProcessingError, ProcessingResult};
 use crate::{
-    add_context,
+    CgData, add_context,
     challenge_tree::PathElement,
     configuration::CgCli,
     parsing::{ItemExt, ItemName, SourcePath, ToTokensExt},
-    CgData,
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::{HashMap, VecDeque};
 use syn::{Ident, Item, Visibility};
@@ -131,10 +130,10 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             // path of use glob could not be parsed, probably because of module in path, which is "hidden" behind a use glob
             PathElement::PathCouldNotBeParsed => return Ok(true),
             PathElement::Group => {
-                return Err(anyhow!(add_context!("Expected expanded groups.")).into())
+                return Err(anyhow!(add_context!("Expected expanded groups.")).into());
             }
             PathElement::Item(_) | PathElement::ItemRenamed(_, _) => {
-                return Err(anyhow!(add_context!("Expected Glob path leaf")).into())
+                return Err(anyhow!(add_context!("Expected Glob path leaf")).into());
             }
         };
         // collect visible items of target module
@@ -148,72 +147,79 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
         {
             if let Item::Use(item_use) = item_to_import {
                 let item_source_path = SourcePath::from(item_use);
-                match self.get_path_leaf(index_of_item_to_import, item_source_path.clone())
-                { Ok(ref path_element) => {
-                    match path_element {
-                        // first expand all use groups
-                        PathElement::Group => return Ok(true),
-                        PathElement::Glob(glob_target_index) => {
-                            // check if glob target module is equal to owning module of use glob
-                            // if yes, ignore use glob, which points to the owning module of the use glob
-                            if *glob_target_index != use_statement_owning_module_index {
-                                // first expand all use globs, which do not point to the owning module of the use glob
-                                return Ok(true);
+                match self.get_path_leaf(index_of_item_to_import, item_source_path.clone()) {
+                    Ok(ref path_element) => {
+                        match path_element {
+                            // first expand all use groups
+                            PathElement::Group => return Ok(true),
+                            PathElement::Glob(glob_target_index) => {
+                                // check if glob target module is equal to owning module of use glob
+                                // if yes, ignore use glob, which points to the owning module of the use glob
+                                if *glob_target_index != use_statement_owning_module_index {
+                                    // first expand all use globs, which do not point to the owning module of the use glob
+                                    return Ok(true);
+                                }
                             }
-                        }
-                        // If path could not be parsed, it probably contains a module 'hidden' behind use glob
-                        PathElement::PathCouldNotBeParsed => return Ok(true),
-                        PathElement::ExternalItem(external_item) => {
-                            if !self
-                                .iter_syn_item_neighbors(use_statement_owning_module_index)
-                                .filter_map(|(_, i)| ItemName::from(i).get_ident_in_name_space())
-                                .any(|i| i == *external_item)
-                            {
-                                // add ident of external dependency to list of visible items, if it does not
-                                // exist in the owning module of the use glob
-                                visible_items.push(external_item.to_owned());
+                            // If path could not be parsed, it probably contains a module 'hidden' behind use glob
+                            PathElement::PathCouldNotBeParsed => return Ok(true),
+                            PathElement::ExternalItem(external_item) => {
+                                if !self
+                                    .iter_syn_item_neighbors(use_statement_owning_module_index)
+                                    .filter_map(|(_, i)| {
+                                        ItemName::from(i).get_ident_in_name_space()
+                                    })
+                                    .any(|i| i == *external_item)
+                                {
+                                    // add ident of external dependency to list of visible items, if it does not
+                                    // exist in the owning module of the use glob
+                                    visible_items.push(external_item.to_owned());
+                                }
                             }
-                        }
-                        PathElement::ExternalGlob(_) => {
-                            // do not import external use glob and provide warning to user about it
-                            println!(
-                                "\
+                            PathElement::ExternalGlob(_) => {
+                                // do not import external use glob and provide warning to user about it
+                                println!(
+                                    "\
                             WARNING: use glob '{}' in module '{}' is importing\n\
                             external use glob '{}' of from module '{}'.\n\
                             cg-fusion does mot support this and will ignore \
                             external use globs during expansion of use globs.\n\
                             This may result in unwanted behavior. It can be circumvented \
                             by avoiding use globs of external dependencies.",
-                                self.get_syn_item(use_glob_index)
-                                    .unwrap()
-                                    .get_item_use()
-                                    .unwrap()
-                                    .to_trimmed_token_string(),
-                                self.get_verbose_name_of_tree_node(
-                                    use_statement_owning_module_index
-                                )?,
-                                item_use.to_trimmed_token_string(),
-                                self.get_verbose_name_of_tree_node(use_glob_target_module_index)?,
-                            );
-                        }
-                        PathElement::Item(item_index) | PathElement::ItemRenamed(item_index, _) => {
-                            if !self
-                                .iter_syn_item_neighbors(use_statement_owning_module_index)
-                                .any(|(n, _)| n == *item_index)
-                            {
-                                // add target of use item to list of visible items, if use statement does point
-                                // to item inside the owning module of the use glob
-                                if let Some(ident_to_import) =
-                                    ItemName::from(item_to_import).get_ident_in_name_space()
+                                    self.get_syn_item(use_glob_index)
+                                        .unwrap()
+                                        .get_item_use()
+                                        .unwrap()
+                                        .to_trimmed_token_string(),
+                                    self.get_verbose_name_of_tree_node(
+                                        use_statement_owning_module_index
+                                    )?,
+                                    item_use.to_trimmed_token_string(),
+                                    self.get_verbose_name_of_tree_node(
+                                        use_glob_target_module_index
+                                    )?,
+                                );
+                            }
+                            PathElement::Item(item_index)
+                            | PathElement::ItemRenamed(item_index, _) => {
+                                if !self
+                                    .iter_syn_item_neighbors(use_statement_owning_module_index)
+                                    .any(|(n, _)| n == *item_index)
                                 {
-                                    visible_items.push(ident_to_import);
+                                    // add target of use item to list of visible items, if use statement does point
+                                    // to item inside the owning module of the use glob
+                                    if let Some(ident_to_import) =
+                                        ItemName::from(item_to_import).get_ident_in_name_space()
+                                    {
+                                        visible_items.push(ident_to_import);
+                                    }
                                 }
                             }
                         }
                     }
-                } _ => {
-                    unreachable!("Every use statement must have a leave.")
-                }}
+                    _ => {
+                        unreachable!("Every use statement must have a leave.")
+                    }
+                }
             } else {
                 // if not use item, add ident_to_import to list of visible items
                 if let Some(ident_to_import) =
@@ -315,7 +321,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 Visibility::Restricted(vis_restricted) => {
                     match self.get_path_leaf(item_index, vis_restricted.into())? {
                         PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => {
-                            return Ok(false)
+                            return Ok(false);
                         } // only local syn items have NodeIndex to link to
                         PathElement::Group => unreachable!("No group in visibility path."),
                         PathElement::Glob(_) => unreachable!("No glob in visibility path."),

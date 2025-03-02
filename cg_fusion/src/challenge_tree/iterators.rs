@@ -1,9 +1,9 @@
 // iterator fn for the challenge tree
 
 use super::{BfsByEdgeType, EdgeType, LocalPackage, NodeType, SrcFile};
-use crate::{configuration::CgCli, CgData};
+use crate::{CgData, configuration::CgCli};
 use either::Either;
-use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
+use petgraph::{Direction, stable_graph::NodeIndex, visit::EdgeRef};
 use syn::{ImplItem, Item, TraitItem};
 
 impl<O, S> CgData<O, S> {

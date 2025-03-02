@@ -7,7 +7,7 @@ pub use my_map_two_dim;
 // the following code just exists to have some dependencies
 // it will be purposely not included in fusion
 use my_array::MyArray;
-use my_map_two_dim::{my_map_point::MapPoint, MyMap2D};
+use my_map_two_dim::{MyMap2D, my_map_point::MapPoint};
 use rand::prelude::*;
 
 // N = X * Y

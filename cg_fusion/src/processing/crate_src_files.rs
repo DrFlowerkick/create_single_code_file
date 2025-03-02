@@ -1,7 +1,7 @@
 // functions to to add src files of bin and lib crates to tree
 
 use super::{ProcessingResult, ProcessingUsageState};
-use crate::{add_context, configuration::CgCli, parsing::load_syntax, CgData};
+use crate::{CgData, add_context, configuration::CgCli, parsing::load_syntax};
 use anyhow::Context;
 use petgraph::graph::NodeIndex;
 use std::fs;

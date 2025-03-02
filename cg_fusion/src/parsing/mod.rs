@@ -11,7 +11,7 @@ pub use fold_and_visit::{
 pub use item_name::ItemName;
 pub use syn_extend::{ItemExt, SourceLeaf, SourcePath, ToTokensExt, UseTreeExt};
 
-use syn::{fold::Fold, visit::Visit, File, Item};
+use syn::{File, Item, fold::Fold, visit::Visit};
 
 // load syntax from given file
 pub fn load_syntax(code: &str) -> ParsingResult<File> {

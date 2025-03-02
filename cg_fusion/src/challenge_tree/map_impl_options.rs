@@ -5,17 +5,16 @@ use super::{ChallengeTreeError, EdgeType, TreeResult};
 use crate::challenge_tree::NodeType;
 use crate::parsing::ItemName;
 use crate::{
-    add_context,
+    CgData, add_context,
     configuration::CgCli,
     utilities::{current_dir_utf8, get_relative_path, is_inside_dir},
-    CgData,
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::NodeIndex;
 use serde::Deserialize;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fs;
 use syn::Item;
 use toml_edit::{Array, Value};
@@ -88,15 +87,16 @@ enum ImplOptionType {
 
 impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn get_impl_config_toml_path(&self) -> TreeResult<Option<Utf8PathBuf>> {
-        match self.options.processing().impl_item_toml { Some(ref toml_config_path) => {
-            let toml_config_path = Utf8PathBuf::try_from(toml_config_path.to_owned())?;
-            self.verify_path_points_inside_challenge_dir(&toml_config_path)?;
-            let current_dir = current_dir_utf8()?;
-            let relative_toml_config_path = get_relative_path(&current_dir, &toml_config_path)?;
-            Ok(Some(relative_toml_config_path))
-        } _ => {
-            Ok(None)
-        }}
+        match self.options.processing().impl_item_toml {
+            Some(ref toml_config_path) => {
+                let toml_config_path = Utf8PathBuf::try_from(toml_config_path.to_owned())?;
+                self.verify_path_points_inside_challenge_dir(&toml_config_path)?;
+                let current_dir = current_dir_utf8()?;
+                let relative_toml_config_path = get_relative_path(&current_dir, &toml_config_path)?;
+                Ok(Some(relative_toml_config_path))
+            }
+            _ => Ok(None),
+        }
     }
 
     pub(crate) fn verify_path_points_inside_challenge_dir(
@@ -115,13 +115,14 @@ impl<O: CgCli, S> CgData<O, S> {
     ) -> TreeResult<HashMap<NodeIndex, bool>> {
         let mut impl_options_map: HashMap<NodeIndex, bool> = HashMap::new();
         // load config file if existing
-        let impl_config = match self.get_impl_config_toml_path()? { Some(toml_config_path) => {
-            let toml_string = fs::read_to_string(toml_config_path)?;
-            let toml_options: ImplOptions = toml::from_str(&toml_string)?;
-            toml_options
-        } _ => {
-            ImplOptions::default()
-        }};
+        let impl_config = match self.get_impl_config_toml_path()? {
+            Some(toml_config_path) => {
+                let toml_string = fs::read_to_string(toml_config_path)?;
+                let toml_options: ImplOptions = toml::from_str(&toml_string)?;
+                toml_options
+            }
+            _ => ImplOptions::default(),
+        };
         // Collect all impl items to include or exclude.
         // If index is already in include, include wins.
         for (impl_item, process_option) in self
@@ -240,7 +241,7 @@ impl<O: CgCli, S> CgData<O, S> {
             0 => {
                 return Err(ChallengeTreeError::InvalidImplConfigOption(
                     impl_item.to_string(),
-                ))
+                ));
             }
             1 => {
                 // functions do not contain whitespace, but every impl name contains at least one whitespace
@@ -254,7 +255,7 @@ impl<O: CgCli, S> CgData<O, S> {
             3.. => {
                 return Err(ChallengeTreeError::InvalidImplConfigOption(
                     impl_item.to_string(),
-                ))
+                ));
             }
         };
         match with_fully_qualified_impl_block {
@@ -817,7 +818,12 @@ mod tests {
             ]
         );
         assert_eq!(impl_options.impl_items.exclude, ["set_black"]);
-        assert_eq!(impl_options.impl_blocks.include, ["impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"]);
+        assert_eq!(
+            impl_options.impl_blocks.include,
+            [
+                "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
+            ]
+        );
         assert_eq!(
             impl_options.impl_blocks.exclude,
             ["impl Display for Action"]

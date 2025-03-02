@@ -4,17 +4,16 @@
 
 use super::{ProcessingImplBlocksState, ProcessingResult};
 use crate::{
-    add_context,
+    CgData, add_context,
     challenge_tree::{NodeType, PathElement, SourcePathWalker},
     configuration::CgCli,
     parsing::SourcePath,
-    CgData,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use petgraph::stable_graph::NodeIndex;
 use proc_macro2::Span;
-use syn::{fold::Fold, Ident, Item, Path, PathSegment, UseTree};
+use syn::{Ident, Item, Path, PathSegment, UseTree, fold::Fold};
 
 pub struct ProcessingCrateUseAndPathState;
 
@@ -104,9 +103,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
             // glob is still possible, if it points to external crate
             SourcePath::Glob(segments) => (segments, true, None),
             SourcePath::Name(segments) => (segments, false, None),
-            SourcePath::Rename(segments, renamed) => {
-                (segments, false, Some(renamed.to_owned()))
-            }
+            SourcePath::Rename(segments, renamed) => (segments, false, Some(renamed.to_owned())),
         };
         let mut remaining_external_segments: Option<Vec<Ident>> = None;
         let mut path_leaf: Option<NodeIndex> = None;
@@ -118,8 +115,10 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
                     unreachable!("Use groups have been expanded before.");
                 }
                 PathElement::Glob(_) => {
-                    unreachable!("Local use globs have been expanded before. Only external globs are possible, which will return \
-                                  PathElement::ExternalPackage before reaching glob.");
+                    unreachable!(
+                        "Local use globs have been expanded before. Only external globs are possible, which will return \
+                                  PathElement::ExternalPackage before reaching glob."
+                    );
                 }
                 PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => {
                     if let Some(leaf_index) = path_leaf {
@@ -232,14 +231,13 @@ impl<O: CgCli> Fold for CratePathFolder<'_, O> {
                         .map(|s| {
                             match path.segments.iter().find_map(|p| {
                                 (p.ident == s.ident).then_some(p.arguments.to_owned())
-                            }) { Some(arguments) => {
-                                PathSegment {
+                            }) {
+                                Some(arguments) => PathSegment {
                                     ident: s.ident.to_owned(),
                                     arguments,
-                                }
-                            } _ => {
-                                s.to_owned()
-                            }}
+                                },
+                                _ => s.to_owned(),
+                            }
                         })
                         .collect(),
                 };
@@ -282,11 +280,7 @@ mod tests {
             .iter_syn_item_neighbors(cg_fusion_binary_test_lib_index)
             .find_map(|(n, i)| {
                 if let Some(ident) = ItemName::from(i).get_ident_in_name_space() {
-                    if ident == "Action" {
-                        Some(n)
-                    } else {
-                        None
-                    }
+                    if ident == "Action" { Some(n) } else { None }
                 } else {
                     None
                 }
@@ -318,11 +312,7 @@ mod tests {
             .iter_syn_item_neighbors(my_map_point_index)
             .find_map(|(n, i)| {
                 if let Some(ident) = ItemName::from(i).get_ident_in_name_space() {
-                    if ident == "Compass" {
-                        Some(n)
-                    } else {
-                        None
-                    }
+                    if ident == "Compass" { Some(n) } else { None }
                 } else {
                     None
                 }
@@ -340,15 +330,16 @@ mod tests {
             .iter_syn_item_neighbors(cg_fusion_binary_test_lib_index)
             .find(|(_, i)| {
                 if let Item::Impl(item_impl) = i {
-                    match item_impl.trait_ { Some((_, ref trait_path, _)) => {
-                        if let Some(trait_ident) = SourcePath::from(trait_path).get_last() {
-                            trait_ident == "Default"
-                        } else {
-                            false
+                    match item_impl.trait_ {
+                        Some((_, ref trait_path, _)) => {
+                            if let Some(trait_ident) = SourcePath::from(trait_path).get_last() {
+                                trait_ident == "Default"
+                            } else {
+                                false
+                            }
                         }
-                    } _ => {
-                        false
-                    }}
+                        _ => false,
+                    }
                 } else {
                     false
                 }

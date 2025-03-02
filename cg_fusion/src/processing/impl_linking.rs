@@ -1,10 +1,10 @@
 // Tools to link Impl Items to their corresponding struct or enum
 
 use super::{ProcessingRequiredByChallengeState, ProcessingResult};
-use crate::{challenge_tree::SynReferenceMapper, configuration::CgCli, CgData};
+use crate::{CgData, challenge_tree::SynReferenceMapper, configuration::CgCli};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
-use syn::{visit::Visit, Item};
+use syn::{Item, visit::Visit};
 
 pub struct ProcessingImplBlocksState;
 
@@ -41,7 +41,7 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
 #[cfg(test)]
 mod tests {
 
-    use petgraph::{visit::EdgeRef, Direction};
+    use petgraph::{Direction, visit::EdgeRef};
     use syn::Item;
 
     use super::super::tests::setup_processing_test;

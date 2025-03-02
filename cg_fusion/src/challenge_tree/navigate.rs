@@ -1,30 +1,31 @@
 // functions to navigate the challenge tree
 
 use super::{
-    walkers::{PathElement, SourcePathWalker},
     ChallengeTreeError, EdgeType, LocalPackage, NodeType, SrcFile, TreeResult,
+    walkers::{PathElement, SourcePathWalker},
 };
 use crate::{
-    add_context,
+    CgData, add_context,
     configuration::CgCli,
     parsing::{IdentCollector, ItemName, SourcePath},
     utilities::clean_absolute_utf8,
-    CgData,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use cargo_metadata::camino::Utf8PathBuf;
-use petgraph::{stable_graph::NodeIndex, visit::EdgeRef, Direction};
+use petgraph::{Direction, stable_graph::NodeIndex, visit::EdgeRef};
 use proc_macro2::Span;
 use std::collections::{HashSet, VecDeque};
-use syn::{spanned::Spanned, visit::Visit, Ident, ImplItem, Item, TraitItem};
+use syn::{Ident, ImplItem, Item, TraitItem, spanned::Spanned, visit::Visit};
 
 impl<O, S> CgData<O, S> {
     pub(crate) fn challenge_package(&self) -> &LocalPackage {
         if let NodeType::LocalPackage(package) = self.tree.node_weight(0.into()).unwrap() {
             return package;
         }
-        unreachable!("Challenge package is created at instantiation of CgDate and should always be at index 0.");
+        unreachable!(
+            "Challenge package is created at instantiation of CgDate and should always be at index 0."
+        );
     }
 
     pub(crate) fn get_local_package(&self, node: NodeIndex) -> TreeResult<&LocalPackage> {
@@ -32,11 +33,10 @@ impl<O, S> CgData<O, S> {
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
-        { NodeType::LocalPackage(dependency) => {
-            Ok(dependency)
-        } _ => {
-            Err(ChallengeTreeError::NotLocalPackage(node))
-        }}
+        {
+            NodeType::LocalPackage(dependency) => Ok(dependency),
+            _ => Err(ChallengeTreeError::NotLocalPackage(node)),
+        }
     }
 
     pub(crate) fn get_binary_crate(&self, node: NodeIndex) -> TreeResult<&SrcFile> {
@@ -44,11 +44,10 @@ impl<O, S> CgData<O, S> {
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
-        { NodeType::BinCrate(src_file) => {
-            Ok(src_file)
-        } _ => {
-            Err(ChallengeTreeError::NotBinaryCrate(node))
-        }}
+        {
+            NodeType::BinCrate(src_file) => Ok(src_file),
+            _ => Err(ChallengeTreeError::NotBinaryCrate(node)),
+        }
     }
 
     pub(crate) fn get_library_crate(&self, node: NodeIndex) -> TreeResult<&SrcFile> {
@@ -56,11 +55,10 @@ impl<O, S> CgData<O, S> {
             .tree
             .node_weight(node)
             .ok_or_else(|| ChallengeTreeError::IndexError(node))?
-        { NodeType::LibCrate(src_file) => {
-            Ok(src_file)
-        } _ => {
-            Err(ChallengeTreeError::NotLibraryCrate(node))
-        }}
+        {
+            NodeType::LibCrate(src_file) => Ok(src_file),
+            _ => Err(ChallengeTreeError::NotLibraryCrate(node)),
+        }
     }
 
     pub(crate) fn get_parent_index_by_edge_type(
@@ -464,12 +462,10 @@ impl<O, S> CgData<O, S> {
                     if let Some(module_src_node) =
                         self.get_parent_index_by_edge_type(module_or_crate, EdgeType::Module)
                     {
-                        match self.tree.node_weight(module_src_node)
-                        { Some(NodeType::Module(src_file)) => {
-                            Some(src_file)
-                        } _ => {
-                            None
-                        }}
+                        match self.tree.node_weight(module_src_node) {
+                            Some(NodeType::Module(src_file)) => Some(src_file),
+                            _ => None,
+                        }
                     } else {
                         self.get_src_file_containing_item(module_or_crate)
                     }
@@ -546,16 +542,14 @@ impl<O: CgCli, S> CgData<O, S> {
                 .iter_syn_item_neighbors(node)
                 .filter(|(n, _)| self.is_required_by_challenge(*n))
                 .filter_map(|(n, i)| match i {
-                    Item::Use(item_use) => {
-                        match self.get_path_root(n, item_use.into())
-                        { Ok(PathElement::Item(root_node)) => {
+                    Item::Use(item_use) => match self.get_path_root(n, item_use.into()) {
+                        Ok(PathElement::Item(root_node)) => {
                             self.get_crate_index(root_node).and_then(|root_crate| {
                                 (root_crate != current_crate_node).then_some(root_crate)
                             })
-                        } _ => {
-                            None
-                        }}
-                    }
+                        }
+                        _ => None,
+                    },
                     _ => None,
                 })
             {
@@ -592,11 +586,12 @@ impl<O: CgCli, S> CgData<O, S> {
     }
 
     pub(crate) fn get_fusion_file_name(&self) -> String {
-        match self.options.output().filename { Some(ref name) => {
-            name.to_owned()
-        } _ => {
-            format!("fusion_of_{}", self.challenge_package().name)
-        }}
+        match self.options.output().filename {
+            Some(ref name) => name.to_owned(),
+            _ => {
+                format!("fusion_of_{}", self.challenge_package().name)
+            }
+        }
     }
 
     pub(crate) fn get_fusion_file_path(&self) -> TreeResult<Utf8PathBuf> {

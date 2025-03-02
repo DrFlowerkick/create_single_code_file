@@ -177,7 +177,7 @@ impl<const X: usize, const Y: usize> MapPoint<X, Y> {
         rotation_direction: bool,
         include_center: bool,
         include_corners: bool,
-    ) -> impl Iterator<Item = (MapPoint<X, Y>, Compass)> {
+    ) -> impl Iterator<Item = (MapPoint<X, Y>, Compass)> + use<X, Y> {
         NeighborIter::new(
             *self,
             initial_orientation,
@@ -186,7 +186,10 @@ impl<const X: usize, const Y: usize> MapPoint<X, Y> {
             include_corners,
         )
     }
-    pub fn iter_orientation(&self, orientation: Compass) -> impl Iterator<Item = MapPoint<X, Y>> {
+    pub fn iter_orientation(
+        &self,
+        orientation: Compass,
+    ) -> impl Iterator<Item = MapPoint<X, Y>> + use<X, Y> {
         OrientationIter::new(*self, orientation)
     }
 }

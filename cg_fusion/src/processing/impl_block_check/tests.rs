@@ -67,8 +67,8 @@ mod impl_block;
 mod impl_block_with_trait;
 
 // ToDo: delete this later. Just keep it for further debugging
-use crate::{configuration::CargoCli, CgDataBuilder, CgMode, ProcessingDependenciesState};
-use petgraph::{visit::EdgeRef, Direction};
+use crate::{CgDataBuilder, CgMode, ProcessingDependenciesState, configuration::CargoCli};
+use petgraph::{Direction, visit::EdgeRef};
 
 fn setup_processing_test_ult_tic_tac_toe(
     impl_config: bool,

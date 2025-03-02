@@ -1,16 +1,15 @@
 // functions to visit the challenge tree items
 
 use crate::{
-    add_context,
+    CgData, add_context,
     parsing::{ItemName, SourcePath},
-    CgData,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
 use syn::{
-    visit::Visit, Block, Expr, ExprMethodCall, FnArg, Ident, ImplItem, Item, LocalInit, Pat,
-    PatIdent, Path, ReturnType, Signature, Stmt, Type, TypePath,
+    Block, Expr, ExprMethodCall, FnArg, Ident, ImplItem, Item, LocalInit, Pat, PatIdent, Path,
+    ReturnType, Signature, Stmt, Type, TypePath, visit::Visit,
 };
 
 use super::{EdgeType, NodeType, PathElement, SourcePathWalker};
@@ -83,7 +82,7 @@ impl<'a, O, S> SynReferenceMapper<'a, O, S> {
                         return Err(anyhow!(format!(
                             "{}",
                             add_context!("Expected expanded use groups and globs")
-                        )))
+                        )));
                     }
                     PathElement::ExternalItem(_)
                     | PathElement::ExternalGlob(_)

@@ -1,17 +1,17 @@
 // some utilities to use in project
 
 use anyhow::Result;
-use cargo_metadata::camino::{absolute_utf8, Utf8PathBuf};
-use fuzzy_matcher::skim::SkimMatcherV2;
+use cargo_metadata::camino::{Utf8PathBuf, absolute_utf8};
 use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
 use inquire::{
+    Confirm, CustomUserError, Select, Text,
     autocompletion::{Autocomplete, Replacement},
     ui::RenderConfig,
     validator::StringValidator,
-    Confirm, CustomUserError, Select, Text,
 };
 use mockall::automock;
-use path_clean::{clean, PathClean};
+use path_clean::{PathClean, clean};
 use relative_path::PathExt;
 use std::{
     fmt::Display,

@@ -46,8 +46,8 @@ pub mod tests {
     use super::*;
 
     use crate::{
-        configuration::{CargoCli, FusionCli},
         CgData, CgDataBuilder, CgMode,
+        configuration::{CargoCli, FusionCli},
     };
 
     pub fn setup_processing_test(

@@ -5,7 +5,7 @@
 /// Does not support workspace crates.
 /// cargo-cg-fusion acts as a cargo extension, as the name already suggests. It provides
 /// three additional modes for fine control of fusion process: analyze, merge, and purge.
-use cargo_cg_fusion::{configuration::CargoCli, error::CgResult, CgDataBuilder, CgMode};
+use cargo_cg_fusion::{CgDataBuilder, CgMode, configuration::CargoCli, error::CgResult};
 use clap::Parser;
 
 fn main() {

@@ -1,7 +1,11 @@
 // function to flatten module structure in fusion
 
 use super::{ForgeState, ProcessingResult};
-use crate::{add_context, challenge_tree::{PathElement, EdgeType}, configuration::CgCli, CgData};
+use crate::{
+    CgData, add_context,
+    challenge_tree::{EdgeType, PathElement},
+    configuration::CgCli,
+};
 
 use anyhow::anyhow;
 use petgraph::stable_graph::NodeIndex;
@@ -126,16 +130,15 @@ impl FlattenAgent {
             .iter()
             .filter_map(|n| {
                 if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
-                    match graph.get_path_leaf(*n, item_use.into()) { Ok(path_leaf) => {
-                        match path_leaf {
+                    match graph.get_path_leaf(*n, item_use.into()) {
+                        Ok(path_leaf) => match path_leaf {
                             PathElement::ExternalGlob(_) | PathElement::ExternalItem(_) => {
                                 Some(path_leaf)
                             }
                             _ => None,
-                        }
-                    } _ => {
-                        None
-                    }}
+                        },
+                        _ => None,
+                    }
                 } else {
                     None
                 }
@@ -148,11 +151,7 @@ impl FlattenAgent {
             .iter_syn_item_neighbors(self.node)
             .filter_map(|(n, _)| {
                 if let Some(module) = graph.get_use_module(n) {
-                    if module != self.parent {
-                        Some(n)
-                    } else {
-                        None
-                    }
+                    if module != self.parent { Some(n) } else { None }
                 } else {
                     Some(n)
                 }
@@ -161,14 +160,15 @@ impl FlattenAgent {
         // remove use of external packages, which are already available in parent module
         self.flatten_items.retain(|n| {
             if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
-                match graph.get_path_leaf(*n, item_use.into()) { Ok(path_leaf) => {
-                    !self
+                match graph.get_path_leaf(*n, item_use.into()) {
+                    Ok(path_leaf) => !self
                         .parent_use_of_external
                         .iter()
-                        .any(|pl| *pl == path_leaf)
-                } _ => {
-                    panic!("{}", add_context!("Expected path leaf of use statement."));
-                }}
+                        .any(|pl| *pl == path_leaf),
+                    _ => {
+                        panic!("{}", add_context!("Expected path leaf of use statement."));
+                    }
+                }
             } else {
                 true
             }
@@ -189,7 +189,9 @@ impl FlattenAgent {
 
     fn link_flatten_items_to_parent<O, S>(&self, graph: &mut CgData<O, S>) {
         for flatten_item in self.flatten_items.iter() {
-            graph.tree.add_edge(self.parent, *flatten_item, EdgeType::Syn);
+            graph
+                .tree
+                .add_edge(self.parent, *flatten_item, EdgeType::Syn);
         }
     }
 

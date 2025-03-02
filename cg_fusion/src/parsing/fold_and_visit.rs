@@ -3,7 +3,7 @@
 use crate::add_context;
 use quote::ToTokens;
 use std::fmt::Write;
-use syn::{fold::Fold, visit::Visit, Attribute, Ident, Meta};
+use syn::{Attribute, Ident, Meta, fold::Fold, visit::Visit};
 
 // helper to remove doc comments from src file
 pub struct FoldRemoveAttrDocComments;

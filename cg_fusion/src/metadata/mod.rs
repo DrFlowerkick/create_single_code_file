@@ -5,7 +5,7 @@ use crate::add_context;
 pub use error::{MetadataError, MetadataResult};
 
 use anyhow::Context;
-use cargo_metadata::{camino::Utf8PathBuf, Message, Metadata, MetadataCommand, Target};
+use cargo_metadata::{Message, Metadata, MetadataCommand, Target, camino::Utf8PathBuf};
 use std::fmt::Write;
 use std::{
     ops::Deref,
@@ -175,8 +175,8 @@ impl OutputWrapper {
                 if let Some(rendered_msg) = msg.message.rendered {
                     writeln!(&mut check_messages, "{}", rendered_msg).context(add_context!(
                         format!(
-                        "Unexpected error while formatting rendered 'cargo {command}' messages."
-                    )
+                            "Unexpected error while formatting rendered 'cargo {command}' messages."
+                        )
                     ))?;
                 }
             }

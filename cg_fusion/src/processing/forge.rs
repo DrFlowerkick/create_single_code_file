@@ -2,11 +2,10 @@
 
 use super::{ProcessingError, ProcessingResult};
 use crate::{
-    add_context,
+    CgData, add_context,
     challenge_tree::NodeType,
     configuration::CgCli,
     utilities::{CgDialog, DialogCli},
-    CgData,
 };
 
 use anyhow::anyhow;

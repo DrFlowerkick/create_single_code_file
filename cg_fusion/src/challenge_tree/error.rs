@@ -30,7 +30,9 @@ pub enum ChallengeTreeError {
     NotCrateOrSyn(NodeIndex),
     #[error("Configured impl item '{0}' of input option does not exist.")]
     NotExistingImplItemOfConfig(String),
-    #[error("Configured impl item '{0}' is not unique. Add fully qualified impl block name (see --help).")]
+    #[error(
+        "Configured impl item '{0}' is not unique. Add fully qualified impl block name (see --help)."
+    )]
     NotUniqueImplItem(String),
     #[error("Invalid impl config option '{0}' (see --help).")]
     InvalidImplConfigOption(String),

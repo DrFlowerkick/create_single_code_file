@@ -7,12 +7,24 @@ const HELP: &str = "↑↓ to move, enter to select, type to filter, and esc to 
 
 static OPTIONS: Lazy<Vec<String>> = Lazy::new(|| {
     vec![
-        String::from("Include 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
-        String::from("Exclude 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
-        String::from("Include all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'."),
-        String::from("Exclude all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'."),
-        String::from("Show code of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
-        String::from("Show usage of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'."),
+        String::from(
+            "Include 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'.",
+        ),
+        String::from(
+            "Exclude 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'.",
+        ),
+        String::from(
+            "Include all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'.",
+        ),
+        String::from(
+            "Exclude all items of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>'.",
+        ),
+        String::from(
+            "Show code of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'.",
+        ),
+        String::from(
+            "Show usage of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>::set (Impl Fn)'.",
+        ),
     ]
 });
 

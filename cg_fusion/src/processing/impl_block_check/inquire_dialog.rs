@@ -4,8 +4,8 @@ use crate::{add_context, utilities::is_inside_dir};
 use anyhow::anyhow;
 use cargo_metadata::camino::Utf8PathBuf;
 use inquire::{
-    validator::{ErrorMessage, StringValidator, Validation},
     CustomUserError,
+    validator::{ErrorMessage, StringValidator, Validation},
 };
 use std::str::FromStr;
 
@@ -125,7 +125,7 @@ impl StringValidator for ConfigFilePathValidator {
             None => {
                 return Ok(Validation::Invalid(ErrorMessage::Custom(
                     "Config file path must end on '.toml' with non-empty filename.".into(),
-                )))
+                )));
             }
         }
 
@@ -157,7 +157,7 @@ impl StringValidator for ConfigFilePathValidator {
             None => {
                 return Ok(Validation::Invalid(ErrorMessage::Custom(
                     "Config file name must not be empty.".into(),
-                )))
+                )));
             }
         }
 

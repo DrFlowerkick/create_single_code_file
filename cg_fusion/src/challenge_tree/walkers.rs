@@ -9,8 +9,8 @@ use fixedbitset::FixedBitSet;
 use syn::{Ident, Item};
 
 use crate::{
-    parsing::{ItemName, SourceLeaf, SourcePath},
     CgData,
+    parsing::{ItemName, SourceLeaf, SourcePath},
 };
 
 use super::{ChallengeTree, EdgeType, NodeType, VariableReferences};
@@ -250,10 +250,10 @@ impl SourcePathWalker {
                         if let Ok(source_leaf) = SourceLeaf::try_from(&self.source_path) {
                             match source_leaf {
                                 SourceLeaf::Name(ident) => {
-                                    return Some(PathElement::ExternalItem(ident))
+                                    return Some(PathElement::ExternalItem(ident));
                                 }
                                 SourceLeaf::Glob(ident) => {
-                                    return Some(PathElement::ExternalGlob(ident))
+                                    return Some(PathElement::ExternalGlob(ident));
                                 }
                             }
                         }

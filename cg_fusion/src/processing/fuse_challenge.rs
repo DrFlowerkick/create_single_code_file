@@ -1,7 +1,7 @@
 // fuse all item required by challenge into a new binary crate in challenge tree
 
 use super::{FlattenFusionState, ProcessingResult};
-use crate::{add_context, configuration::CgCli, CgData};
+use crate::{CgData, add_context, configuration::CgCli};
 
 use anyhow::Context;
 use petgraph::stable_graph::NodeIndex;

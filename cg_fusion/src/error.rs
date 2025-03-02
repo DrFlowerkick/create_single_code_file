@@ -34,7 +34,9 @@ pub enum CgError {
     ParsingError(#[from] ParsingError),
     #[error("Not existing input file '{}' or filename is not ./src/main.rs .", .0.display())]
     MustProvideValidInputFilePath(PathBuf),
-    #[error("Invalid output file name '{0}': file does not exist or is identical to input or does not end on '.rs'.")]
+    #[error(
+        "Invalid output file name '{0}': file does not exist or is identical to input or does not end on '.rs'."
+    )]
     MustProvideValidOutputFileName(String),
     #[error("Input file path '{}' points to invalid package structure.", .0.display())]
     PackageStructureError(PathBuf),

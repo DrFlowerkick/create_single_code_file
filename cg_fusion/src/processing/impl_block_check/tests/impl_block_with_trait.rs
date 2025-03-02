@@ -7,9 +7,15 @@ const HELP: &str = "↑↓ to move, enter to select, type to filter, and esc to 
 
 static OPTIONS: Lazy<Vec<String>> = Lazy::new(|| {
     vec![
-        String::from("Include 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>'."),
-        String::from("Exclude 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>'."),
-        String::from("Show code of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>'."),
+        String::from(
+            "Include 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>'.",
+        ),
+        String::from(
+            "Exclude 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>'.",
+        ),
+        String::from(
+            "Show code of 'impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>'.",
+        ),
     ]
 });
 

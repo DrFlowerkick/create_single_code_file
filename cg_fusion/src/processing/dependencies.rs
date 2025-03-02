@@ -2,11 +2,11 @@
 
 use super::{ProcessingError, ProcessingResult, ProcessingSrcFilesState};
 use crate::{
+    CgData,
     challenge_tree::{BfsByEdgeType, BfsWalker, EdgeType, LocalPackage},
     configuration::{CgCli, ChallengePlatform},
     metadata::MetaWrapper,
     utilities::CODINGAME_SUPPORTED_CRATES,
-    CgData,
 };
 
 use petgraph::graph::NodeIndex;

@@ -3,21 +3,20 @@ use super::{
     ChallengeTreeError, EdgeType, LocalPackage, NodeType, SrcFile, SynReferenceMapper, TreeResult,
 };
 use crate::{
-    add_context,
+    CgData, add_context,
     challenge_tree::PathElement,
     configuration::CgCli,
-    parsing::{load_syntax, ItemName, ToTokensExt, UseTreeExt},
-    CgData,
+    parsing::{ItemName, ToTokensExt, UseTreeExt, load_syntax},
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use cargo_metadata::camino::Utf8PathBuf;
 use petgraph::stable_graph::NodeIndex;
 use proc_macro2::Span;
 use std::collections::HashSet;
 use std::fs;
 use syn::{
-    token, visit::Visit, Ident, ImplItem, Item, ItemMod, TraitItem, UsePath, UseTree, Visibility,
+    Ident, ImplItem, Item, ItemMod, TraitItem, UsePath, UseTree, Visibility, token, visit::Visit,
 };
 
 impl<O: CgCli, S> CgData<O, S> {
@@ -131,37 +130,38 @@ impl<O: CgCli, S> CgData<O, S> {
             .get_local_package(package_node_index)?
             .metadata
             .get_library_target_of_root_package()?
-        { Some(target) => {
-            // load source code
-            let code = fs::read_to_string(&target.src_path)?;
-            // get syntax of src file
-            let syntax = load_syntax(&code)?;
-            // generate node value
-            let crate_file = SrcFile {
-                name: target.name.to_owned(),
-                path: target.src_path.to_owned(),
-                shebang: syntax.shebang,
-                attrs: syntax.attrs,
-            };
+        {
+            Some(target) => {
+                // load source code
+                let code = fs::read_to_string(&target.src_path)?;
+                // get syntax of src file
+                let syntax = load_syntax(&code)?;
+                // generate node value
+                let crate_file = SrcFile {
+                    name: target.name.to_owned(),
+                    path: target.src_path.to_owned(),
+                    shebang: syntax.shebang,
+                    attrs: syntax.attrs,
+                };
 
-            let path = target.src_path.to_owned();
+                let path = target.src_path.to_owned();
 
-            let crate_node_index = self.tree.add_node(NodeType::LibCrate(crate_file));
-            self.tree
-                .add_edge(package_node_index, crate_node_index, EdgeType::Crate);
+                let crate_node_index = self.tree.add_node(NodeType::LibCrate(crate_file));
+                self.tree
+                    .add_edge(package_node_index, crate_node_index, EdgeType::Crate);
 
-            if self.options.verbose() {
-                println!(
-                    "Adding '{}' at path '{}' to tree.",
-                    self.get_verbose_name_of_tree_node(crate_node_index)?,
-                    path
-                );
+                if self.options.verbose() {
+                    println!(
+                        "Adding '{}' at path '{}' to tree.",
+                        self.get_verbose_name_of_tree_node(crate_node_index)?,
+                        path
+                    );
+                }
+
+                Ok(Some(crate_node_index))
             }
-
-            Ok(Some(crate_node_index))
-        } _ => {
-            Ok(None)
-        }}
+            _ => Ok(None),
+        }
     }
 
     pub(crate) fn add_syn_item(
@@ -222,81 +222,91 @@ impl<O: CgCli, S> CgData<O, S> {
         dir_path: &Utf8PathBuf,
         item_mod_index: NodeIndex,
     ) -> TreeResult<()> {
-        let (items, mod_src_file) = match self.tree.node_weight_mut(item_mod_index)
-        { Some(NodeType::SynItem(Item::Mod(item_mod))) => {
-            match item_mod.content.take() { Some(mod_content) => {
-                // with take() mod_content of item_mod is set to None
-                if self.options.verbose() {
-                    println!(
-                        "Adding inline '{}' to tree.",
-                        self.get_verbose_name_of_tree_node(item_mod_index)?
-                    );
-                }
-                (mod_content.1, None)
-            } _ => {
-                // set module directory
-                let mod_dir = dir_path.join(item_mod.ident.to_string());
-                // set module filename
-                let mut path = mod_dir.join("mod.rs");
-                // module is either 'module_name.rs' or 'module_name/mod.rs'
-                if !path.is_file() {
-                    path = mod_dir.clone();
-                    path.set_extension("rs");
-                    if !path.is_file() {
-                        Err(anyhow!(add_context!("Unexpected module file path error.")))?;
+        let (items, mod_src_file) = match self.tree.node_weight_mut(item_mod_index) {
+            Some(NodeType::SynItem(Item::Mod(item_mod))) => {
+                match item_mod.content.take() {
+                    Some(mod_content) => {
+                        // with take() mod_content of item_mod is set to None
+                        if self.options.verbose() {
+                            println!(
+                                "Adding inline '{}' to tree.",
+                                self.get_verbose_name_of_tree_node(item_mod_index)?
+                            );
+                        }
+                        (mod_content.1, None)
+                    }
+                    _ => {
+                        // set module directory
+                        let mod_dir = dir_path.join(item_mod.ident.to_string());
+                        // set module filename
+                        let mut path = mod_dir.join("mod.rs");
+                        // module is either 'module_name.rs' or 'module_name/mod.rs'
+                        if !path.is_file() {
+                            path = mod_dir.clone();
+                            path.set_extension("rs");
+                            if !path.is_file() {
+                                Err(anyhow!(add_context!("Unexpected module file path error.")))?;
+                            }
+                        }
+                        // get syntax of src file
+                        let code = fs::read_to_string(&path)?;
+                        let mod_syntax = load_syntax(&code)?;
+                        let src_file = SrcFile {
+                            name: item_mod.ident.to_string(),
+                            path,
+                            shebang: mod_syntax.shebang.to_owned(),
+                            attrs: mod_syntax.attrs.to_owned(),
+                        };
+                        (mod_syntax.items, Some((src_file, mod_dir)))
                     }
                 }
-                // get syntax of src file
-                let code = fs::read_to_string(&path)?;
-                let mod_syntax = load_syntax(&code)?;
-                let src_file = SrcFile {
-                    name: item_mod.ident.to_string(),
-                    path,
-                    shebang: mod_syntax.shebang.to_owned(),
-                    attrs: mod_syntax.attrs.to_owned(),
-                };
-                (mod_syntax.items, Some((src_file, mod_dir)))
-            }}
-        } _ => {
-            return Err(anyhow!(add_context!("Expecting item mod.")).into());
-        }};
+            }
+            _ => {
+                return Err(anyhow!(add_context!("Expecting item mod.")).into());
+            }
+        };
 
         let mut item_order: Vec<NodeIndex> = Vec::new();
-        match mod_src_file { Some((src_file, mod_dir)) => {
-            // add src file of module to tree
-            if self.options.verbose() {
-                println!(
-                    "Adding module src file '{}' at path '{}' to tree.",
-                    self.get_verbose_name_of_tree_node(item_mod_index)?,
-                    src_file.path,
-                );
-            }
-            let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
-            self.tree
-                .add_edge(mod_node_index, item_mod_index, EdgeType::Module);
+        match mod_src_file {
+            Some((src_file, mod_dir)) => {
+                // add src file of module to tree
+                if self.options.verbose() {
+                    println!(
+                        "Adding module src file '{}' at path '{}' to tree.",
+                        self.get_verbose_name_of_tree_node(item_mod_index)?,
+                        src_file.path,
+                    );
+                }
+                let mod_node_index = self.tree.add_node(NodeType::Module(src_file));
+                self.tree
+                    .add_edge(mod_node_index, item_mod_index, EdgeType::Module);
 
-            // add items of module src file to tree
-            for content_item in items.iter() {
-                item_order.push(self.add_syn_item(content_item, &mod_dir, item_mod_index)?);
+                // add items of module src file to tree
+                for content_item in items.iter() {
+                    item_order.push(self.add_syn_item(content_item, &mod_dir, item_mod_index)?);
+                }
             }
-        } _ => {
-            for content_item in items.iter() {
-                item_order.push(self.add_syn_item(content_item, dir_path, item_mod_index)?);
+            _ => {
+                for content_item in items.iter() {
+                    item_order.push(self.add_syn_item(content_item, dir_path, item_mod_index)?);
+                }
             }
-        }}
+        }
         self.item_order.insert(item_mod_index, item_order);
 
         Ok(())
     }
 
     fn add_syn_item_impl(&mut self, item_impl_index: NodeIndex) -> TreeResult<()> {
-        let items = match self.tree.node_weight_mut(item_impl_index)
-        { Some(NodeType::SynItem(Item::Impl(item_impl))) => {
-            // mem::take takes all items from item_impl.items, leaving it empty
-            std::mem::take(&mut item_impl.items)
-        } _ => {
-            return Err(anyhow!(add_context!("Expected impl item.")).into());
-        }};
+        let items = match self.tree.node_weight_mut(item_impl_index) {
+            Some(NodeType::SynItem(Item::Impl(item_impl))) => {
+                // mem::take takes all items from item_impl.items, leaving it empty
+                std::mem::take(&mut item_impl.items)
+            }
+            _ => {
+                return Err(anyhow!(add_context!("Expected impl item.")).into());
+            }
+        };
 
         // Add impl items
         let mut item_order: Vec<NodeIndex> = Vec::new();
@@ -319,13 +329,15 @@ impl<O: CgCli, S> CgData<O, S> {
     }
 
     fn add_syn_item_trait(&mut self, item_trait_index: NodeIndex) -> TreeResult<()> {
-        let items = match self.tree.node_weight_mut(item_trait_index)
-        { Some(NodeType::SynItem(Item::Trait(trait_impl))) => {
-            // mem::take takes all items from item_impl.items, leaving it empty
-            std::mem::take(&mut trait_impl.items)
-        } _ => {
-            return Err(anyhow!(add_context!("Expected trait item.")).into());
-        }};
+        let items = match self.tree.node_weight_mut(item_trait_index) {
+            Some(NodeType::SynItem(Item::Trait(trait_impl))) => {
+                // mem::take takes all items from item_impl.items, leaving it empty
+                std::mem::take(&mut trait_impl.items)
+            }
+            _ => {
+                return Err(anyhow!(add_context!("Expected trait item.")).into());
+            }
+        };
 
         // Add trait items
         let mut item_order: Vec<NodeIndex> = Vec::new();
@@ -553,22 +565,22 @@ impl<O: CgCli, S> CgData<O, S> {
                     new_mod_index
                 }
                 Item::Use(mut item_use) => {
-                    let new_item_use = match self.get_path_root(item_index, (&item_use).into())?
-                    { PathElement::Item(path_root) => {
-                        if self.is_crate(path_root) && !item_use.tree.path_root_is_keyword() {
-                            let new_use_root = UsePath {
-                                ident: Ident::new("crate", Span::call_site()),
-                                colon2_token: token::PathSep::default(),
-                                tree: Box::new(item_use.tree.to_owned()),
-                            };
-                            item_use.tree = UseTree::Path(new_use_root);
-                            item_use
-                        } else {
-                            item_use
+                    let new_item_use = match self.get_path_root(item_index, (&item_use).into())? {
+                        PathElement::Item(path_root) => {
+                            if self.is_crate(path_root) && !item_use.tree.path_root_is_keyword() {
+                                let new_use_root = UsePath {
+                                    ident: Ident::new("crate", Span::call_site()),
+                                    colon2_token: token::PathSep::default(),
+                                    tree: Box::new(item_use.tree.to_owned()),
+                                };
+                                item_use.tree = UseTree::Path(new_use_root);
+                                item_use
+                            } else {
+                                item_use
+                            }
                         }
-                    } _ => {
-                        item_use
-                    }};
+                        _ => item_use,
+                    };
                     self.tree
                         .add_node(NodeType::SynItem(Item::Use(new_item_use)))
                 }

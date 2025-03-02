@@ -44,9 +44,11 @@ fn test_set_parent() {
         })
         .unwrap();
     // fusion of my_map_point does not contain further mod
-    assert!(!cg_data
-        .iter_syn_item_neighbors(map_point_mod)
-        .any(|(_, i)| matches!(i, Item::Mod(_))));
+    assert!(
+        !cg_data
+            .iter_syn_item_neighbors(map_point_mod)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
+    );
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
 
     // action to test
@@ -65,14 +67,14 @@ fn test_set_parent() {
         .filter_map(|n| cg_data.get_verbose_name_of_tree_node(*n).ok())
         .collect();
     assert_eq!(
-            items,
-            [
-                "my_map_point (Mod)",
-                "MyMap2D (Struct)",
-                "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
-                "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
-            ]
-        );
+        items,
+        [
+            "my_map_point (Mod)",
+            "MyMap2D (Struct)",
+            "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
+            "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
+        ]
+    );
 
     let use_of_flatten: Vec<String> = flatten_agent
         .parent_use_of_flatten
@@ -95,9 +97,11 @@ fn test_set_parent() {
         })
         .unwrap();
     // fusion of my_map_point does not contain further mod
-    assert!(!cg_data
-        .iter_syn_item_neighbors(action_mod)
-        .any(|(_, i)| matches!(i, Item::Mod(_))));
+    assert!(
+        !cg_data
+            .iter_syn_item_neighbors(action_mod)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
+    );
     let mut flatten_agent = FlattenAgent::new(action_mod);
 
     // action to test
@@ -186,9 +190,11 @@ fn test_set_flatten_items() {
         })
         .unwrap();
     // fusion of my_map_point does not contain further mod
-    assert!(!cg_data
-        .iter_syn_item_neighbors(map_point_mod)
-        .any(|(_, i)| matches!(i, Item::Mod(_))));
+    assert!(
+        !cg_data
+            .iter_syn_item_neighbors(map_point_mod)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
+    );
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
     flatten_agent.set_parent(&cg_data);
 
@@ -221,9 +227,11 @@ fn test_set_flatten_items() {
         })
         .unwrap();
     // fusion of my_map_point does not contain further mod
-    assert!(!cg_data
-        .iter_syn_item_neighbors(action_mod)
-        .any(|(_, i)| matches!(i, Item::Mod(_))));
+    assert!(
+        !cg_data
+            .iter_syn_item_neighbors(action_mod)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
+    );
     let mut flatten_agent = FlattenAgent::new(action_mod);
     flatten_agent.set_parent(&cg_data);
 
@@ -284,9 +292,11 @@ fn test_is_name_space_conflict() {
         })
         .unwrap();
     // fusion of my_map_point does not contain further mod
-    assert!(!cg_data
-        .iter_syn_item_neighbors(map_point_mod)
-        .any(|(_, i)| matches!(i, Item::Mod(_))));
+    assert!(
+        !cg_data
+            .iter_syn_item_neighbors(map_point_mod)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
+    );
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
     flatten_agent.set_parent(&cg_data);
     flatten_agent.set_flatten_items(&cg_data);
@@ -306,9 +316,11 @@ fn test_is_name_space_conflict() {
         })
         .unwrap();
     // fusion of my_map_point does not contain further mod
-    assert!(!cg_data
-        .iter_syn_item_neighbors(action_mod)
-        .any(|(_, i)| matches!(i, Item::Mod(_))));
+    assert!(
+        !cg_data
+            .iter_syn_item_neighbors(action_mod)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
+    );
     let mut flatten_agent = FlattenAgent::new(action_mod);
     flatten_agent.set_parent(&cg_data);
     flatten_agent.set_flatten_items(&cg_data);

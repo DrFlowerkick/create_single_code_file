@@ -5,14 +5,14 @@
 
 use super::{FuseChallengeState, ProcessingResult};
 use crate::{
+    CgData,
     challenge_tree::{NodeType, PathElement},
     configuration::CgCli,
     parsing::{MacroWriteFinder, SourcePath},
-    CgData,
 };
 
 use petgraph::stable_graph::NodeIndex;
-use syn::{visit::Visit, Item};
+use syn::{Item, visit::Visit};
 
 pub struct ProcessingRequiredExternals;
 
