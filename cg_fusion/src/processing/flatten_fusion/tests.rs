@@ -1,7 +1,9 @@
 // contains all tests of flatten_fusion
 
+use quote::ToTokens;
 use syn::Item;
 
+use crate::parsing::ItemName;
 use crate::processing::flatten_fusion::FlattenAgent;
 
 use super::super::tests::setup_processing_test;
@@ -253,6 +255,21 @@ fn test_set_flatten_items() {
             "impl Action"
         ]
     );
+
+    let action_use_statements: Vec<(PathElement, String)> = cg_data
+        .iter_syn_item_neighbors(action_mod)
+        .filter_map(|(n, i)| {
+            if let Item::Use(item_use) = i {
+                cg_data
+                    .get_path_leaf(n, item_use.into())
+                    .ok()
+                    .map(|pe| (pe, item_use.to_token_stream().to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    dbg!(action_use_statements);
 }
 
 #[test]
@@ -327,4 +344,84 @@ fn test_is_name_space_conflict() {
 
     // action to test
     assert!(!flatten_agent.is_name_space_conflict(&cg_data));
+}
+
+#[test]
+fn test_check_use_statements() {
+    // preparation
+    let mut cg_data = setup_processing_test(true)
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap()
+        .expand_use_statements()
+        .unwrap()
+        .path_minimizing_of_use_and_path_statements()
+        .unwrap()
+        .link_impl_blocks_with_corresponding_item()
+        .unwrap()
+        .link_required_by_challenge()
+        .unwrap()
+        .check_impl_blocks()
+        .unwrap()
+        .process_external_dependencies()
+        .unwrap()
+        .fuse_challenge()
+        .unwrap();
+
+    let (fusion_node, _) = cg_data.get_fusion_bin_crate().unwrap();
+
+    // test mod MapPoint
+    let map_point_mod = cg_data
+        .iter_syn_items(fusion_node)
+        .find_map(|(n, i)| {
+            if let Item::Mod(item_mod) = i {
+                (item_mod.ident == "my_map_point").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    // fusion of my_map_point does not contain further mod
+    assert!(
+        !cg_data
+            .iter_syn_item_neighbors(map_point_mod)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
+    );
+    let mut flatten_agent = FlattenAgent::new(map_point_mod);
+    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.link_flatten_items_to_parent(&mut cg_data);
+    flatten_agent.collect_sub_and_super_modules(&cg_data);
+
+    // action to test
+    flatten_agent.check_use_statements(&mut cg_data).unwrap();
+
+    let action_mod = cg_data
+        .iter_syn_items(fusion_node)
+        .find_map(|(n, i)| {
+            if let Item::Mod(item_mod) = i {
+                (item_mod.ident == "action").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let action_use_of_map_point = cg_data
+        .iter_syn_item_neighbors(action_mod)
+        .find_map(|(n, i)| {
+            if let Some(name) = ItemName::from(i).get_ident_in_name_space() {
+                (name == "MapPoint").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let Some(item) = cg_data.get_syn_item(action_use_of_map_point) else {
+        panic!("Expected use item.");
+    };
+    assert_eq!(
+        item.to_token_stream().to_string(),
+        "use super :: super :: my_map_two_dim :: MapPoint ;"
+    );
 }

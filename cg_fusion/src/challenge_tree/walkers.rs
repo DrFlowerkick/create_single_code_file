@@ -148,12 +148,10 @@ impl SourcePathWalker {
         }
         if self.next_is_external {
             self.walker_finished = true;
-            if let Some(Item::Use(item_use)) = graph.get_syn_item(self.current_node_index) {
-                if let Ok(source_leaf) = SourceLeaf::try_from(SourcePath::from(item_use)) {
-                    match source_leaf {
-                        SourceLeaf::Name(ident) => return Some(PathElement::ExternalItem(ident)),
-                        SourceLeaf::Glob(ident) => return Some(PathElement::ExternalGlob(ident)),
-                    }
+            if let Ok(source_leaf) = SourceLeaf::try_from(&self.source_path) {
+                match source_leaf {
+                    SourceLeaf::Name(ident) => return Some(PathElement::ExternalItem(ident)),
+                    SourceLeaf::Glob(ident) => return Some(PathElement::ExternalGlob(ident)),
                 }
             }
             return Some(PathElement::PathCouldNotBeParsed);
@@ -343,6 +341,7 @@ impl SourcePathWalker {
                                     PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => {
                                         // return index of use statement, next call will return external package
                                         self.next_is_external = true;
+                                        self.walker_finished = false;
                                         self.current_node_index = item_index;
                                         return Some(PathElement::Item(item_index));
                                     }

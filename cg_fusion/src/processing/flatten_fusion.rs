@@ -3,19 +3,23 @@
 use super::{ForgeState, ProcessingResult};
 use crate::{
     CgData, add_context,
-    challenge_tree::{EdgeType, PathElement},
+    challenge_tree::{EdgeType, NodeType, PathElement},
     configuration::CgCli,
+    parsing::SourcePath,
 };
 
 use anyhow::anyhow;
 use petgraph::stable_graph::NodeIndex;
-use syn::Item;
+use syn::{Item, UseTree};
 
 pub struct FlattenFusionState;
 
 impl<O: CgCli> CgData<O, FlattenFusionState> {
     pub fn flatten_fusion(mut self) -> ProcessingResult<CgData<O, ForgeState>> {
         if self.options.processing().skip_flatten {
+            if self.options.verbose() {
+                println!("Skipping flattening fusion...");
+            }
             return Ok(self.set_state(ForgeState));
         }
         // 1. identify recursively module to flatten: flatten_module
@@ -77,7 +81,8 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         // 5. collect modules, which could contain path statements, that have to change after flatten
         flatten_agent.collect_sub_and_super_modules(self);
 
-        // 6. check path statements of flatten and parent items
+        // 6. check use statements of sub and super modules
+        flatten_agent.check_use_statements(self)?;
 
         Ok(())
     }
@@ -219,6 +224,67 @@ impl FlattenAgent {
             })
             .map(|(n, _)| n)
             .collect();
+        if self.parent != fusion_crate {
+            self.super_modules.push(fusion_crate);
+        }
+    }
+
+    fn check_use_statements<O: CgCli, S>(
+        &mut self,
+        graph: &mut CgData<O, S>,
+    ) -> ProcessingResult<()> {
+        let use_statements: Vec<(NodeIndex, SourcePath)> = self
+            .super_modules
+            .iter()
+            .flat_map(|n| graph.iter_syn_item_neighbors(*n))
+            .filter_map(|(n, i)| {
+                if let Item::Use(item_use) = i {
+                    if let Some(module) = graph.get_use_module(n) {
+                        if module == self.node || self.sub_modules.contains(&module) {
+                            Some((n, SourcePath::from(item_use)))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .chain(
+                self.sub_modules
+                    .iter()
+                    .flat_map(|n| graph.iter_syn_item_neighbors(*n))
+                    .filter_map(|(n, i)| {
+                        if let Item::Use(item_use) = i {
+                            if let Some(module) = graph.get_use_module(n) {
+                                if module == self.parent || self.super_modules.contains(&module) {
+                                    Some((n, SourcePath::from(item_use)))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }),
+            )
+            .collect();
+        for (use_item_index, use_item_path) in use_statements {
+            let new_use_item_path =
+                graph.resolving_crate_source_path(use_item_index, use_item_path)?;
+            let new_use_item_tree: UseTree = new_use_item_path.try_into()?;
+            if let Some(NodeType::SynItem(Item::Use(use_item))) =
+                graph.tree.node_weight_mut(use_item_index)
+            {
+                use_item.tree = new_use_item_tree;
+            }
+        }
+
+        Ok(())
     }
 }
 
