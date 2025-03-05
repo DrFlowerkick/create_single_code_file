@@ -71,6 +71,8 @@ mod tests {
             .unwrap()
             .expand_use_statements()
             .unwrap()
+            .expand_external_use_statements()
+            .unwrap()
             .path_minimizing_of_use_and_path_statements()
             .unwrap()
             .link_impl_blocks_with_corresponding_item()

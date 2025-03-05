@@ -146,6 +146,8 @@ mod tests {
             .unwrap()
             .expand_use_statements()
             .unwrap()
+            .expand_external_use_statements()
+            .unwrap()
             // action to test
             .path_minimizing_of_use_and_path_statements()
             .unwrap();

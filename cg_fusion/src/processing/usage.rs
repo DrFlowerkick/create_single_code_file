@@ -1,6 +1,6 @@
 // functions to analyze use statements in src files
 
-use super::{ProcessingCrateUseAndPathState, ProcessingError, ProcessingResult};
+use super::{ProcessingError, ProcessingExternalUseStatementsState, ProcessingResult};
 use crate::{
     CgData, add_context,
     challenge_tree::PathElement,
@@ -17,7 +17,7 @@ pub struct ProcessingUsageState;
 impl<O: CgCli> CgData<O, ProcessingUsageState> {
     pub fn expand_use_statements(
         mut self,
-    ) -> ProcessingResult<CgData<O, ProcessingCrateUseAndPathState>> {
+    ) -> ProcessingResult<CgData<O, ProcessingExternalUseStatementsState>> {
         let mut use_groups_and_globs: VecDeque<(NodeIndex, ItemName)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
@@ -75,7 +75,7 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 _ => unreachable!("Filtering for groups and globs"),
             }
         }
-        Ok(self.set_state(ProcessingCrateUseAndPathState))
+        Ok(self.set_state(ProcessingExternalUseStatementsState))
     }
 
     fn expand_use_group(&mut self, use_group_index: NodeIndex) -> ProcessingResult<Vec<NodeIndex>> {
