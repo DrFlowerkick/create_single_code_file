@@ -232,6 +232,7 @@ impl TryFrom<&SourcePath> for SourceLeaf {
 pub trait UseTreeExt {
     fn get_use_items_of_use_group(&self) -> Vec<UseTree>;
     fn path_root_is_keyword(&self) -> bool;
+    fn remove_super(&self) -> UseTree;
 }
 
 impl UseTreeExt for UseTree {
@@ -261,6 +262,19 @@ impl UseTreeExt for UseTree {
 
     fn path_root_is_keyword(&self) -> bool {
         SourcePath::from(self).path_root_is_keyword()
+    }
+
+    fn remove_super(&self) -> UseTree {
+        match self {
+            UseTree::Path(use_path) => {
+                if use_path.ident == "super" {
+                    use_path.tree.as_ref().to_owned()
+                } else {
+                    self.to_owned()
+                }
+            }
+            _ => self.to_owned(),
+        }
     }
 }
 

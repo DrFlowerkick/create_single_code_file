@@ -32,6 +32,8 @@ pub enum ProcessingError {
     DependencyOfLocalLibraryIsNotIncludedInDependenciesOfChallenge(String),
     #[error("Maximum number of attempts to expand use statement '{0}' in module '{1}'.")]
     MaxAttemptsExpandingUseStatement(String, String),
+    #[error("Some use statements could not be parsed.")]
+    UseStatementsCouldNotBeParsed,
     #[error("Dialog canceled by user.")]
     UserCanceledDialog,
     #[error(transparent)]

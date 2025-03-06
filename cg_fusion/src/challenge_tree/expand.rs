@@ -360,6 +360,7 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(())
     }
 
+    // ToDo: rename this function, since we although use it to flatten modules
     pub(crate) fn resolving_crate_source_path(
         &self,
         path_item_index: NodeIndex,

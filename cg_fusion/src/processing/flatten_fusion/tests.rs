@@ -19,8 +19,6 @@ fn test_set_parent() {
         .unwrap()
         .expand_use_statements()
         .unwrap()
-        .expand_external_use_statements()
-        .unwrap()
         .path_minimizing_of_use_and_path_statements()
         .unwrap()
         .link_impl_blocks_with_corresponding_item()
@@ -167,8 +165,6 @@ fn test_set_flatten_items() {
         .unwrap()
         .expand_use_statements()
         .unwrap()
-        .expand_external_use_statements()
-        .unwrap()
         .path_minimizing_of_use_and_path_statements()
         .unwrap()
         .link_impl_blocks_with_corresponding_item()
@@ -253,27 +249,13 @@ fn test_set_flatten_items() {
     assert_eq!(
         flatten_items,
         [
+            "Display (Use)",
             "MapPoint (Use)",
             "Action (Struct)",
             "impl Display for Action",
             "impl Action"
         ]
     );
-
-    let action_use_statements: Vec<(PathElement, String)> = cg_data
-        .iter_syn_item_neighbors(action_mod)
-        .filter_map(|(n, i)| {
-            if let Item::Use(item_use) = i {
-                cg_data
-                    .get_path_leaf(n, item_use.into())
-                    .ok()
-                    .map(|pe| (pe, item_use.to_token_stream().to_string()))
-            } else {
-                None
-            }
-        })
-        .collect();
-    dbg!(action_use_statements);
 }
 
 #[test]
@@ -285,8 +267,6 @@ fn test_is_name_space_conflict() {
         .add_src_files()
         .unwrap()
         .expand_use_statements()
-        .unwrap()
-        .expand_external_use_statements()
         .unwrap()
         .path_minimizing_of_use_and_path_statements()
         .unwrap()
@@ -353,7 +333,7 @@ fn test_is_name_space_conflict() {
 }
 
 #[test]
-fn test_check_use_statements() {
+fn test_link_flatten_items_to_parent() {
     // preparation
     let mut cg_data = setup_processing_test(true)
         .add_challenge_dependencies()
@@ -362,7 +342,74 @@ fn test_check_use_statements() {
         .unwrap()
         .expand_use_statements()
         .unwrap()
-        .expand_external_use_statements()
+        .path_minimizing_of_use_and_path_statements()
+        .unwrap()
+        .link_impl_blocks_with_corresponding_item()
+        .unwrap()
+        .link_required_by_challenge()
+        .unwrap()
+        .check_impl_blocks()
+        .unwrap()
+        .process_external_dependencies()
+        .unwrap()
+        .fuse_challenge()
+        .unwrap();
+
+    let (fusion_node, _) = cg_data.get_fusion_bin_crate().unwrap();
+
+    // test mod Action
+    let action_mod = cg_data
+        .iter_syn_items(fusion_node)
+        .find_map(|(n, i)| {
+            if let Item::Mod(item_mod) = i {
+                (item_mod.ident == "action").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let mut flatten_agent = FlattenAgent::new(action_mod);
+    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_flatten_items(&cg_data);
+
+    // action to test
+    flatten_agent.link_flatten_items_to_parent(&mut cg_data);
+
+    let flattened_external_use_fmt_display = flatten_agent
+        .flatten_items
+        .iter()
+        .find_map(|n| {
+            if let Some(Item::Use(item_use)) = cg_data.get_syn_item(*n) {
+                if let Some(name) = ItemName::from(item_use).get_ident_in_name_space() {
+                    (name == "Display").then_some(*n)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    assert_eq!(
+        cg_data
+            .get_syn_item(flattened_external_use_fmt_display)
+            .unwrap()
+            .to_token_stream()
+            .to_string(),
+        "use fmt :: Display ;"
+    );
+}
+
+#[test]
+fn test_check_use_statements() {
+    // preparation
+    let mut cg_data = setup_processing_test(true)
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap()
+        .expand_use_statements()
         .unwrap()
         .path_minimizing_of_use_and_path_statements()
         .unwrap()

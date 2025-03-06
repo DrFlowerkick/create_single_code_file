@@ -26,7 +26,6 @@ fn run(options: CargoCli) -> CgResult<()> {
                 .add_challenge_dependencies()?
                 .add_src_files()?
                 .expand_use_statements()?
-                .expand_external_use_statements()?
                 .path_minimizing_of_use_and_path_statements()?
                 .link_impl_blocks_with_corresponding_item()?
                 .link_required_by_challenge()?

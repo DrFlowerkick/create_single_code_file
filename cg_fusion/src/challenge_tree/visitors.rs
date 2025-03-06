@@ -298,9 +298,8 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                 PathElement::Glob(_) | PathElement::Group | PathElement::ItemRenamed(_, _) => {
                     unreachable!("syn path does not contain groups, globs, or rename.")
                 }
-                PathElement::ExternalItem(_)
-                | PathElement::ExternalGlob(_)
-                | PathElement::PathCouldNotBeParsed => {
+                PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => break,
+                PathElement::PathCouldNotBeParsed => {
                     leaf = None;
                     break;
                 }

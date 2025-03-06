@@ -1,6 +1,6 @@
 // functions to analyze use statements in src files
 
-use super::{ProcessingError, ProcessingExternalUseStatementsState, ProcessingResult};
+use super::{ProcessingCrateUseAndPathState, ProcessingError, ProcessingResult};
 use crate::{
     CgData, add_context,
     challenge_tree::PathElement,
@@ -17,7 +17,7 @@ pub struct ProcessingUsageState;
 impl<O: CgCli> CgData<O, ProcessingUsageState> {
     pub fn expand_use_statements(
         mut self,
-    ) -> ProcessingResult<CgData<O, ProcessingExternalUseStatementsState>> {
+    ) -> ProcessingResult<CgData<O, ProcessingCrateUseAndPathState>> {
         let mut use_groups_and_globs: VecDeque<(NodeIndex, ItemName)> = self
             .iter_crates()
             .flat_map(|(crate_index, ..)| {
@@ -75,7 +75,24 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
                 _ => unreachable!("Filtering for groups and globs"),
             }
         }
-        Ok(self.set_state(ProcessingExternalUseStatementsState))
+        // check, if any use statement remains, which could not be parsed
+        if self
+            .iter_crates()
+            .flat_map(|(n, ..)| self.iter_syn_items(n))
+            .any(|(n, i)| {
+                if let Item::Use(item_use) = i {
+                    match self.get_path_leaf(n, SourcePath::from(item_use)) {
+                        Ok(PathElement::PathCouldNotBeParsed) | Err(_) => true,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            })
+        {
+            return Err(ProcessingError::UseStatementsCouldNotBeParsed);
+        }
+        Ok(self.set_state(ProcessingCrateUseAndPathState))
     }
 
     fn expand_use_group(&mut self, use_group_index: NodeIndex) -> ProcessingResult<Vec<NodeIndex>> {

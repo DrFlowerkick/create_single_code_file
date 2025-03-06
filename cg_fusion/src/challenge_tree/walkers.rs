@@ -211,7 +211,6 @@ impl SourcePathWalker {
             "self" => {
                 // set current node to module of item
                 if self.set_current_node_to_module_of_it(graph) {
-                    self.walker_finished = true;
                     return Some(PathElement::PathCouldNotBeParsed);
                 };
                 return Some(PathElement::Item(self.current_node_index));
@@ -221,13 +220,11 @@ impl SourcePathWalker {
                 if is_first {
                     // if is first, set current node to module of item
                     if self.set_current_node_to_module_of_it(graph) {
-                        self.walker_finished = true;
                         return Some(PathElement::PathCouldNotBeParsed);
                     };
                 }
                 // get module of current node
                 if self.set_current_node_to_module_of_it(graph) {
-                    self.walker_finished = true;
                     return Some(PathElement::PathCouldNotBeParsed);
                 };
                 return Some(PathElement::Item(self.current_node_index));
@@ -266,7 +263,6 @@ impl SourcePathWalker {
                     }
                     // if none of above set current node to module of item
                     if self.set_current_node_to_module_of_it(graph) {
-                        self.walker_finished = true;
                         return Some(PathElement::PathCouldNotBeParsed);
                     };
                 }

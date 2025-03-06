@@ -44,7 +44,7 @@ impl ItemName {
 
 impl From<&ItemUse> for ItemName {
     fn from(item_use: &ItemUse) -> Self {
-        match item_use.into() {
+        match SourcePath::from(item_use) {
             SourcePath::Group => ItemName::Group,
             SourcePath::Glob(_) => ItemName::Glob,
             SourcePath::Name(segments) => {

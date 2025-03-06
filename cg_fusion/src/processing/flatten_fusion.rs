@@ -5,7 +5,7 @@ use crate::{
     CgData, add_context,
     challenge_tree::{EdgeType, NodeType, PathElement},
     configuration::CgCli,
-    parsing::SourcePath,
+    parsing::{SourcePath, UseTreeExt},
 };
 
 use anyhow::anyhow;
@@ -154,10 +154,22 @@ impl FlattenAgent {
     fn set_flatten_items<O, S>(&mut self, graph: &CgData<O, S>) {
         self.flatten_items = graph
             .iter_syn_item_neighbors(self.node)
-            .filter_map(|(n, _)| {
-                if let Some(module) = graph.get_use_module(n) {
-                    if module != self.parent { Some(n) } else { None }
+            .filter_map(|(n, i)| {
+                if let Item::Use(item_use) = i {
+                    if matches!(
+                        graph.get_path_leaf(n, item_use.into()),
+                        Ok(PathElement::ExternalGlob(_)) | Ok(PathElement::ExternalItem(_))
+                    ) {
+                        // external use statements will be processed in next step
+                        Some(n)
+                    } else if let Some(module) = graph.get_use_module(n) {
+                        // do not keep use statements, which point to parent module
+                        if module != self.parent { Some(n) } else { None }
+                    } else {
+                        panic!("{}", add_context!("Expected module of use statement."));
+                    }
                 } else {
+                    // keep all other items
                     Some(n)
                 }
             })
@@ -192,7 +204,27 @@ impl FlattenAgent {
             })
     }
 
+    // ToDo: write test for it
     fn link_flatten_items_to_parent<O, S>(&self, graph: &mut CgData<O, S>) {
+        // fix flattened external use statements
+        // if module of external use statement points to parent module, remove "super" at start of use statement
+        // This is possible, because of path minimizing, which results in shortest use path
+        for use_item_index in self.flatten_items.iter() {
+            if let Some(Item::Use(_)) = graph.get_syn_item(*use_item_index) {
+                if let Some(module) = graph.get_use_module(*use_item_index) {
+                    // only external use statements may point to parent module, because all other use statements,
+                    // which point to parent module, have been removed in set_flatten_items
+                    if module == self.parent {
+                        if let Some(NodeType::SynItem(Item::Use(use_item))) =
+                            graph.tree.node_weight_mut(*use_item_index)
+                        {
+                            use_item.tree = use_item.tree.remove_super();
+                        }
+                    }
+                }
+            }
+        }
+        // link flatten items to parent module
         for flatten_item in self.flatten_items.iter() {
             graph
                 .tree
@@ -253,6 +285,17 @@ impl FlattenAgent {
                 }
             })
             .chain(
+                // ToDo: if sub modules contain use statements with super keyword in path, they may brake after flattening
+                // ToDo: we although have to test flattened use statements, which may point toward super modules
+                // ToDo: we can test this in test_check_use_statements() after flattening my_map_point by flattening action.
+                // ToDo: it is although possible to have use statements starting with crate keyword in sub modules and in flattened
+                // use statements, which point toward sub modules and flattened items. These although may brake after flattening.
+                // ToDo: 1.) remove crate keyword as in path minimizing of use and path statements before linking
+                //        ---> is it possible in path statements to point toward lib crates, which have bin fused? If yes, we have to
+                //             to fix these path statements with crate keyword during fusion.
+                // ToDo: 2.) remove super of use and path statements before linking
+                // ToDo: this results in processing all sub_modules. Therefore do NOT chain sub_modules here!!!
+                // ToDo: always first path, than use statements
                 self.sub_modules
                     .iter()
                     .flat_map(|n| graph.iter_syn_item_neighbors(*n))

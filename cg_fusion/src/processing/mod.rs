@@ -3,7 +3,6 @@
 mod crate_src_files;
 mod dependencies;
 mod error;
-mod external_use_statements;
 mod flatten_fusion;
 mod forge;
 mod fuse_challenge;
@@ -17,7 +16,6 @@ mod usage;
 pub use crate_src_files::ProcessingSrcFilesState;
 pub use dependencies::ProcessingDependenciesState;
 pub use error::{ProcessingError, ProcessingResult};
-pub use external_use_statements::ProcessingExternalUseStatementsState;
 pub use flatten_fusion::FlattenFusionState;
 pub use forge::ForgeState;
 pub use fuse_challenge::FuseChallengeState;

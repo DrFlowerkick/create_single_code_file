@@ -18,7 +18,7 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
             .flat_map(|(n, _, _)| {
                 self.iter_syn_items(n).filter_map(|(n, i)| {
                     if let Item::Impl(item_impl) = i {
-                        // since items of impl have been cleared out, al remaining path leaf must pont from
+                        // since items of impl have been cleared out, all remaining path leafs must point from
                         // impl block definition to their targets.
                         let mut leaf_collector = SynReferenceMapper::new(&self, n);
                         leaf_collector.visit_item_impl(item_impl);
@@ -41,7 +41,7 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
 #[cfg(test)]
 mod tests {
 
-    use petgraph::{Direction, visit::EdgeRef};
+    use petgraph::Direction;
     use syn::Item;
 
     use super::super::tests::setup_processing_test;
@@ -56,8 +56,6 @@ mod tests {
             .add_src_files()
             .unwrap()
             .expand_use_statements()
-            .unwrap()
-            .expand_external_use_statements()
             .unwrap()
             .path_minimizing_of_use_and_path_statements()
             .unwrap()
@@ -149,14 +147,6 @@ mod tests {
                 }
             })
             .unwrap();
-        for node in cg_data
-            .tree
-            .edges_directed(impl_display_for_action_block_index, Direction::Incoming)
-            .filter(|e| *e.weight() == EdgeType::Implementation)
-            .map(|e| e.source())
-        {
-            println!("{}", cg_data.get_verbose_name_of_tree_node(node).unwrap());
-        }
 
         assert_eq!(
             cg_data
