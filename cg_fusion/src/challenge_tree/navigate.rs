@@ -470,6 +470,22 @@ impl<O, S> CgData<O, S> {
             }
         })
     }
+
+    pub(crate) fn get_sorted_mod_content(&self, mod_index: NodeIndex) -> TreeResult<Vec<Item>> {
+        let challenge_mod = self
+            .node_mapping
+            .iter()
+            .find_map(|(nc, nf)| (*nf == mod_index).then_some(nc))
+            .context(add_context!(
+                "Expected challenge mod corresponding to fusion mod."
+            ))?;
+        let new_mod_content: Vec<Item> = self.item_order[challenge_mod]
+            .iter()
+            .filter_map(|n| self.node_mapping.get(n))
+            .filter_map(|n| self.get_syn_item(*n).map(|i| i.to_owned()))
+            .collect();
+        Ok(new_mod_content)
+    }
 }
 
 impl<O: CgCli, S> CgData<O, S> {
@@ -602,21 +618,5 @@ impl<O: CgCli, S> CgData<O, S> {
         self.iter_package_crates(0.into())
             .filter_map(|(n, crate_type, cf)| if !crate_type { Some((n, cf)) } else { None })
             .find(|(_, cf)| cf.name == bin_name)
-    }
-
-    pub(crate) fn get_sorted_mod_content(&self, mod_index: NodeIndex) -> TreeResult<Vec<Item>> {
-        let challenge_mod = self
-            .node_mapping
-            .iter()
-            .find_map(|(nc, nf)| (*nf == mod_index).then_some(nc))
-            .context(add_context!(
-                "Expected challenge mod corresponding to fusion mod."
-            ))?;
-        let new_mod_content: Vec<Item> = self.item_order[challenge_mod]
-            .iter()
-            .filter_map(|n| self.node_mapping.get(n))
-            .filter_map(|n| self.get_syn_item(*n).map(|i| i.to_owned()))
-            .collect();
-        Ok(new_mod_content)
     }
 }

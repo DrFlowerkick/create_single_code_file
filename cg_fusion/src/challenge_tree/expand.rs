@@ -360,121 +360,6 @@ impl<O: CgCli, S> CgData<O, S> {
         Ok(())
     }
 
-    // ToDo: rename this function, since we although use it to flatten modules
-    pub(crate) fn resolving_crate_source_path(
-        &self,
-        path_item_index: NodeIndex,
-        source_path: SourcePath,
-    ) -> TreeResult<SourcePath> {
-        // get path properties
-        let (segments, glob, rename) = match &source_path {
-            SourcePath::Group => {
-                unreachable!("use groups have been expanded before.");
-            }
-            // glob is still possible, if it points to external crate
-            SourcePath::Glob(segments) => (segments, true, None),
-            SourcePath::Name(segments) => (segments, false, None),
-            SourcePath::Rename(segments, renamed) => (segments, false, Some(renamed.to_owned())),
-        };
-        let mut remaining_external_segments: Option<Vec<Ident>> = None;
-        let mut path_leaf: Option<NodeIndex> = None;
-        let mut path_walker = SourcePathWalker::new(source_path.clone(), path_item_index);
-        while let Some(path_element) = path_walker.next(self) {
-            match path_element {
-                PathElement::PathCouldNotBeParsed => return Ok(source_path),
-                PathElement::Group => {
-                    unreachable!("Use groups have been expanded before.");
-                }
-                PathElement::Glob(_) => {
-                    unreachable!(
-                        "Local use globs have been expanded before. Only external globs are possible, which will return \
-                         PathElement::ExternalPackage before reaching glob."
-                    );
-                }
-                PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => {
-                    if let Some(leaf_index) = path_leaf {
-                        // This is only possible, if a path element points toward a use statement,
-                        // which imports external code. Minimize path to this use statement and
-                        // append remaining segments of external use statement
-                        if let Some(external_use_ident) = self.get_ident(leaf_index) {
-                            if let Some(pos) =
-                                segments.iter().position(|s| *s == external_use_ident)
-                            {
-                                remaining_external_segments = Some(Vec::from(&segments[pos + 1..]));
-                                break;
-                            }
-                        }
-                        return Ok(source_path);
-                    } else {
-                        // path directly starts with external package
-                        return Ok(source_path);
-                    }
-                }
-                PathElement::Item(item_index) | PathElement::ItemRenamed(item_index, _) => {
-                    // collect item index, rename is already extracted from SourcePath
-                    path_leaf = Some(item_index);
-                    //segments_slice = &segments_slice[1..];
-                }
-            }
-        }
-        // compare crates of active path leaf and path_item_index
-        let path_leaf = path_leaf.context(add_context!("Expected index of path leaf."))?;
-        let path_leaf_nodes = self.get_crate_path_nodes(path_leaf);
-        let path_item_nodes = self.get_crate_path_nodes(path_item_index);
-        let mut new_path: Vec<Ident> = if path_leaf_nodes[0] != path_item_nodes[0] {
-            // return path of leaf starting from it's crate
-            path_leaf_nodes
-                .iter()
-                .map(|n| {
-                    self.get_ident(*n)
-                        .ok_or(anyhow!("{}", add_context!("Expected ident of path node.")).into())
-                })
-                .collect::<TreeResult<Vec<_>>>()?
-        } else {
-            // identify best path inside crate from path_item_index to path_leaf
-            let pos_junction = path_item_nodes
-                .iter()
-                .zip(path_leaf_nodes.iter())
-                .take_while(|(a, b)| a == b)
-                .count();
-            let (from_junction_leaf_ident, num_super) = if pos_junction == path_leaf_nodes.len() {
-                // path_item is at same level or deeper in tree than path_leaf
-                let leaf_ident = self
-                    .get_ident(path_leaf_nodes[pos_junction - 1])
-                    .context(add_context!("Expected ident of path node."))?;
-                let num_super = path_item_nodes.len() - pos_junction;
-                (vec![leaf_ident], num_super)
-            } else {
-                // path leaf is deeper in tree than path_item
-                let from_junction_leaf_ident = path_leaf_nodes[pos_junction..]
-                    .iter()
-                    .map(|n| {
-                        self.get_ident(*n).ok_or(
-                            anyhow!("{}", add_context!("Expected ident of path node.")).into(),
-                        )
-                    })
-                    .collect::<TreeResult<Vec<_>>>()?;
-                let num_super = path_item_nodes.len() - pos_junction - 1;
-                (from_junction_leaf_ident, num_super)
-            };
-            let mut new_path = vec![Ident::new("super", Span::call_site()); num_super];
-            new_path.extend(from_junction_leaf_ident);
-            new_path
-        };
-
-        if let Some(res) = remaining_external_segments.take() {
-            new_path.extend(res);
-        }
-
-        let new_path = match (glob, rename) {
-            (true, None) => SourcePath::Glob(new_path),
-            (false, Some(renamed)) => SourcePath::Rename(new_path, renamed),
-            (false, None) => SourcePath::Name(new_path),
-            _ => unreachable!(),
-        };
-        Ok(new_path)
-    }
-
     pub(crate) fn add_implementation_link(
         &mut self,
         source: NodeIndex,
@@ -719,6 +604,7 @@ impl<O: CgCli, S> CgData<O, S> {
                         continue;
                     }
                     new_impl_item.items = ordered_required_impl_items;
+                    // ToDo: fold crate keyword to all path statements in new_impl_item, which path roots are crates
                     self.tree
                         .add_node(NodeType::SynItem(Item::Impl(new_impl_item)))
                 }
@@ -733,9 +619,11 @@ impl<O: CgCli, S> CgData<O, S> {
                         })
                         .collect();
                     new_trait_item.items = ordered_required_trait_items;
+                    // ToDo: fold crate keyword to all path statements in new_trait_item, which path roots are crates
                     self.tree
                         .add_node(NodeType::SynItem(Item::Trait(new_trait_item)))
                 }
+                // ToDo: fold crate keyword to all path statements in item, which path roots are crates
                 _ => self.tree.add_node(NodeType::SynItem(item)),
             };
             self.node_mapping.insert(item_index, new_fusion_item_index);
@@ -755,9 +643,7 @@ impl<O: CgCli, S> CgData<O, S> {
 
         Ok(())
     }
-}
 
-impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn add_fusion_bin_crate(&mut self) -> TreeResult<NodeIndex> {
         let path = self.get_fusion_file_path()?;
         let fusion_bin_dir = path
@@ -789,6 +675,122 @@ impl<O: CgCli, S> CgData<O, S> {
             );
         }
         Ok(fusion_node_index)
+    }
+}
+
+impl<O, S> CgData<O, S> {
+    pub(crate) fn resolving_relative_source_path(
+        &self,
+        path_item_index: NodeIndex,
+        source_path: SourcePath,
+    ) -> TreeResult<SourcePath> {
+        // get path properties
+        let (segments, glob, rename) = match &source_path {
+            SourcePath::Group => {
+                unreachable!("use groups have been expanded before.");
+            }
+            // glob is still possible, if it points to external crate
+            SourcePath::Glob(segments) => (segments, true, None),
+            SourcePath::Name(segments) => (segments, false, None),
+            SourcePath::Rename(segments, renamed) => (segments, false, Some(renamed.to_owned())),
+        };
+        let mut remaining_external_segments: Option<Vec<Ident>> = None;
+        let mut path_leaf: Option<NodeIndex> = None;
+        let mut path_walker = SourcePathWalker::new(source_path.clone(), path_item_index);
+        while let Some(path_element) = path_walker.next(self) {
+            match path_element {
+                PathElement::PathCouldNotBeParsed => return Ok(source_path),
+                PathElement::Group => {
+                    unreachable!("Use groups have been expanded before.");
+                }
+                PathElement::Glob(_) => {
+                    unreachable!(
+                        "Local use globs have been expanded before. Only external globs are possible, which will return \
+                         PathElement::ExternalPackage before reaching glob."
+                    );
+                }
+                PathElement::ExternalItem(_) | PathElement::ExternalGlob(_) => {
+                    if let Some(leaf_index) = path_leaf {
+                        // This is only possible, if a path element points toward a use statement,
+                        // which imports external code. Minimize path to this use statement and
+                        // append remaining segments of external use statement
+                        if let Some(external_use_ident) = self.get_ident(leaf_index) {
+                            if let Some(pos) =
+                                segments.iter().position(|s| *s == external_use_ident)
+                            {
+                                remaining_external_segments = Some(Vec::from(&segments[pos + 1..]));
+                                break;
+                            }
+                        }
+                        return Ok(source_path);
+                    } else {
+                        // path directly starts with external package
+                        return Ok(source_path);
+                    }
+                }
+                PathElement::Item(item_index) | PathElement::ItemRenamed(item_index, _) => {
+                    // collect item index, rename is already extracted from SourcePath
+                    path_leaf = Some(item_index);
+                    //segments_slice = &segments_slice[1..];
+                }
+            }
+        }
+        // compare crates of active path leaf and path_item_index
+        let path_leaf = path_leaf.context(add_context!("Expected index of path leaf."))?;
+        let path_leaf_nodes = self.get_crate_path_nodes(path_leaf);
+        let path_item_nodes = self.get_crate_path_nodes(path_item_index);
+        let mut new_path: Vec<Ident> = if path_leaf_nodes[0] != path_item_nodes[0] {
+            // return path of leaf starting from it's crate
+            path_leaf_nodes
+                .iter()
+                .map(|n| {
+                    self.get_ident(*n)
+                        .ok_or(anyhow!("{}", add_context!("Expected ident of path node.")).into())
+                })
+                .collect::<TreeResult<Vec<_>>>()?
+        } else {
+            // identify best path inside crate from path_item_index to path_leaf
+            let pos_junction = path_item_nodes
+                .iter()
+                .zip(path_leaf_nodes.iter())
+                .take_while(|(a, b)| a == b)
+                .count();
+            let (from_junction_leaf_ident, num_super) = if pos_junction == path_leaf_nodes.len() {
+                // path_item is at same level or deeper in tree than path_leaf
+                let leaf_ident = self
+                    .get_ident(path_leaf_nodes[pos_junction - 1])
+                    .context(add_context!("Expected ident of path node."))?;
+                let num_super = path_item_nodes.len() - pos_junction;
+                (vec![leaf_ident], num_super)
+            } else {
+                // path leaf is deeper in tree than path_item
+                let from_junction_leaf_ident = path_leaf_nodes[pos_junction..]
+                    .iter()
+                    .map(|n| {
+                        self.get_ident(*n).ok_or(
+                            anyhow!("{}", add_context!("Expected ident of path node.")).into(),
+                        )
+                    })
+                    .collect::<TreeResult<Vec<_>>>()?;
+                let num_super = path_item_nodes.len() - pos_junction - 1;
+                (from_junction_leaf_ident, num_super)
+            };
+            let mut new_path = vec![Ident::new("super", Span::call_site()); num_super];
+            new_path.extend(from_junction_leaf_ident);
+            new_path
+        };
+
+        if let Some(res) = remaining_external_segments.take() {
+            new_path.extend(res);
+        }
+
+        let new_path = match (glob, rename) {
+            (true, None) => SourcePath::Glob(new_path),
+            (false, Some(renamed)) => SourcePath::Rename(new_path, renamed),
+            (false, None) => SourcePath::Name(new_path),
+            _ => unreachable!(),
+        };
+        Ok(new_path)
     }
 
     pub(crate) fn update_required_mod_content(&mut self, mod_index: NodeIndex) -> TreeResult<()> {

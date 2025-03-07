@@ -1,4 +1,4 @@
-// functions to visit the challenge tree items
+// functions to fold and visit challenge tree items
 
 use crate::{
     CgData, add_context,
@@ -9,7 +9,7 @@ use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
 use syn::{
     Block, Expr, ExprMethodCall, FnArg, Ident, ImplItem, Item, LocalInit, Pat, PatIdent, Path,
-    ReturnType, Signature, Stmt, Type, TypePath, visit::Visit,
+    PathSegment, ReturnType, Signature, Stmt, Type, TypePath, fold::Fold, visit::Visit,
 };
 
 use super::{EdgeType, NodeType, PathElement, SourcePathWalker};
@@ -364,5 +364,50 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
         }
         // recursive visit
         syn::visit::visit_expr_method_call(self, expr_method_call);
+    }
+}
+
+// struct to fold paths in syn::Path elements, which start with crate keyword.
+pub struct CratePathFolder<'a, O, S> {
+    pub graph: &'a CgData<O, S>,
+    pub node: NodeIndex,
+}
+
+impl<O, S> Fold for CratePathFolder<'_, O, S> {
+    fn fold_path(&mut self, path: Path) -> Path {
+        let source_path = SourcePath::from(&path);
+        let path = if source_path.path_root_is_crate_keyword() {
+            let resolved_path = self
+                .graph
+                .resolving_relative_source_path(self.node, source_path)
+                .expect("resolving crate source path failed");
+            let resolved_path: Path = resolved_path
+                .try_into()
+                .expect("resolving crate source path failed");
+            // rebuild arguments of segments from input path
+            let resolved_path =
+                Path {
+                    leading_colon: path.leading_colon,
+                    segments: resolved_path
+                        .segments
+                        .iter()
+                        .map(|s| {
+                            match path.segments.iter().find_map(|p| {
+                                (p.ident == s.ident).then_some(p.arguments.to_owned())
+                            }) {
+                                Some(arguments) => PathSegment {
+                                    ident: s.ident.to_owned(),
+                                    arguments,
+                                },
+                                _ => s.to_owned(),
+                            }
+                        })
+                        .collect(),
+                };
+            resolved_path
+        } else {
+            path
+        };
+        syn::fold::fold_path(self, path)
     }
 }

@@ -318,7 +318,7 @@ impl FlattenAgent {
             .collect();
         for (use_item_index, use_item_path) in use_statements {
             let new_use_item_path =
-                graph.resolving_crate_source_path(use_item_index, use_item_path)?;
+                graph.resolving_relative_source_path(use_item_index, use_item_path)?;
             let new_use_item_tree: UseTree = new_use_item_path.try_into()?;
             if let Some(NodeType::SynItem(Item::Use(use_item))) =
                 graph.tree.node_weight_mut(use_item_index)

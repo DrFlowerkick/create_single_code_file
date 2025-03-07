@@ -3,10 +3,15 @@
 // Therefore, this function removes the crate keyword from use and path statements while minimizing the path.
 
 use super::{ProcessingImplBlocksState, ProcessingResult};
-use crate::{CgData, challenge_tree::NodeType, configuration::CgCli, parsing::SourcePath};
+use crate::{
+    CgData,
+    challenge_tree::{CratePathFolder, NodeType},
+    configuration::CgCli,
+    parsing::SourcePath,
+};
 
 use petgraph::stable_graph::NodeIndex;
-use syn::{Item, Path, PathSegment, UseTree, fold::Fold};
+use syn::{Item, UseTree, fold::Fold};
 
 pub struct ProcessingCrateUseAndPathState;
 
@@ -28,7 +33,7 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
             .collect();
         for (use_item_index, use_item_path) in use_item_indices {
             let new_use_item_path =
-                self.resolving_crate_source_path(use_item_index, use_item_path)?;
+                self.resolving_relative_source_path(use_item_index, use_item_path)?;
             let new_use_item_tree: UseTree = new_use_item_path.try_into()?;
             if let Some(NodeType::SynItem(Item::Use(use_item))) =
                 self.tree.node_weight_mut(use_item_index)
@@ -81,50 +86,6 @@ impl<O: CgCli> CgData<O, ProcessingCrateUseAndPathState> {
         }
 
         Ok(self.set_state(ProcessingImplBlocksState))
-    }
-}
-
-pub struct CratePathFolder<'a, O: CgCli> {
-    pub graph: &'a CgData<O, ProcessingCrateUseAndPathState>,
-    pub node: NodeIndex,
-}
-
-impl<O: CgCli> Fold for CratePathFolder<'_, O> {
-    fn fold_path(&mut self, path: Path) -> Path {
-        let source_path = SourcePath::from(&path);
-        let path = if source_path.path_root_is_crate_keyword() {
-            let resolved_path = self
-                .graph
-                .resolving_crate_source_path(self.node, source_path)
-                .expect("resolving crate source path failed");
-            let resolved_path: Path = resolved_path
-                .try_into()
-                .expect("resolving crate source path failed");
-            // rebuild arguments of segments from input path
-            let resolved_path =
-                Path {
-                    leading_colon: path.leading_colon,
-                    segments: resolved_path
-                        .segments
-                        .iter()
-                        .map(|s| {
-                            match path.segments.iter().find_map(|p| {
-                                (p.ident == s.ident).then_some(p.arguments.to_owned())
-                            }) {
-                                Some(arguments) => PathSegment {
-                                    ident: s.ident.to_owned(),
-                                    arguments,
-                                },
-                                _ => s.to_owned(),
-                            }
-                        })
-                        .collect(),
-                };
-            resolved_path
-        } else {
-            path
-        };
-        syn::fold::fold_path(self, path)
     }
 }
 

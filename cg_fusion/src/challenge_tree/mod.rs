@@ -2,14 +2,14 @@
 
 mod error;
 mod expand;
+mod fold_and_visit;
 mod iterators;
 mod map_impl_options;
 mod navigate;
-mod visitors;
 mod walkers;
 
 pub use error::{ChallengeTreeError, TreeResult};
-pub use visitors::{SynReferenceMapper, VariableReferences};
+pub use fold_and_visit::{CratePathFolder, SynReferenceMapper, VariableReferences};
 pub use walkers::{BfsByEdgeType, BfsWalker, PathElement, SourcePathWalker};
 
 use crate::{configuration::CgCli, metadata::MetaWrapper};
