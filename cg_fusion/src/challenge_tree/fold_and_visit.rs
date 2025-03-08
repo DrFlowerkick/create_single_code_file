@@ -6,6 +6,7 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 use petgraph::stable_graph::NodeIndex;
+use proc_macro2::Span;
 use std::collections::HashSet;
 use syn::{
     Block, Expr, ExprMethodCall, FnArg, Ident, ImplItem, Item, LocalInit, Pat, PatIdent, Path,
@@ -405,6 +406,43 @@ impl<O, S> Fold for CratePathFolder<'_, O, S> {
                         .collect(),
                 };
             resolved_path
+        } else {
+            path
+        };
+        syn::fold::fold_path(self, path)
+    }
+}
+
+// struct to fold paths in syn::Path elements, which start with local dependency.
+// After fusion these dependencies are modules of binary crate. Therefore crate
+// keyword has to be added to these path.
+pub struct FusedDepPathFolder<'a, O, S> {
+    pub graph: &'a CgData<O, S>,
+    pub node: NodeIndex,
+}
+
+impl<O, S> Fold for FusedDepPathFolder<'_, O, S> {
+    fn fold_path(&mut self, path: Path) -> Path {
+        let path = if let Ok(PathElement::Item(root_node)) =
+            self.graph.get_path_root(self.node, (&path).into())
+        {
+            if self
+                .graph
+                .iter_local_packages()
+                .any(|(n, _)| n == root_node)
+            {
+                let mut path = path;
+                path.segments.insert(
+                    0,
+                    PathSegment {
+                        ident: Ident::new("crate", Span::call_site()),
+                        arguments: Default::default(),
+                    },
+                );
+                path
+            } else {
+                path
+            }
         } else {
             path
         };

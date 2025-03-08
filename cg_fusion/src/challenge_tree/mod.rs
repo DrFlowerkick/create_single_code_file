@@ -9,7 +9,9 @@ mod navigate;
 mod walkers;
 
 pub use error::{ChallengeTreeError, TreeResult};
-pub use fold_and_visit::{CratePathFolder, SynReferenceMapper, VariableReferences};
+pub use fold_and_visit::{
+    CratePathFolder, FusedDepPathFolder, SynReferenceMapper, VariableReferences,
+};
 pub use walkers::{BfsByEdgeType, BfsWalker, PathElement, SourcePathWalker};
 
 use crate::{configuration::CgCli, metadata::MetaWrapper};

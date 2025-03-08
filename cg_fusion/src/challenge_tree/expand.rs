@@ -1,7 +1,7 @@
 // functions to expand the challenge tree
 use super::{
-    ChallengeTreeError, EdgeType, LocalPackage, NodeType, SourcePathWalker, SrcFile,
-    SynReferenceMapper, TreeResult,
+    ChallengeTreeError, EdgeType, FusedDepPathFolder, LocalPackage, NodeType, SourcePathWalker,
+    SrcFile, SynReferenceMapper, TreeResult,
 };
 use crate::{
     CgData, add_context,
@@ -17,7 +17,8 @@ use proc_macro2::Span;
 use std::collections::HashSet;
 use std::fs;
 use syn::{
-    Ident, ImplItem, Item, ItemMod, TraitItem, UsePath, UseTree, Visibility, token, visit::Visit,
+    Ident, ImplItem, Item, ItemMod, TraitItem, UsePath, UseTree, Visibility, fold::Fold, token,
+    visit::Visit,
 };
 
 impl<O: CgCli, S> CgData<O, S> {
@@ -604,7 +605,12 @@ impl<O: CgCli, S> CgData<O, S> {
                         continue;
                     }
                     new_impl_item.items = ordered_required_impl_items;
-                    // ToDo: fold crate keyword to all path statements in new_impl_item, which path roots are crates
+                    // fold crate keyword to all path statements in new_impl_item, which path roots are crates
+                    let mut path_folder = FusedDepPathFolder {
+                        graph: self,
+                        node: item_index,
+                    };
+                    let new_impl_item = path_folder.fold_item_impl(new_impl_item);
                     self.tree
                         .add_node(NodeType::SynItem(Item::Impl(new_impl_item)))
                 }
@@ -619,12 +625,24 @@ impl<O: CgCli, S> CgData<O, S> {
                         })
                         .collect();
                     new_trait_item.items = ordered_required_trait_items;
-                    // ToDo: fold crate keyword to all path statements in new_trait_item, which path roots are crates
+                    // fold crate keyword to all path statements in new_trait_item, which path roots are crates
+                    let mut path_folder = FusedDepPathFolder {
+                        graph: self,
+                        node: item_index,
+                    };
+                    let new_trait_item = path_folder.fold_item_trait(new_trait_item);
                     self.tree
                         .add_node(NodeType::SynItem(Item::Trait(new_trait_item)))
                 }
-                // ToDo: fold crate keyword to all path statements in item, which path roots are crates
-                _ => self.tree.add_node(NodeType::SynItem(item)),
+                _ => {
+                    // fold crate keyword to all path statements in item, which path roots are crates
+                    let mut path_folder = FusedDepPathFolder {
+                        graph: self,
+                        node: item_index,
+                    };
+                    let item = path_folder.fold_item(item);
+                    self.tree.add_node(NodeType::SynItem(item))
+                }
             };
             self.node_mapping.insert(item_index, new_fusion_item_index);
             self.tree
