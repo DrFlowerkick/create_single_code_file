@@ -449,3 +449,32 @@ impl<O, S> Fold for FusedDepPathFolder<'_, O, S> {
         syn::fold::fold_path(self, path)
     }
 }
+
+// struct to fold paths in syn::Path elements, which start with local dependency.
+// After fusion these dependencies are modules of binary crate. Therefore crate
+// keyword has to be added to these path.
+pub struct RemoveSuperFolder<'a, O, S> {
+    pub graph: &'a CgData<O, S>,
+    pub node: NodeIndex,
+    pub target_mods: &'a Vec<NodeIndex>,
+}
+
+impl<O, S> Fold for RemoveSuperFolder<'_, O, S> {
+    fn fold_path(&mut self, path: Path) -> Path {
+        let path = if let Some(mod_index) = self.graph.get_path_module(self.node, (&path).into()) {
+            if self.target_mods.contains(&mod_index)
+                && path.segments.first().unwrap().ident == "super"
+            {
+                let mut new_path = path.to_owned();
+                // ToDo: skip 1 oder skip 2 because of punctuation?
+                new_path.segments = path.segments.iter().skip(1).cloned().collect();
+                new_path
+            } else {
+                path
+            }
+        } else {
+            path
+        };
+        syn::fold::fold_path(self, path)
+    }
+}

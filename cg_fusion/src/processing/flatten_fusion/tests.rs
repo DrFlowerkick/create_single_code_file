@@ -447,7 +447,7 @@ fn test_check_use_statements() {
     flatten_agent.set_parent(&cg_data);
     flatten_agent.set_flatten_items(&cg_data);
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
-    flatten_agent.collect_sub_and_super_modules(&cg_data);
+    flatten_agent.set_sub_and_super_nodes(&cg_data);
 
     // action to test
     flatten_agent.check_use_statements(&mut cg_data).unwrap();

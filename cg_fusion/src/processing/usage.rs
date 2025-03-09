@@ -81,10 +81,10 @@ impl<O: CgCli> CgData<O, ProcessingUsageState> {
             .flat_map(|(n, ..)| self.iter_syn_items(n))
             .any(|(n, i)| {
                 if let Item::Use(item_use) = i {
-                    match self.get_path_leaf(n, SourcePath::from(item_use)) {
-                        Ok(PathElement::PathCouldNotBeParsed) | Err(_) => true,
-                        _ => false,
-                    }
+                    matches!(
+                        self.get_path_leaf(n, SourcePath::from(item_use)),
+                        Ok(PathElement::PathCouldNotBeParsed) | Err(_)
+                    )
                 } else {
                     false
                 }

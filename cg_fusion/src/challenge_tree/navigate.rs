@@ -87,37 +87,34 @@ impl<O, S> CgData<O, S> {
         }
     }
 
-    pub(crate) fn get_use_module(&self, node: NodeIndex) -> Option<NodeIndex> {
-        if let Some(Item::Use(item_use)) = self.get_syn_item(node) {
-            let mut source_path_walker = SourcePathWalker::new(item_use.into(), node);
-            let mut path_nodes: Vec<NodeIndex> = Vec::new();
-            while let Some(path_element) = source_path_walker.next(self) {
-                match path_element {
-                    PathElement::Item(item_node) | PathElement::ItemRenamed(item_node, _) => {
-                        path_nodes.push(item_node);
-                    }
-                    PathElement::Glob(glob_module) => return Some(glob_module),
-                    PathElement::Group | PathElement::PathCouldNotBeParsed => return None,
-                    PathElement::ExternalGlob(_) | PathElement::ExternalItem(_) => {
-                        if path_nodes.is_empty() {
-                            return self.get_syn_module_index(node);
-                        }
+    pub(crate) fn get_path_module(&self, node: NodeIndex, path: SourcePath) -> Option<NodeIndex> {
+        let mut source_path_walker = SourcePathWalker::new(path, node);
+        let mut path_nodes: Vec<NodeIndex> = Vec::new();
+        while let Some(path_element) = source_path_walker.next(self) {
+            match path_element {
+                PathElement::Item(item_node) | PathElement::ItemRenamed(item_node, _) => {
+                    path_nodes.push(item_node);
+                }
+                PathElement::Glob(glob_module) => return Some(glob_module),
+                PathElement::Group | PathElement::PathCouldNotBeParsed => return None,
+                PathElement::ExternalGlob(_) | PathElement::ExternalItem(_) => {
+                    if path_nodes.is_empty() {
+                        return self.get_syn_module_index(node);
                     }
                 }
             }
-            if path_nodes.is_empty() {
-                return None;
-            }
-            let leaf_node = path_nodes[path_nodes.len() - 1];
-            if self.is_crate_or_module(leaf_node) {
-                return Some(leaf_node);
-            }
-            if path_nodes.len() == 1 {
-                return None;
-            }
-            return Some(path_nodes[path_nodes.len() - 2]);
         }
-        None
+        if path_nodes.is_empty() {
+            return None;
+        }
+        let leaf_node = path_nodes[path_nodes.len() - 1];
+        if self.is_crate_or_module(leaf_node) {
+            return Some(leaf_node);
+        }
+        if path_nodes.len() == 1 {
+            return None;
+        }
+        Some(path_nodes[path_nodes.len() - 2])
     }
 
     pub(crate) fn get_syn_item(&self, node: NodeIndex) -> Option<&Item> {

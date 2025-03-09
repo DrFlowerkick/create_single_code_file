@@ -146,8 +146,8 @@ impl StringValidator for ConfigFilePathValidator {
                             .into(),
                     )));
                 }
-                if !name.chars().next().map_or(false, |c| c.is_alphanumeric())
-                    || !name.chars().last().map_or(false, |c| c.is_alphanumeric())
+                if !name.chars().next().is_some_and(|c| c.is_alphanumeric())
+                    || !name.chars().last().is_some_and(|c| c.is_alphanumeric())
                 {
                     return Ok(Validation::Invalid(ErrorMessage::Custom(
                         "Config file name must start and end with alphanumeric letter.".into(),
