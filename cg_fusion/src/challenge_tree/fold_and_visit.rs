@@ -368,6 +368,37 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
     }
 }
 
+// function to update path as relative path
+fn update_path_as_relative<O, S>(path: Path, node: NodeIndex, graph: &CgData<O, S>) -> Path {
+    let resolved_path = graph
+        .resolving_relative_source_path(node, (&path).into())
+        .expect("resolving crate source path failed");
+    let resolved_path: Path = resolved_path
+        .try_into()
+        .expect("resolving crate source path failed");
+    // rebuild arguments of segments from input path
+    Path {
+        leading_colon: path.leading_colon,
+        segments: resolved_path
+            .segments
+            .iter()
+            .map(|s| {
+                match path
+                    .segments
+                    .iter()
+                    .find_map(|p| (p.ident == s.ident).then_some(p.arguments.to_owned()))
+                {
+                    Some(arguments) => PathSegment {
+                        ident: s.ident.to_owned(),
+                        arguments,
+                    },
+                    _ => s.to_owned(),
+                }
+            })
+            .collect(),
+    }
+}
+
 // struct to fold paths in syn::Path elements, which start with crate keyword.
 pub struct CratePathFolder<'a, O, S> {
     pub graph: &'a CgData<O, S>,
@@ -378,34 +409,7 @@ impl<O, S> Fold for CratePathFolder<'_, O, S> {
     fn fold_path(&mut self, path: Path) -> Path {
         let source_path = SourcePath::from(&path);
         let path = if source_path.path_root_is_crate_keyword() {
-            let resolved_path = self
-                .graph
-                .resolving_relative_source_path(self.node, source_path)
-                .expect("resolving crate source path failed");
-            let resolved_path: Path = resolved_path
-                .try_into()
-                .expect("resolving crate source path failed");
-            // rebuild arguments of segments from input path
-            let resolved_path =
-                Path {
-                    leading_colon: path.leading_colon,
-                    segments: resolved_path
-                        .segments
-                        .iter()
-                        .map(|s| {
-                            match path.segments.iter().find_map(|p| {
-                                (p.ident == s.ident).then_some(p.arguments.to_owned())
-                            }) {
-                                Some(arguments) => PathSegment {
-                                    ident: s.ident.to_owned(),
-                                    arguments,
-                                },
-                                _ => s.to_owned(),
-                            }
-                        })
-                        .collect(),
-                };
-            resolved_path
+            update_path_as_relative(path, self.node, self.graph)
         } else {
             path
         };
@@ -469,6 +473,30 @@ impl<O, S> Fold for RemoveSuperFolder<'_, O, S> {
                 // ToDo: skip 1 oder skip 2 because of punctuation?
                 new_path.segments = path.segments.iter().skip(1).cloned().collect();
                 new_path
+            } else {
+                path
+            }
+        } else {
+            path
+        };
+        syn::fold::fold_path(self, path)
+    }
+}
+
+// struct to fold paths in syn::Path elements, which start with local dependency.
+// After fusion these dependencies are modules of binary crate. Therefore crate
+// keyword has to be added to these path.
+pub struct UpdateRelativePathFolder<'a, O, S> {
+    pub graph: &'a CgData<O, S>,
+    pub node: NodeIndex,
+    pub target_mods: &'a Vec<NodeIndex>,
+}
+
+impl<O, S> Fold for UpdateRelativePathFolder<'_, O, S> {
+    fn fold_path(&mut self, path: Path) -> Path {
+        let path = if let Some(mod_index) = self.graph.get_path_module(self.node, (&path).into()) {
+            if self.target_mods.contains(&mod_index) {
+                update_path_as_relative(path, self.node, self.graph)
             } else {
                 path
             }

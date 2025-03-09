@@ -5,9 +5,12 @@ use std::panic;
 use super::{ForgeState, ProcessingResult};
 use crate::{
     CgData, add_context,
-    challenge_tree::{CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder},
+    challenge_tree::{
+        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder,
+        UpdateRelativePathFolder,
+    },
     configuration::CgCli,
-    parsing::{SourcePath, UseTreeExt},
+    parsing::UseTreeExt,
 };
 
 use anyhow::anyhow;
@@ -42,7 +45,9 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         };
 
         // transform use and path statements starting with crate keyword to relative
-        self.transform_use_and_path_statements_starting_with_crate_keyword_to_relative(fusion_crate)?;
+        self.transform_use_and_path_statements_starting_with_crate_keyword_to_relative(
+            fusion_crate,
+        )?;
 
         // flatten fusion crate
         self.recursive_flatten(fusion_crate)?;
@@ -55,7 +60,6 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         Ok(self.set_state(ForgeState))
     }
 
-    // ToDo: write test
     fn transform_use_and_path_statements_starting_with_crate_keyword_to_relative(
         &mut self,
         fusion_crate: NodeIndex,
@@ -134,7 +138,11 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         flatten_agent.link_flatten_items_to_parent(self);
 
         // 7. post linking use and path fixing of parent and super items
-        flatten_agent.check_use_statements(self)?;
+        flatten_agent.post_linking_use_and_path_fixing_of_super_check_items(self)?;
+
+        // 8. set new order of items in parent module
+
+        // 9. remove flatten module and unneeded use statements
 
         Ok(())
     }
@@ -264,7 +272,6 @@ impl FlattenAgent {
             })
     }
 
-    // ToDo: write test
     fn set_sub_and_super_nodes<O: CgCli, S>(&mut self, graph: &CgData<O, S>) {
         self.sub_modules = graph
             .iter_syn_items(self.node)
@@ -321,7 +328,6 @@ impl FlattenAgent {
         self.super_modules.push(self.parent);
     }
 
-    // ToDo: write test
     fn pre_linking_use_and_path_fixing_of_sub_check_items<O, S>(&self, graph: &mut CgData<O, S>) {
         // fix path statements
         for path_item_index in self.sub_check_items.iter() {
@@ -364,68 +370,42 @@ impl FlattenAgent {
         }
     }
 
-    // ToDo: rework to post linking use and path fixing of parent and super items
-    fn check_use_statements<O: CgCli, S>(
+    fn post_linking_use_and_path_fixing_of_super_check_items<O: CgCli, S>(
         &mut self,
         graph: &mut CgData<O, S>,
     ) -> ProcessingResult<()> {
-        let use_statements: Vec<(NodeIndex, SourcePath)> = self
-            .super_modules
-            .iter()
-            .flat_map(|n| graph.iter_syn_item_neighbors(*n))
-            .filter_map(|(n, i)| {
-                if let Item::Use(item_use) = i {
-                    if let Some(module) = graph.get_path_module(n, item_use.into()) {
-                        if module == self.node || self.sub_modules.contains(&module) {
-                            Some((n, SourcePath::from(item_use)))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+        // fix path statements
+        for path_item_index in self.super_check_items.iter() {
+            if let Some(cloned_item) = graph.clone_syn_item(*path_item_index) {
+                // update relative path to item in sub module
+                let mut folder = UpdateRelativePathFolder {
+                    graph,
+                    node: *path_item_index,
+                    target_mods: &self.sub_modules,
+                };
+                let new_item = folder.fold_item(cloned_item);
+                if let Some(NodeType::SynItem(item)) = graph.tree.node_weight_mut(*path_item_index)
+                {
+                    *item = new_item;
                 }
-            })
-            .chain(
-                // ToDo: if sub modules contain use statements with super keyword in path, they may brake after flattening
-                // ToDo: we although have to test flattened use statements, which may point toward super modules
-                // ToDo: we can test this in test_check_use_statements() after flattening my_map_point by flattening action.
-                // ToDo: it is although possible to have use statements starting with crate keyword in sub modules and in flattened
-                // use statements, which point toward sub modules and flattened items. These although may brake after flattening.
-                // ToDo: 1.) remove crate keyword as in path minimizing of use and path statements before linking
-                //        ---> is it possible in path statements to point toward lib crates, which have bin fused? If yes, we have to
-                //             to fix these path statements with crate keyword during fusion.
-                // ToDo: 2.) remove super of use and path statements before linking
-                // ToDo: this results in processing all sub_modules. Therefore do NOT chain sub_modules here!!!
-                // ToDo: always first path, than use statements
-                self.sub_modules
-                    .iter()
-                    .flat_map(|n| graph.iter_syn_item_neighbors(*n))
-                    .filter_map(|(n, i)| {
-                        if let Item::Use(item_use) = i {
-                            if let Some(module) = graph.get_path_module(n, item_use.into()) {
-                                if module == self.parent || self.super_modules.contains(&module) {
-                                    Some((n, SourcePath::from(item_use)))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    }),
-            )
-            .collect();
-        for (use_item_index, use_item_path) in use_statements {
+            }
+        }
+        // fix use statements
+        for use_item_index in self.super_check_items.iter() {
+            let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index) else {
+                continue;
+            };
+            let Some(module) = graph.get_path_module(*use_item_index, item_use.into()) else {
+                continue;
+            };
+            if !self.sub_modules.contains(&module) {
+                continue;
+            }
             let new_use_item_path =
-                graph.resolving_relative_source_path(use_item_index, use_item_path)?;
+                graph.resolving_relative_source_path(*use_item_index, item_use.into())?;
             let new_use_item_tree: UseTree = new_use_item_path.try_into()?;
             if let Some(NodeType::SynItem(Item::Use(use_item))) =
-                graph.tree.node_weight_mut(use_item_index)
+                graph.tree.node_weight_mut(*use_item_index)
             {
                 use_item.tree = new_use_item_tree;
             }
