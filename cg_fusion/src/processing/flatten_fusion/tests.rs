@@ -626,3 +626,128 @@ fn test_post_linking_use_and_path_fixing_of_super_check_items() {
         "use super :: super :: my_map_two_dim :: MapPoint ;"
     );
 }
+
+#[test]
+fn test_set_order_of_flattened_items_in_parent() {
+    // preparation
+    let mut cg_data = setup_processing_test(true)
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap()
+        .expand_use_statements()
+        .unwrap()
+        .path_minimizing_of_use_and_path_statements()
+        .unwrap()
+        .link_impl_blocks_with_corresponding_item()
+        .unwrap()
+        .link_required_by_challenge()
+        .unwrap()
+        .check_impl_blocks()
+        .unwrap()
+        .process_external_dependencies()
+        .unwrap()
+        .fuse_challenge()
+        .unwrap();
+
+    let (fusion_crate, _) = cg_data.get_fusion_bin_crate().unwrap();
+
+    cg_data
+        .transform_use_and_path_statements_starting_with_crate_keyword_to_relative(fusion_crate)
+        .unwrap();
+
+    // test mod MapPoint
+    let map_point_mod = cg_data
+        .iter_syn_items(fusion_crate)
+        .find_map(|(n, i)| {
+            if let Item::Mod(item_mod) = i {
+                (item_mod.ident == "my_map_point").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let mut flatten_agent = FlattenAgent::new(map_point_mod);
+    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.set_sub_and_super_nodes(&cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing_of_sub_check_items(&mut cg_data);
+    flatten_agent.link_flatten_items_to_parent(&mut cg_data);
+    flatten_agent
+        .post_linking_use_and_path_fixing_of_super_check_items(&mut cg_data)
+        .unwrap();
+
+    // action to test
+    flatten_agent.set_order_of_flattened_items_in_parent(&mut cg_data);
+
+    let parent_items: Vec<String> = cg_data
+        .get_sorted_mod_content(flatten_agent.parent)
+        .unwrap()
+        .iter()
+        .map(|i| format!("{}", ItemName::from(i)))
+        .collect();
+    assert_eq!(
+        parent_items,
+        [
+            "MapPoint (Struct)",
+            "impl<constX:usize,constY:usize> MapPoint<X,Y>",
+            "MapPoint (Use)",
+            "MyMap2D (Struct)",
+            "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
+            "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
+        ]
+    );
+    // test mod action
+    let action_mod = cg_data
+        .iter_syn_items(fusion_crate)
+        .find_map(|(n, i)| {
+            if let Item::Mod(item_mod) = i {
+                (item_mod.ident == "action").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let mut flatten_agent = FlattenAgent::new(action_mod);
+    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.set_sub_and_super_nodes(&cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing_of_sub_check_items(&mut cg_data);
+    flatten_agent.link_flatten_items_to_parent(&mut cg_data);
+    flatten_agent
+        .post_linking_use_and_path_fixing_of_super_check_items(&mut cg_data)
+        .unwrap();
+
+    // action to test
+    flatten_agent.set_order_of_flattened_items_in_parent(&mut cg_data);
+
+    let parent_items: Vec<String> = cg_data
+        .get_sorted_mod_content(flatten_agent.parent)
+        .unwrap()
+        .iter()
+        .map(|i| format!("{}", ItemName::from(i)))
+        .collect();
+    assert_eq!(
+        parent_items,
+        [
+            "Display (Use)",
+            "MapPoint (Use)",
+            "Action (Struct)",
+            "impl Display for Action",
+            "impl Action",
+            "Action (Use)",
+            "MyMap2D (Use)",
+            "fmt (Use)",
+            "X (Const)",
+            "Y (Const)",
+            "N (Const)",
+            "Value (Enum)",
+            "impl fmt::Display for Value",
+            "Go (Struct)",
+            "impl Default for Go",
+            "impl Go"
+        ]
+    );
+}

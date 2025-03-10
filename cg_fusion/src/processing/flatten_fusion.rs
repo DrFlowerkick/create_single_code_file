@@ -141,6 +141,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         flatten_agent.post_linking_use_and_path_fixing_of_super_check_items(self)?;
 
         // 8. set new order of items in parent module
+        flatten_agent.set_order_of_flattened_items_in_parent(self);
 
         // 9. remove flatten module and unneeded use statements
 
@@ -162,6 +163,8 @@ struct FlattenAgent {
     super_check_items: Vec<NodeIndex>,
 }
 
+// ToDo: replace all panic! with proper error handling
+// ToDo: add verbose output
 impl FlattenAgent {
     fn new(flatten_module: NodeIndex) -> Self {
         Self {
@@ -412,6 +415,60 @@ impl FlattenAgent {
         }
 
         Ok(())
+    }
+
+    fn set_order_of_flattened_items_in_parent<O, S>(&self, graph: &mut CgData<O, S>) {
+        let Some(flatten_challenge_mod) = graph.get_challenge_node_from_fusion_node(self.node)
+        else {
+            panic!(
+                "{}",
+                add_context!("Expected challenge module of flatten module.")
+            );
+        };
+        let ordered_flattened_challenge_items: Vec<NodeIndex> = graph.item_order
+            [&flatten_challenge_mod]
+            .iter()
+            .filter_map(|n| {
+                if let Some(cn) = graph.get_fusion_node_from_challenge_node(*n) {
+                    if self.flatten_items.contains(&cn) {
+                        Some(*n)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // check all corresponding challenge items of flatten items have been found
+        assert_eq!(
+            self.flatten_items.len(),
+            ordered_flattened_challenge_items.len()
+        );
+        // replace flatten module entry with flatten items in order list of parent module
+        let Some(parent_challenge_mod) = graph.get_challenge_node_from_fusion_node(self.parent)
+        else {
+            panic!(
+                "{}",
+                add_context!("Expected challenge module of parent module.")
+            );
+        };
+        let Some(parent_item_order) = graph.item_order.get_mut(&parent_challenge_mod) else {
+            panic!("{}", add_context!("Expected item order of parent module."));
+        };
+        let Some(pos_flatten_mod) = parent_item_order
+            .iter()
+            .position(|p| *p == flatten_challenge_mod)
+        else {
+            panic!(
+                "{}",
+                add_context!("Expected position of flatten mod in parent item order.")
+            );
+        };
+        parent_item_order.splice(
+            pos_flatten_mod..=pos_flatten_mod,
+            ordered_flattened_challenge_items,
+        );
     }
 }
 
