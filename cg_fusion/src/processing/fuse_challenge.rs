@@ -39,11 +39,7 @@ impl<O: CgCli> CgData<O, FuseChallengeState> {
             .filter_map(|(n, _)| self.is_required_by_challenge(n).then_some(n))
             .collect();
         for required_lib_crate in required_lib_crates {
-            self.add_lib_dependency_as_mod_to_fusion(
-                required_lib_crate,
-                challenge_bin_index,
-                fusion_bin_index,
-            )?;
+            self.add_lib_dependency_as_mod_to_fusion(required_lib_crate, fusion_bin_index)?;
         }
 
         // recursive update of mod / crate items to include all of their sub items in syn mod / file statement

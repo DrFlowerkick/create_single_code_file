@@ -468,34 +468,16 @@ impl<O, S> CgData<O, S> {
         })
     }
 
-    pub(crate) fn get_fusion_node_from_challenge_node(
-        &self,
-        challenge_node: NodeIndex,
-    ) -> Option<NodeIndex> {
-        self.node_mapping.get(&challenge_node).copied()
-    }
-
-    pub(crate) fn get_challenge_node_from_fusion_node(
-        &self,
-        fusion_node: NodeIndex,
-    ) -> Option<NodeIndex> {
-        self.node_mapping
-            .iter()
-            .find_map(|(nc, nf)| (*nf == fusion_node).then_some(*nc))
-    }
-
     pub(crate) fn get_sorted_mod_content(&self, mod_index: NodeIndex) -> TreeResult<Vec<Item>> {
-        let challenge_mod = self
-            .get_challenge_node_from_fusion_node(mod_index)
-            .context(add_context!(
-                "Expected challenge mod corresponding to fusion mod."
-            ))?;
-        let new_mod_content: Vec<Item> = self.item_order[&challenge_mod]
+        let item_order = self
+            .item_order
+            .get(&mod_index)
+            .context(add_context!("Expected item order of mod."))?;
+        let sorted_mod_content: Vec<Item> = item_order
             .iter()
-            .filter_map(|n| self.get_fusion_node_from_challenge_node(*n))
-            .filter_map(|n| self.get_syn_item(n).map(|i| i.to_owned()))
+            .filter_map(|n| self.get_syn_item(*n).cloned())
             .collect();
-        Ok(new_mod_content)
+        Ok(sorted_mod_content)
     }
 }
 

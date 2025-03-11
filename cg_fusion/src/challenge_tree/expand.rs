@@ -504,7 +504,6 @@ impl<O: CgCli, S> CgData<O, S> {
     pub(crate) fn add_lib_dependency_as_mod_to_fusion(
         &mut self,
         lib_crate_index: NodeIndex,
-        challenge_bin_index: NodeIndex,
         fusion_node_index: NodeIndex,
     ) -> TreeResult<()> {
         let Some(NodeType::LibCrate(src_file)) = self.tree.node_weight(lib_crate_index) else {
@@ -530,11 +529,11 @@ impl<O: CgCli, S> CgData<O, S> {
         };
         let fusion_mod_index = self.tree.add_node(NodeType::SynItem(Item::Mod(new_mod)));
         self.node_mapping.insert(lib_crate_index, fusion_mod_index);
-        // add required lib crate index to content order of challenge
-        let Some(challenge_content_order) = self.item_order.get_mut(&challenge_bin_index) else {
+        // add new fusion mod index to content order of fusion
+        let Some(fusion_item_order) = self.item_order.get_mut(&fusion_node_index) else {
             return Err(anyhow!(add_context!("Expected challenge item order.")).into());
         };
-        challenge_content_order.push(lib_crate_index);
+        fusion_item_order.push(fusion_mod_index);
         self.tree
             .add_edge(fusion_node_index, fusion_mod_index, EdgeType::Syn);
         if self.options.verbose() {
@@ -654,6 +653,18 @@ impl<O: CgCli, S> CgData<O, S> {
                 );
             }
         }
+        // add item order of fusion mod
+        let item_order = self
+            .item_order
+            .get(&mod_index)
+            .context(add_context!("Expected item order of mod."))?;
+        self.item_order.insert(
+            fusion_mod_index,
+            item_order
+                .iter()
+                .filter_map(|n| self.node_mapping.get(n).cloned())
+                .collect(),
+        );
         // add sub mods to tree
         for (sub_mod_index, sub_mod_fusion_index) in sub_mods {
             self.add_required_mod_content_to_fusion(sub_mod_index, sub_mod_fusion_index)?;
