@@ -1,21 +1,20 @@
 // function to flatten module structure in fusion
 
-use std::panic;
+use std::{collections::HashMap, panic};
 
 use super::{ForgeState, ProcessingResult};
 use crate::{
     CgData, add_context,
     challenge_tree::{
-        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder,
-        UpdateRelativePathFolder,
+        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder, UpdateRelativePath,
     },
     configuration::CgCli,
-    parsing::UseTreeExt,
+    parsing::{SourcePath, UseTreeExt},
 };
 
 use anyhow::anyhow;
 use petgraph::stable_graph::NodeIndex;
-use syn::{Item, UseTree, fold::Fold};
+use syn::{Ident, Item, Path, UseTree, fold::Fold, visit::Visit};
 
 pub struct FlattenFusionState;
 
@@ -27,19 +26,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
             }
             return Ok(self.set_state(ForgeState));
         }
-        // 1. identify recursively module to flatten: flatten_module
-        // 2. collect items of flatten_module: flatten_items
-        // 3. check for name space collisions between flatten_module and parent module
-        // 3.1 respect dependencies between flatten_module and parent module
-        // 3.2 filter from flatten_items dependencies of parent module
-        // 3.3 if no name space collision: copy flatten_items to parent module and modify order of items list
-        // 3.3.1 replace flatten_module entry with flatten_items in order list of parent module
-        // 3.4 else add flatten_module to seen list and search for another module to flatten
-        // 4. remove use statements from parent module pointing to flatten_module
-        // 5. relink all use statements and path with leafs pointing to flatten_module or flatten_items to parent
-        //    module or new items in parent module
-        // 6. remove items of flatten_module and flatten_module
-        // 7. after flattening all items as much as possible, update required module content of all remaining modules
+        
         let Some((fusion_crate, _)) = self.get_fusion_bin_crate() else {
             return Err(anyhow!(add_context!("Expected fusion bin crate.")).into());
         };
@@ -132,18 +119,16 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         flatten_agent.set_sub_and_super_nodes(self);
 
         // 5. pre linking use and path fixing of flatten and sub items
-        flatten_agent.pre_linking_use_and_path_fixing_of_sub_check_items(self);
+        flatten_agent.pre_linking_use_and_path_fixing(self);
 
-        // 6. link flatten items to parent
+        // 6. link flatten items to parent and remove unnecessary items
         flatten_agent.link_flatten_items_to_parent(self);
 
         // 7. post linking use and path fixing of parent and super items
-        flatten_agent.post_linking_use_and_path_fixing_of_super_check_items(self)?;
+        flatten_agent.post_linking_use_and_path_fixing(self)?;
 
         // 8. set new order of items in parent module
         flatten_agent.set_order_of_flattened_items_in_parent(self);
-
-        // 9. remove flatten module and unneeded use statements
 
         Ok(())
     }
@@ -161,6 +146,8 @@ struct FlattenAgent {
     super_modules: Vec<NodeIndex>,
     sub_check_items: Vec<NodeIndex>,
     super_check_items: Vec<NodeIndex>,
+    super_path_targets: HashMap<(NodeIndex, Path), NodeIndex>,
+    super_use_targets: HashMap<NodeIndex, (NodeIndex, Option<Ident>)>,
 }
 
 // ToDo: replace all panic! with proper error handling
@@ -178,6 +165,8 @@ impl FlattenAgent {
             super_modules: Vec::new(),
             sub_check_items: Vec::new(),
             super_check_items: Vec::new(),
+            super_path_targets: HashMap::new(),
+            super_use_targets: HashMap::new(),
         }
     }
     fn set_parent<O, S>(&mut self, graph: &CgData<O, S>) {
@@ -331,8 +320,8 @@ impl FlattenAgent {
         self.super_modules.push(self.parent);
     }
 
-    fn pre_linking_use_and_path_fixing_of_sub_check_items<O, S>(&self, graph: &mut CgData<O, S>) {
-        // fix path statements
+    fn pre_linking_use_and_path_fixing<O, S>(&mut self, graph: &mut CgData<O, S>) {
+        // fix path statements of sub_check_items
         for path_item_index in self.sub_check_items.iter() {
             if let Some(cloned_item) = graph.clone_syn_item(*path_item_index) {
                 // remove super keyword, if path points to super modules
@@ -348,7 +337,7 @@ impl FlattenAgent {
                 }
             }
         }
-        // fix use statements
+        // fix use statements of sub_check_items
         for use_item_index in self.sub_check_items.iter() {
             if let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index) {
                 if let Some(module) = graph.get_path_module(*use_item_index, item_use.into()) {
@@ -357,6 +346,38 @@ impl FlattenAgent {
                             graph.tree.node_weight_mut(*use_item_index)
                         {
                             use_item.tree = use_item.tree.remove_super();
+                        }
+                    }
+                }
+            }
+        }
+        // collect path targets of super items pointing to sub modules
+        for path_item_index in self.super_check_items.iter() {
+            if let Some(item) = graph.get_syn_item(*path_item_index) {
+                let mut visitor = UpdateRelativePath {
+                    graph,
+                    node: *path_item_index,
+                    target_mods: &self.sub_modules,
+                    path_targets: &mut self.super_path_targets,
+                };
+                visitor.visit_item(item);
+            }
+        }
+        // collect use targets of super items pointing to sub modules
+        for use_item_index in self.super_check_items.iter() {
+            if let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index) {
+                if let Some(module) = graph.get_path_module(*use_item_index, item_use.into()) {
+                    if self.sub_modules.contains(&module) {
+                        match graph.get_path_leaf(*use_item_index, item_use.into()) {
+                            Ok(PathElement::Item(path_leaf)) => {
+                                self.super_use_targets
+                                    .insert(*use_item_index, (path_leaf, None));
+                            }
+                            Ok(PathElement::ItemRenamed(path_leaf, renamed)) => {
+                                self.super_use_targets
+                                    .insert(*use_item_index, (path_leaf, Some(renamed)));
+                            }
+                            _ => panic!("{}", add_context!("Expected path leaf of use statement.")),
                         }
                     }
                 }
@@ -371,9 +392,21 @@ impl FlattenAgent {
                 .tree
                 .add_edge(self.parent, *flatten_item, EdgeType::Syn);
         }
+        // remove flatten module and unneeded use statements from parent and flatten module
+        let unneeded_items_of_flatten_module: Vec<NodeIndex> = graph
+            .iter_syn_item_neighbors(self.node)
+            .filter_map(|(n, _)| (!self.flatten_items.contains(&n)).then_some(n))
+            .collect();
+        for unneeded_item in unneeded_items_of_flatten_module
+            .iter()
+            .chain(self.parent_use_of_flatten.iter())
+        {
+            graph.tree.remove_node(*unneeded_item);
+        }
+        graph.tree.remove_node(self.node);
     }
 
-    fn post_linking_use_and_path_fixing_of_super_check_items<O: CgCli, S>(
+    fn post_linking_use_and_path_fixing<O: CgCli, S>(
         &mut self,
         graph: &mut CgData<O, S>,
     ) -> ProcessingResult<()> {
@@ -381,10 +414,11 @@ impl FlattenAgent {
         for path_item_index in self.super_check_items.iter() {
             if let Some(cloned_item) = graph.clone_syn_item(*path_item_index) {
                 // update relative path to item in sub module
-                let mut folder = UpdateRelativePathFolder {
+                let mut folder = UpdateRelativePath {
                     graph,
                     node: *path_item_index,
                     target_mods: &self.sub_modules,
+                    path_targets: &mut self.super_path_targets,
                 };
                 let new_item = folder.fold_item(cloned_item);
                 if let Some(NodeType::SynItem(item)) = graph.tree.node_weight_mut(*path_item_index)
@@ -395,22 +429,20 @@ impl FlattenAgent {
         }
         // fix use statements
         for use_item_index in self.super_check_items.iter() {
-            let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index) else {
-                continue;
-            };
-            let Some(module) = graph.get_path_module(*use_item_index, item_use.into()) else {
-                continue;
-            };
-            if !self.sub_modules.contains(&module) {
-                continue;
-            }
-            let new_use_item_path =
-                graph.resolving_relative_source_path(*use_item_index, item_use.into())?;
-            let new_use_item_tree: UseTree = new_use_item_path.try_into()?;
-            if let Some(NodeType::SynItem(Item::Use(use_item))) =
-                graph.tree.node_weight_mut(*use_item_index)
-            {
-                use_item.tree = new_use_item_tree;
+            if let Some((path_leaf, renamed)) = self.super_use_targets.get(use_item_index) {
+                let relative_path_segments =
+                    graph.generating_relative_path_segments(*use_item_index, *path_leaf)?;
+                let new_path = if let Some(rename) = renamed {
+                    SourcePath::Rename(relative_path_segments, rename.clone())
+                } else {
+                    SourcePath::Name(relative_path_segments)
+                };
+                let new_use_item_tree: UseTree = new_path.try_into()?;
+                if let Some(NodeType::SynItem(Item::Use(use_item))) =
+                    graph.tree.node_weight_mut(*use_item_index)
+                {
+                    use_item.tree = new_use_item_tree;
+                }
             }
         }
 

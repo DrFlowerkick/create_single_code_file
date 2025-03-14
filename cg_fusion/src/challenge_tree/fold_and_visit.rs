@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Result, anyhow};
 use petgraph::stable_graph::NodeIndex;
 use proc_macro2::Span;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use syn::{
     Block, Expr, ExprMethodCall, FnArg, Ident, ImplItem, Item, LocalInit, Pat, PatIdent, Path,
     PathSegment, ReturnType, Signature, Stmt, Type, TypePath, fold::Fold, visit::Visit,
@@ -369,21 +369,14 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
 }
 
 // function to update path as relative path
-fn update_path_as_relative<O, S>(path: Path, node: NodeIndex, graph: &CgData<O, S>) -> Path {
-    let resolved_path = graph
-        .resolving_relative_source_path(node, (&path).into())
-        .expect("resolving crate source path failed");
-    let resolved_path: Path = resolved_path
-        .try_into()
-        .expect("resolving crate source path failed");
-    // rebuild arguments of segments from input path
+fn rebuild_path_arguments(original_path: Path, resolved_path: Path) -> Path {
     Path {
-        leading_colon: path.leading_colon,
+        leading_colon: original_path.leading_colon,
         segments: resolved_path
             .segments
             .iter()
             .map(|s| {
-                match path
+                match original_path
                     .segments
                     .iter()
                     .find_map(|p| (p.ident == s.ident).then_some(p.arguments.to_owned()))
@@ -409,7 +402,14 @@ impl<O, S> Fold for CratePathFolder<'_, O, S> {
     fn fold_path(&mut self, path: Path) -> Path {
         let source_path = SourcePath::from(&path);
         let path = if source_path.path_root_is_crate_keyword() {
-            update_path_as_relative(path, self.node, self.graph)
+            let resolved_path = self
+                .graph
+                .resolving_relative_source_path(self.node, (&path).into())
+                .expect("resolving crate source path failed");
+            let resolved_path: Path = resolved_path
+                .try_into()
+                .expect("resolving crate source path failed");
+            rebuild_path_arguments(path, resolved_path)
         } else {
             path
         };
@@ -486,17 +486,40 @@ impl<O, S> Fold for RemoveSuperFolder<'_, O, S> {
 // struct to fold paths in syn::Path elements, which start with local dependency.
 // After fusion these dependencies are modules of binary crate. Therefore crate
 // keyword has to be added to these path.
-pub struct UpdateRelativePathFolder<'a, O, S> {
+pub struct UpdateRelativePath<'a, O, S> {
     pub graph: &'a CgData<O, S>,
     pub node: NodeIndex,
     pub target_mods: &'a Vec<NodeIndex>,
+    pub path_targets: &'a mut HashMap<(NodeIndex, Path), NodeIndex>,
 }
 
-impl<O, S> Fold for UpdateRelativePathFolder<'_, O, S> {
+impl<'a, O, S> Visit<'a> for UpdateRelativePath<'a, O, S> {
+    fn visit_path(&mut self, path: &'a Path) {
+        if let Some(mod_index) = self.graph.get_path_module(self.node, path.into()) {
+            if self.target_mods.contains(&mod_index) {
+                if let Ok(PathElement::Item(path_leaf)) =
+                    self.graph.get_path_leaf(self.node, path.into())
+                {
+                    self.path_targets
+                        .insert((self.node, path.to_owned()), path_leaf);
+                }
+            }
+        }
+    }
+}
+
+impl<O, S> Fold for UpdateRelativePath<'_, O, S> {
     fn fold_path(&mut self, path: Path) -> Path {
         let path = if let Some(mod_index) = self.graph.get_path_module(self.node, (&path).into()) {
-            if self.target_mods.contains(&mod_index) {
-                update_path_as_relative(path, self.node, self.graph)
+            if let Some(path_leaf) = self.path_targets.get(&(mod_index, path.clone())) {
+                let relative_path_segments = self
+                    .graph
+                    .generating_relative_path_segments(self.node, *path_leaf)
+                    .expect("generating relative path segments failed");
+                let resolved_path: Path = SourcePath::Name(relative_path_segments)
+                    .try_into()
+                    .expect("resolving crate source path failed");
+                rebuild_path_arguments(path, resolved_path)
             } else {
                 path
             }

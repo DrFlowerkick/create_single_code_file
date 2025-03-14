@@ -457,7 +457,7 @@ fn test_is_name_space_conflict() {
 }
 
 #[test]
-fn test_pre_linking_use_and_path_fixing_of_sub_check_items() {
+fn test_pre_linking_use_and_path_fixing() {
     // preparation
     let mut cg_data = setup_processing_test(true)
         .add_challenge_dependencies()
@@ -503,7 +503,7 @@ fn test_pre_linking_use_and_path_fixing_of_sub_check_items() {
     flatten_agent.set_sub_and_super_nodes(&cg_data);
 
     // action to test
-    flatten_agent.pre_linking_use_and_path_fixing_of_sub_check_items(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
 
     let action_use_display = cg_data
         .iter_syn_item_neighbors(action_mod)
@@ -542,7 +542,7 @@ fn test_pre_linking_use_and_path_fixing_of_sub_check_items() {
 }
 
 #[test]
-fn test_post_linking_use_and_path_fixing_of_super_check_items() {
+fn test_post_linking_use_and_path_fixing() {
     // preparation
     let mut cg_data = setup_processing_test(true)
         .add_challenge_dependencies()
@@ -586,12 +586,12 @@ fn test_post_linking_use_and_path_fixing_of_super_check_items() {
     flatten_agent.set_parent(&cg_data);
     flatten_agent.set_flatten_items(&cg_data);
     flatten_agent.set_sub_and_super_nodes(&cg_data);
-    flatten_agent.pre_linking_use_and_path_fixing_of_sub_check_items(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
 
     // action to test
     flatten_agent
-        .post_linking_use_and_path_fixing_of_super_check_items(&mut cg_data)
+        .post_linking_use_and_path_fixing(&mut cg_data)
         .unwrap();
 
     let action_mod = cg_data
@@ -672,10 +672,10 @@ fn test_set_order_of_flattened_items_in_parent() {
     flatten_agent.set_parent(&cg_data);
     flatten_agent.set_flatten_items(&cg_data);
     flatten_agent.set_sub_and_super_nodes(&cg_data);
-    flatten_agent.pre_linking_use_and_path_fixing_of_sub_check_items(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
     flatten_agent
-        .post_linking_use_and_path_fixing_of_super_check_items(&mut cg_data)
+        .post_linking_use_and_path_fixing(&mut cg_data)
         .unwrap();
 
     // action to test
@@ -692,7 +692,6 @@ fn test_set_order_of_flattened_items_in_parent() {
         [
             "MapPoint (Struct)",
             "impl<constX:usize,constY:usize> MapPoint<X,Y>",
-            "MapPoint (Use)",
             "MyMap2D (Struct)",
             "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>",
             "impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> Default for MyMap2D<T,X,Y,N>"
@@ -714,10 +713,10 @@ fn test_set_order_of_flattened_items_in_parent() {
     flatten_agent.set_parent(&cg_data);
     flatten_agent.set_flatten_items(&cg_data);
     flatten_agent.set_sub_and_super_nodes(&cg_data);
-    flatten_agent.pre_linking_use_and_path_fixing_of_sub_check_items(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
     flatten_agent
-        .post_linking_use_and_path_fixing_of_super_check_items(&mut cg_data)
+        .post_linking_use_and_path_fixing(&mut cg_data)
         .unwrap();
 
     // action to test
@@ -737,7 +736,6 @@ fn test_set_order_of_flattened_items_in_parent() {
             "Action (Struct)",
             "impl Display for Action",
             "impl Action",
-            "Action (Use)",
             "MyMap2D (Use)",
             "fmt (Use)",
             "X (Const)",

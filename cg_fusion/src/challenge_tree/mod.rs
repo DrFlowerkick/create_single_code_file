@@ -10,8 +10,8 @@ mod walkers;
 
 pub use error::{ChallengeTreeError, TreeResult};
 pub use fold_and_visit::{
-    CratePathFolder, FusedDepPathFolder, RemoveSuperFolder, SynReferenceMapper,
-    UpdateRelativePathFolder, VariableReferences,
+    CratePathFolder, FusedDepPathFolder, RemoveSuperFolder, SynReferenceMapper, UpdateRelativePath,
+    VariableReferences,
 };
 pub use walkers::{BfsByEdgeType, BfsWalker, PathElement, SourcePathWalker};
 

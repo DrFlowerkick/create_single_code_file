@@ -765,10 +765,31 @@ impl<O, S> CgData<O, S> {
             }
         }
         // compare crates of active path leaf and path_item_index
-        let path_leaf = path_leaf.context(add_context!("Expected index of path leaf."))?;
-        let path_leaf_nodes = self.get_crate_path_nodes(path_leaf);
+        let leaf_item_index = path_leaf.context(add_context!("Expected index of path leaf."))?;
+        let mut path_segments: Vec<Ident> =
+            self.generating_relative_path_segments(path_item_index, leaf_item_index)?;
+
+        if let Some(res) = remaining_external_segments.take() {
+            path_segments.extend(res);
+        }
+
+        let new_path = match (glob, rename) {
+            (true, None) => SourcePath::Glob(path_segments),
+            (false, Some(renamed)) => SourcePath::Rename(path_segments, renamed),
+            (false, None) => SourcePath::Name(path_segments),
+            _ => unreachable!(),
+        };
+        Ok(new_path)
+    }
+
+    pub(crate) fn generating_relative_path_segments(
+        &self,
+        path_item_index: NodeIndex,
+        leaf_item_index: NodeIndex,
+    ) -> TreeResult<Vec<Ident>> {
+        let path_leaf_nodes = self.get_crate_path_nodes(leaf_item_index);
         let path_item_nodes = self.get_crate_path_nodes(path_item_index);
-        let mut new_path: Vec<Ident> = if path_leaf_nodes[0] != path_item_nodes[0] {
+        let path_segments: Vec<Ident> = if path_leaf_nodes[0] != path_item_nodes[0] {
             // return path of leaf starting from it's crate
             path_leaf_nodes
                 .iter()
@@ -804,22 +825,11 @@ impl<O, S> CgData<O, S> {
                 let num_super = path_item_nodes.len() - pos_junction - 1;
                 (from_junction_leaf_ident, num_super)
             };
-            let mut new_path = vec![Ident::new("super", Span::call_site()); num_super];
-            new_path.extend(from_junction_leaf_ident);
-            new_path
+            let mut path_segments = vec![Ident::new("super", Span::call_site()); num_super];
+            path_segments.extend(from_junction_leaf_ident);
+            path_segments
         };
-
-        if let Some(res) = remaining_external_segments.take() {
-            new_path.extend(res);
-        }
-
-        let new_path = match (glob, rename) {
-            (true, None) => SourcePath::Glob(new_path),
-            (false, Some(renamed)) => SourcePath::Rename(new_path, renamed),
-            (false, None) => SourcePath::Name(new_path),
-            _ => unreachable!(),
-        };
-        Ok(new_path)
+        Ok(path_segments)
     }
 
     pub(crate) fn update_required_mod_content(&mut self, mod_index: NodeIndex) -> TreeResult<()> {
