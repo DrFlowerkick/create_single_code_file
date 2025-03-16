@@ -282,6 +282,7 @@ pub trait ItemExt {
     fn get_use_items_of_use_group(&self) -> Vec<Item>;
     fn get_item_use(&self) -> Option<&ItemUse>;
     fn extract_visibility(&self) -> Option<&Visibility>;
+    fn remove_visibility(&mut self);
     fn replace_glob_with_name_ident(self, ident: Ident) -> Option<Item>;
 }
 
@@ -326,6 +327,25 @@ impl ItemExt for Item {
             Item::Use(item_use) => Some(&item_use.vis),
             _ => None, // all other items don't have a visibility attribute
         }
+    }
+
+    fn remove_visibility(&mut self) {
+        let visibility = match self {
+            Item::Const(item_const) => &mut item_const.vis,
+            Item::Enum(item_enum) => &mut item_enum.vis,
+            Item::ExternCrate(item_extern_crate) => &mut item_extern_crate.vis,
+            Item::Fn(item_fn) => &mut item_fn.vis,
+            Item::Mod(item_mod) => &mut item_mod.vis,
+            Item::Static(item_static) => &mut item_static.vis,
+            Item::Struct(item_struct) => &mut item_struct.vis,
+            Item::Trait(item_trait) => &mut item_trait.vis,
+            Item::TraitAlias(item_trait_alias) => &mut item_trait_alias.vis,
+            Item::Type(item_type) => &mut item_type.vis,
+            Item::Union(item_union) => &mut item_union.vis,
+            Item::Use(item_use) => &mut item_use.vis,
+            _ => return, // all other items don't have a visibility attribute
+        };
+        *visibility = Visibility::Inherited;
     }
 
     fn replace_glob_with_name_ident(mut self, ident: Ident) -> Option<Item> {

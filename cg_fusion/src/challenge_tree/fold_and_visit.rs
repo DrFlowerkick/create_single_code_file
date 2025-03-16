@@ -10,7 +10,7 @@ use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use syn::{
     Block, Expr, ExprMethodCall, FnArg, Ident, ImplItem, Item, LocalInit, Pat, PatIdent, Path,
-    PathSegment, ReturnType, Signature, Stmt, Type, TypePath, fold::Fold, visit::Visit,
+    PathSegment, ReturnType, Signature, Stmt, Type, TypePath, fold::Fold, visit::Visit, Visibility
 };
 
 use super::{EdgeType, NodeType, PathElement, SourcePathWalker};
@@ -527,5 +527,16 @@ impl<O, S> Fold for UpdateRelativePath<'_, O, S> {
             path
         };
         syn::fold::fold_path(self, path)
+    }
+}
+
+// struct to fold visibility to Inherited
+pub struct SetVisibilityToInherited {
+}
+
+impl Fold for SetVisibilityToInherited {
+    fn fold_visibility(&mut self, _vis: Visibility) -> Visibility {
+        let vis = Visibility::Inherited;
+        syn::fold::fold_visibility(self, vis)
     }
 }

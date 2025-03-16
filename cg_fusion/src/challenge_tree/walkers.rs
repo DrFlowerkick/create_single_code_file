@@ -133,8 +133,8 @@ impl SourcePathWalker {
     }
 
     fn set_current_node_to_module_of_it<O, S>(&mut self, graph: &CgData<O, S>) -> bool {
-        if let Some(crate_index) = graph.get_syn_module_index(self.current_node_index) {
-            self.current_node_index = crate_index;
+        if let Some(crate_or_module_index) = graph.get_syn_module_index(self.current_node_index) {
+            self.current_node_index = crate_or_module_index;
             false
         } else {
             self.walker_finished = true;
@@ -254,17 +254,32 @@ impl SourcePathWalker {
                         }
                         return Some(PathElement::PathCouldNotBeParsed);
                     }
+                    // set current node to crate or module of item
+                    if self.set_current_node_to_module_of_it(graph) {
+                        return Some(PathElement::PathCouldNotBeParsed);
+                    };
                     // check if path starts with local package dependency
                     if let Some((local_package_index, _)) =
                         graph.iter_lib_crates().find(|(_, cf)| segment == cf.name)
                     {
+                        // check if module of use statement contains a module with name of segment
+                        if let Some(mod_index) = graph
+                            .iter_syn_item_neighbors(self.current_node_index)
+                            .find_map(|(n, i)| {
+                                if let Item::Mod(item_mod) = i {
+                                    (item_mod.ident == segment).then_some(n)
+                                } else {
+                                    None
+                                }
+                            })
+                        {
+                            // prefer module in crate over local package
+                            self.current_node_index = mod_index;
+                            return Some(PathElement::Item(self.current_node_index));
+                        }
                         self.current_node_index = local_package_index;
                         return Some(PathElement::Item(self.current_node_index));
                     }
-                    // if none of above set current node to module of item
-                    if self.set_current_node_to_module_of_it(graph) {
-                        return Some(PathElement::PathCouldNotBeParsed);
-                    };
                 }
                 // if node of current_node_index is a struct, enum, or union AND if
                 // one or more impl for this node exists, search items of these impl

@@ -457,6 +457,77 @@ fn test_is_name_space_conflict() {
 }
 
 #[test]
+fn test_set_sub_and_super_nodes() {
+    // preparation
+    let mut cg_data = setup_processing_test(true)
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap()
+        .expand_use_statements()
+        .unwrap()
+        .path_minimizing_of_use_and_path_statements()
+        .unwrap()
+        .link_impl_blocks_with_corresponding_item()
+        .unwrap()
+        .link_required_by_challenge()
+        .unwrap()
+        .check_impl_blocks()
+        .unwrap()
+        .process_external_dependencies()
+        .unwrap()
+        .fuse_challenge()
+        .unwrap();
+
+    let (fusion_crate, _) = cg_data.get_fusion_bin_crate().unwrap();
+
+    cg_data
+        .transform_use_and_path_statements_starting_with_crate_keyword_to_relative(fusion_crate)
+        .unwrap();
+
+    // test mod Action
+    let action_mod = cg_data
+        .iter_syn_items(fusion_crate)
+        .find_map(|(n, i)| {
+            if let Item::Mod(item_mod) = i {
+                (item_mod.ident == "action").then_some(n)
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+    let mut flatten_agent = FlattenAgent::new(action_mod);
+    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_flatten_items(&cg_data);
+
+    // action to test
+    flatten_agent.set_sub_and_super_nodes(&cg_data);
+
+    let fusion_crate_items_in_super_nodes: Vec<String> = cg_data
+        .iter_syn_item_neighbors(fusion_crate)
+        .filter_map(|(n, _)| {
+            if flatten_agent.super_check_items.contains(&n) {
+                cg_data.get_verbose_name_of_tree_node(n).ok()
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        fusion_crate_items_in_super_nodes,
+        [
+            "Action (Use)",
+            "main (Fn)",
+            "MapPoint (Use)",
+            "Go (Use)",
+            "X (Use)",
+            "Y (Use)"
+        ]
+    );
+}
+
+#[test]
 fn test_pre_linking_use_and_path_fixing() {
     // preparation
     let mut cg_data = setup_processing_test(true)
@@ -594,6 +665,7 @@ fn test_post_linking_use_and_path_fixing() {
         .post_linking_use_and_path_fixing(&mut cg_data)
         .unwrap();
 
+    // check action mode use of MapPoint
     let action_mod = cg_data
         .iter_syn_items(fusion_crate)
         .find_map(|(n, i)| {
@@ -624,6 +696,29 @@ fn test_post_linking_use_and_path_fixing() {
     assert_eq!(
         item.to_token_stream().to_string(),
         "use super :: super :: my_map_two_dim :: MapPoint ;"
+    );
+
+    // check fusion crate use of MapPoint
+    let fusion_crate_use_of_map_point = cg_data
+        .iter_syn_item_neighbors(fusion_crate)
+        .find_map(|(n, i)| {
+            if let Item::Use(item_use) = i {
+                if let Some(name) = ItemName::from(item_use).get_ident_in_name_space() {
+                    (name == "MapPoint").then_some(n)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let Some(item) = cg_data.get_syn_item(fusion_crate_use_of_map_point) else {
+        panic!("Expected use item.");
+    };
+    assert_eq!(
+        item.to_token_stream().to_string(),
+        "use my_map_two_dim :: MapPoint ;"
     );
 }
 
@@ -747,5 +842,40 @@ fn test_set_order_of_flattened_items_in_parent() {
             "impl Default for Go",
             "impl Go"
         ]
+    );
+}
+
+#[test]
+fn flatten_fusion() {
+    // preparation
+    let cg_data = setup_processing_test(true)
+        .add_challenge_dependencies()
+        .unwrap()
+        .add_src_files()
+        .unwrap()
+        .expand_use_statements()
+        .unwrap()
+        .path_minimizing_of_use_and_path_statements()
+        .unwrap()
+        .link_impl_blocks_with_corresponding_item()
+        .unwrap()
+        .link_required_by_challenge()
+        .unwrap()
+        .check_impl_blocks()
+        .unwrap()
+        .process_external_dependencies()
+        .unwrap()
+        .fuse_challenge()
+        .unwrap()
+        .flatten_fusion()
+        .unwrap();
+
+    let (fusion_crate, _) = cg_data.get_fusion_bin_crate().unwrap();
+
+    // no mod in fusion crate
+    assert!(
+        !cg_data
+            .iter_syn_items(fusion_crate)
+            .any(|(_, i)| matches!(i, Item::Mod(_)))
     );
 }

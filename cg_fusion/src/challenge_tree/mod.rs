@@ -11,7 +11,7 @@ mod walkers;
 pub use error::{ChallengeTreeError, TreeResult};
 pub use fold_and_visit::{
     CratePathFolder, FusedDepPathFolder, RemoveSuperFolder, SynReferenceMapper, UpdateRelativePath,
-    VariableReferences,
+    VariableReferences, SetVisibilityToInherited
 };
 pub use walkers::{BfsByEdgeType, BfsWalker, PathElement, SourcePathWalker};
 

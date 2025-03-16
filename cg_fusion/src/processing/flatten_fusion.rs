@@ -6,10 +6,10 @@ use super::{ForgeState, ProcessingResult};
 use crate::{
     CgData, add_context,
     challenge_tree::{
-        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder, UpdateRelativePath,
+        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder, UpdateRelativePath, SetVisibilityToInherited
     },
     configuration::CgCli,
-    parsing::{SourcePath, UseTreeExt},
+    parsing::{ItemExt, SourcePath, UseTreeExt},
 };
 
 use anyhow::anyhow;
@@ -26,7 +26,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
             }
             return Ok(self.set_state(ForgeState));
         }
-        
+
         let Some((fusion_crate, _)) = self.get_fusion_bin_crate() else {
             return Err(anyhow!(add_context!("Expected fusion bin crate.")).into());
         };
@@ -40,6 +40,20 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         self.recursive_flatten(fusion_crate)?;
 
         // remove public visibility of all items in fusion crate
+        let fusion_nodes: Vec<NodeIndex> = self
+            .iter_syn_item_neighbors(fusion_crate)
+            .map(|(n, _)| n)
+            .collect();
+        for node in fusion_nodes {
+            if let Some(NodeType::SynItem(item)) = self.tree.node_weight_mut(node) {
+                if matches!(item, Item::Mod(_)) {
+                    item.remove_visibility();
+                } else {
+                    let mut visibility_folder = SetVisibilityToInherited {};
+                    *item = visibility_folder.fold_item(item.clone());
+                }
+            }
+        }
 
         // update mod content of all remaining modules
         self.update_required_mod_content(fusion_crate)?;
@@ -377,6 +391,7 @@ impl FlattenAgent {
                                 self.super_use_targets
                                     .insert(*use_item_index, (path_leaf, Some(renamed)));
                             }
+                            // ToDo: add handling for other path elements
                             _ => panic!("{}", add_context!("Expected path leaf of use statement.")),
                         }
                     }
