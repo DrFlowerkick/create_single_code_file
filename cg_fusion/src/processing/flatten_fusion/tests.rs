@@ -170,7 +170,7 @@ fn test_set_parent() {
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
 
     // action to test
-    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
 
     assert_eq!(
         cg_data
@@ -223,7 +223,7 @@ fn test_set_parent() {
     let mut flatten_agent = FlattenAgent::new(action_mod);
 
     // action to test
-    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
 
     assert_eq!(
         cg_data
@@ -318,10 +318,10 @@ fn test_set_flatten_items() {
             .any(|(_, i)| matches!(i, Item::Mod(_)))
     );
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
-    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
 
     // action to test
-    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
 
     let flatten_items: Vec<String> = flatten_agent
         .flatten_items
@@ -355,10 +355,10 @@ fn test_set_flatten_items() {
             .any(|(_, i)| matches!(i, Item::Mod(_)))
     );
     let mut flatten_agent = FlattenAgent::new(action_mod);
-    flatten_agent.set_parent(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
 
     // action to test
-    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
 
     let flatten_items: Vec<String> = flatten_agent
         .flatten_items
@@ -425,8 +425,8 @@ fn test_is_name_space_conflict() {
             .any(|(_, i)| matches!(i, Item::Mod(_)))
     );
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
-    flatten_agent.set_parent(&cg_data);
-    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
 
     // action to test
     assert!(!flatten_agent.is_name_space_conflict(&cg_data));
@@ -449,8 +449,8 @@ fn test_is_name_space_conflict() {
             .any(|(_, i)| matches!(i, Item::Mod(_)))
     );
     let mut flatten_agent = FlattenAgent::new(action_mod);
-    flatten_agent.set_parent(&cg_data);
-    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
 
     // action to test
     assert!(!flatten_agent.is_name_space_conflict(&cg_data));
@@ -498,11 +498,11 @@ fn test_set_sub_and_super_nodes() {
         .unwrap();
 
     let mut flatten_agent = FlattenAgent::new(action_mod);
-    flatten_agent.set_parent(&cg_data);
-    flatten_agent.set_flatten_items(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
 
     // action to test
-    flatten_agent.set_sub_and_super_nodes(&cg_data);
+    flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
 
     let fusion_crate_items_in_super_nodes: Vec<String> = cg_data
         .iter_syn_item_neighbors(fusion_crate)
@@ -569,9 +569,9 @@ fn test_pre_linking_use_and_path_fixing() {
         .unwrap();
 
     let mut flatten_agent = FlattenAgent::new(action_mod);
-    flatten_agent.set_parent(&cg_data);
-    flatten_agent.set_flatten_items(&cg_data);
-    flatten_agent.set_sub_and_super_nodes(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
+    flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
 
     // action to test
     flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
@@ -654,9 +654,9 @@ fn test_post_linking_use_and_path_fixing() {
         .unwrap();
 
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
-    flatten_agent.set_parent(&cg_data);
-    flatten_agent.set_flatten_items(&cg_data);
-    flatten_agent.set_sub_and_super_nodes(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
+    flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
     flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
 
@@ -764,9 +764,9 @@ fn test_set_order_of_flattened_items_in_parent() {
         .unwrap();
 
     let mut flatten_agent = FlattenAgent::new(map_point_mod);
-    flatten_agent.set_parent(&cg_data);
-    flatten_agent.set_flatten_items(&cg_data);
-    flatten_agent.set_sub_and_super_nodes(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
+    flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
     flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
     flatten_agent
@@ -774,7 +774,9 @@ fn test_set_order_of_flattened_items_in_parent() {
         .unwrap();
 
     // action to test
-    flatten_agent.set_order_of_flattened_items_in_parent(&mut cg_data);
+    flatten_agent
+        .set_order_of_flattened_items_in_parent(&mut cg_data)
+        .unwrap();
 
     let parent_items: Vec<String> = cg_data
         .get_sorted_mod_content(flatten_agent.parent)
@@ -805,9 +807,9 @@ fn test_set_order_of_flattened_items_in_parent() {
         .unwrap();
 
     let mut flatten_agent = FlattenAgent::new(action_mod);
-    flatten_agent.set_parent(&cg_data);
-    flatten_agent.set_flatten_items(&cg_data);
-    flatten_agent.set_sub_and_super_nodes(&cg_data);
+    flatten_agent.set_parent(&cg_data).unwrap();
+    flatten_agent.set_flatten_items(&cg_data).unwrap();
+    flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
     flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
     flatten_agent
@@ -815,7 +817,9 @@ fn test_set_order_of_flattened_items_in_parent() {
         .unwrap();
 
     // action to test
-    flatten_agent.set_order_of_flattened_items_in_parent(&mut cg_data);
+    flatten_agent
+        .set_order_of_flattened_items_in_parent(&mut cg_data)
+        .unwrap();
 
     let parent_items: Vec<String> = cg_data
         .get_sorted_mod_content(flatten_agent.parent)

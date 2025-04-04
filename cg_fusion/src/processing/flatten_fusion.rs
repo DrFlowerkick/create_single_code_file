@@ -6,13 +6,14 @@ use super::{ForgeState, ProcessingResult};
 use crate::{
     CgData, add_context,
     challenge_tree::{
-        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder, UpdateRelativePath, SetVisibilityToInherited
+        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder,
+        SetVisibilityToInherited, UpdateRelativePath,
     },
     configuration::CgCli,
     parsing::{ItemExt, SourcePath, UseTreeExt},
 };
 
-use anyhow::anyhow;
+use anyhow::{Context, anyhow};
 use petgraph::stable_graph::NodeIndex;
 use syn::{Ident, Item, Path, UseTree, fold::Fold, visit::Visit};
 
@@ -37,7 +38,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         )?;
 
         // flatten fusion crate
-        self.recursive_flatten(fusion_crate)?;
+        self.recursive_flatten(fusion_crate, fusion_crate)?;
 
         // remove public visibility of all items in fusion crate
         let fusion_nodes: Vec<NodeIndex> = self
@@ -97,7 +98,11 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         Ok(())
     }
 
-    fn recursive_flatten(&mut self, flatten_module: NodeIndex) -> ProcessingResult<()> {
+    fn recursive_flatten(
+        &mut self,
+        flatten_module: NodeIndex,
+        fusion_crate: NodeIndex,
+    ) -> ProcessingResult<()> {
         // recursive tree traversal to mod without further mods
         let item_mod_indices: Vec<NodeIndex> = self
             .iter_syn_item_neighbors(flatten_module)
@@ -107,7 +112,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
             })
             .collect();
         for item_mod_index in item_mod_indices {
-            self.recursive_flatten(item_mod_index)?;
+            self.recursive_flatten(item_mod_index, fusion_crate)?;
         }
 
         if self.is_crate(flatten_module) {
@@ -119,10 +124,10 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
 
         // found module to flatten
         // 1. analyze parent
-        flatten_agent.set_parent(self);
+        flatten_agent.set_parent(self)?;
 
         // 2. collect flatten_items
-        flatten_agent.set_flatten_items(self);
+        flatten_agent.set_flatten_items(self)?;
 
         // 3. check name space collisions
         if flatten_agent.is_name_space_conflict(self) {
@@ -130,7 +135,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         }
 
         // 4. collect modules, which could contain path statements, that have to change after flatten
-        flatten_agent.set_sub_and_super_nodes(self);
+        flatten_agent.set_sub_and_super_nodes(fusion_crate, self);
 
         // 5. pre linking use and path fixing of flatten and sub items
         flatten_agent.pre_linking_use_and_path_fixing(self);
@@ -142,7 +147,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         flatten_agent.post_linking_use_and_path_fixing(self)?;
 
         // 8. set new order of items in parent module
-        flatten_agent.set_order_of_flattened_items_in_parent(self);
+        flatten_agent.set_order_of_flattened_items_in_parent(self)?;
 
         Ok(())
     }
@@ -183,21 +188,20 @@ impl FlattenAgent {
             super_use_targets: HashMap::new(),
         }
     }
-    fn set_parent<O, S>(&mut self, graph: &CgData<O, S>) {
-        let Some(parent) = graph.get_syn_module_index(self.node) else {
-            unreachable!("Every module must have a parent module or crate.");
-        };
+    fn set_parent<O, S>(&mut self, graph: &CgData<O, S>) -> ProcessingResult<()> {
+        let parent = graph
+            .get_syn_module_index(self.node)
+            .context(add_context!("Expected parent module or crate."))?;
         self.parent = parent;
         for (node, i) in graph.iter_syn_item_neighbors(self.parent) {
             if let Item::Use(item_use) = i {
-                if let Some(module) = graph.get_path_module(node, item_use.into()) {
-                    if module == self.node {
-                        self.parent_use_of_flatten.push(node);
-                    } else {
-                        self.parent_items.push(node);
-                    }
+                let module = graph
+                    .get_path_module(node, item_use.into())
+                    .context(add_context!("Expected module of use statement."))?;
+                if module == self.node {
+                    self.parent_use_of_flatten.push(node);
                 } else {
-                    panic!("{}", add_context!("Expected module of use statement."));
+                    self.parent_items.push(node);
                 }
             } else {
                 self.parent_items.push(node);
@@ -223,9 +227,10 @@ impl FlattenAgent {
                 }
             })
             .collect();
+        Ok(())
     }
 
-    fn set_flatten_items<O, S>(&mut self, graph: &CgData<O, S>) {
+    fn set_flatten_items<O, S>(&mut self, graph: &CgData<O, S>) -> ProcessingResult<()> {
         self.flatten_items = graph
             .iter_syn_item_neighbors(self.node)
             .filter_map(|(n, i)| {
@@ -235,35 +240,46 @@ impl FlattenAgent {
                         Ok(PathElement::ExternalGlob(_)) | Ok(PathElement::ExternalItem(_))
                     ) {
                         // external use statements will be processed in next step
-                        Some(n)
+                        Some(Ok(n))
                     } else if let Some(module) = graph.get_path_module(n, item_use.into()) {
                         // do not keep use statements, which point to parent module
-                        if module != self.parent { Some(n) } else { None }
+                        if module != self.parent {
+                            Some(Ok(n))
+                        } else {
+                            None
+                        }
                     } else {
-                        panic!("{}", add_context!("Expected module of use statement."));
+                        Some(Err(anyhow!(
+                            "{}",
+                            add_context!("Expected module of use statement.")
+                        )))
                     }
                 } else {
                     // keep all other items
-                    Some(n)
+                    Some(Ok(n))
                 }
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
         // remove use of external packages, which are already available in parent module
-        self.flatten_items.retain(|n| {
-            if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
-                match graph.get_path_leaf(*n, item_use.into()) {
-                    Ok(path_leaf) => !self
-                        .parent_use_of_external
-                        .iter()
-                        .any(|pl| *pl == path_leaf),
-                    _ => {
-                        panic!("{}", add_context!("Expected path leaf of use statement."));
+        self.flatten_items = self
+            .flatten_items
+            .iter()
+            .filter_map(|n| {
+                if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
+                    match graph.get_path_leaf(*n, item_use.into()) {
+                        Ok(path_leaf) => (!self
+                            .parent_use_of_external
+                            .iter()
+                            .any(|pl| *pl == path_leaf))
+                        .then_some(Ok(*n)),
+                        Err(err) => Some(Err(err)),
                     }
+                } else {
+                    Some(Ok(*n))
                 }
-            } else {
-                true
-            }
-        });
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(())
     }
 
     fn is_name_space_conflict<O, S>(&self, graph: &CgData<O, S>) -> bool {
@@ -278,7 +294,11 @@ impl FlattenAgent {
             })
     }
 
-    fn set_sub_and_super_nodes<O: CgCli, S>(&mut self, graph: &CgData<O, S>) {
+    fn set_sub_and_super_nodes<O: CgCli, S>(
+        &mut self,
+        fusion_crate: NodeIndex,
+        graph: &CgData<O, S>,
+    ) {
         self.sub_modules = graph
             .iter_syn_items(self.node)
             .filter_map(|(n, i)| {
@@ -289,9 +309,6 @@ impl FlattenAgent {
                 }
             })
             .collect();
-        let Some((fusion_crate, _)) = graph.get_fusion_bin_crate() else {
-            panic!("{}", add_context!("Expected fusion bin crate."));
-        };
         self.super_modules = graph
             .iter_syn_items(fusion_crate)
             .filter(|(n, _)| {
@@ -464,10 +481,14 @@ impl FlattenAgent {
         Ok(())
     }
 
-    fn set_order_of_flattened_items_in_parent<O, S>(&self, graph: &mut CgData<O, S>) {
-        let Some(item_order) = graph.item_order.get(&self.node) else {
-            panic!("{}", add_context!("Expected item order of flatten module."));
-        };
+    fn set_order_of_flattened_items_in_parent<O, S>(
+        &self,
+        graph: &mut CgData<O, S>,
+    ) -> ProcessingResult<()> {
+        let item_order = graph
+            .item_order
+            .get(&self.node)
+            .context(add_context!("Expected item order of flatten module."))?;
         let flattened_item_order: Vec<NodeIndex> = item_order
             .iter()
             .filter_map(|n| {
@@ -481,16 +502,18 @@ impl FlattenAgent {
         // check all corresponding challenge items of flatten items have been found
         assert_eq!(self.flatten_items.len(), flattened_item_order.len());
         // replace flatten module entry with flatten items in order list of parent module
-        let Some(parent_item_order) = graph.item_order.get_mut(&self.parent) else {
-            panic!("{}", add_context!("Expected item order of parent module."));
-        };
-        let Some(pos_flatten_mod) = parent_item_order.iter().position(|p| *p == self.node) else {
-            panic!(
-                "{}",
-                add_context!("Expected position of flatten mod in parent item order.")
-            );
-        };
+        let parent_item_order = graph
+            .item_order
+            .get_mut(&self.parent)
+            .context(add_context!("Expected item order of parent module."))?;
+        let pos_flatten_mod = parent_item_order
+            .iter()
+            .position(|p| *p == self.node)
+            .context(add_context!(
+                "Expected position of flatten mod in parent item order."
+            ))?;
         parent_item_order.splice(pos_flatten_mod..=pos_flatten_mod, flattened_item_order);
+        Ok(())
     }
 }
 
