@@ -1,21 +1,21 @@
 // function to flatten module structure in fusion
 
-use std::{collections::HashMap, panic};
+use std::collections::HashMap;
 
 use super::{ForgeState, ProcessingResult};
 use crate::{
     CgData, add_context,
     challenge_tree::{
-        CratePathFolder, EdgeType, NodeType, PathElement, RemoveSuperFolder,
+        CratePathFolder, EdgeType, ExtSourcePath, NodeType, PathElement, RemoveSuperFolder,
         SetVisibilityToInherited, UpdateRelativePath,
     },
     configuration::CgCli,
-    parsing::{ItemExt, SourcePath, UseTreeExt},
+    parsing::{ItemExt, UseTreeExt},
 };
 
 use anyhow::{Context, anyhow};
 use petgraph::stable_graph::NodeIndex;
-use syn::{Ident, Item, Path, UseTree, fold::Fold, visit::Visit};
+use syn::{Item, Path, UseTree, fold::Fold, visit::Visit};
 
 pub struct FlattenFusionState;
 
@@ -138,7 +138,7 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         flatten_agent.set_sub_and_super_nodes(fusion_crate, self);
 
         // 5. pre linking use and path fixing of flatten and sub items
-        flatten_agent.pre_linking_use_and_path_fixing(self);
+        flatten_agent.pre_linking_use_and_path_fixing(self)?;
 
         // 6. link flatten items to parent and remove unnecessary items
         flatten_agent.link_flatten_items_to_parent(self);
@@ -165,11 +165,10 @@ struct FlattenAgent {
     super_modules: Vec<NodeIndex>,
     sub_check_items: Vec<NodeIndex>,
     super_check_items: Vec<NodeIndex>,
-    super_path_targets: HashMap<(NodeIndex, Path), NodeIndex>,
-    super_use_targets: HashMap<NodeIndex, (NodeIndex, Option<Ident>)>,
+    super_path_targets: HashMap<(NodeIndex, Path), ExtSourcePath>,
+    super_use_targets: HashMap<NodeIndex, ExtSourcePath>,
 }
 
-// ToDo: replace all panic! with proper error handling
 // ToDo: add verbose output
 impl FlattenAgent {
     fn new(flatten_module: NodeIndex) -> Self {
@@ -351,7 +350,10 @@ impl FlattenAgent {
         self.super_modules.push(self.parent);
     }
 
-    fn pre_linking_use_and_path_fixing<O, S>(&mut self, graph: &mut CgData<O, S>) {
+    fn pre_linking_use_and_path_fixing<O, S>(
+        &mut self,
+        graph: &mut CgData<O, S>,
+    ) -> ProcessingResult<()> {
         // fix path statements of sub_check_items
         for path_item_index in self.sub_check_items.iter() {
             if let Some(cloned_item) = graph.clone_syn_item(*path_item_index) {
@@ -399,22 +401,18 @@ impl FlattenAgent {
             if let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index) {
                 if let Some(module) = graph.get_path_module(*use_item_index, item_use.into()) {
                     if self.sub_modules.contains(&module) {
-                        match graph.get_path_leaf(*use_item_index, item_use.into()) {
-                            Ok(PathElement::Item(path_leaf)) => {
-                                self.super_use_targets
-                                    .insert(*use_item_index, (path_leaf, None));
-                            }
-                            Ok(PathElement::ItemRenamed(path_leaf, renamed)) => {
-                                self.super_use_targets
-                                    .insert(*use_item_index, (path_leaf, Some(renamed)));
-                            }
-                            // ToDo: add handling for other path elements
-                            _ => panic!("{}", add_context!("Expected path leaf of use statement.")),
+                        if let Some(extended_source_path) =
+                            ExtSourcePath::new(graph, *use_item_index, &item_use.into())?
+                        {
+                            self.super_use_targets
+                                .insert(*use_item_index, extended_source_path);
                         }
                     }
                 }
             }
         }
+
+        Ok(())
     }
 
     fn link_flatten_items_to_parent<O, S>(&self, graph: &mut CgData<O, S>) {
@@ -461,14 +459,8 @@ impl FlattenAgent {
         }
         // fix use statements
         for use_item_index in self.super_check_items.iter() {
-            if let Some((path_leaf, renamed)) = self.super_use_targets.get(use_item_index) {
-                let relative_path_segments =
-                    graph.generating_relative_path_segments(*use_item_index, *path_leaf)?;
-                let new_path = if let Some(rename) = renamed {
-                    SourcePath::Rename(relative_path_segments, rename.clone())
-                } else {
-                    SourcePath::Name(relative_path_segments)
-                };
+            if let Some(extended_source_path) = self.super_use_targets.get(use_item_index) {
+                let new_path = extended_source_path.generate_relative_path(graph)?;
                 let new_use_item_tree: UseTree = new_path.try_into()?;
                 if let Some(NodeType::SynItem(Item::Use(use_item))) =
                     graph.tree.node_weight_mut(*use_item_index)

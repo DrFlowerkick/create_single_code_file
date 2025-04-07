@@ -316,7 +316,7 @@ fn test_impl_item_dialog_show_item_and_include() {
     assert_eq!(
         writer_content,
         r#"
-C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\lib.rs:50:5
+/home/marc/Development/repos/codingame/create_single_code_file/cg_fusion_lib_test/my_map_two_dim/src/lib.rs:50:5
 pub fn set(&mut self, coordinates: MapPoint<X, Y>, value: T) -> &T {
         self.items[coordinates.y()][coordinates.x()] = value;
         &self.items[coordinates.y()][coordinates.x()]
@@ -354,7 +354,7 @@ fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
     assert_eq!(
         writer_content,
         r#"
-C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_binary_test\src\lib.rs:48:20
+/home/marc/Development/repos/codingame/create_single_code_file/cg_fusion_binary_test/src/lib.rs:48:20
 pub fn apply_action(&mut self, action: Action) {
         self.board.set(action.cell, action.value);
     }

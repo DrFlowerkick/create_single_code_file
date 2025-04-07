@@ -574,7 +574,7 @@ fn test_pre_linking_use_and_path_fixing() {
     flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
 
     // action to test
-    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data).unwrap();
 
     let action_use_display = cg_data
         .iter_syn_item_neighbors(action_mod)
@@ -657,7 +657,7 @@ fn test_post_linking_use_and_path_fixing() {
     flatten_agent.set_parent(&cg_data).unwrap();
     flatten_agent.set_flatten_items(&cg_data).unwrap();
     flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
-    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data).unwrap();
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
 
     // action to test
@@ -767,7 +767,7 @@ fn test_set_order_of_flattened_items_in_parent() {
     flatten_agent.set_parent(&cg_data).unwrap();
     flatten_agent.set_flatten_items(&cg_data).unwrap();
     flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
-    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data).unwrap();
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
     flatten_agent
         .post_linking_use_and_path_fixing(&mut cg_data)
@@ -810,7 +810,7 @@ fn test_set_order_of_flattened_items_in_parent() {
     flatten_agent.set_parent(&cg_data).unwrap();
     flatten_agent.set_flatten_items(&cg_data).unwrap();
     flatten_agent.set_sub_and_super_nodes(fusion_crate, &cg_data);
-    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data);
+    flatten_agent.pre_linking_use_and_path_fixing(&mut cg_data).unwrap();
     flatten_agent.link_flatten_items_to_parent(&mut cg_data);
     flatten_agent
         .post_linking_use_and_path_fixing(&mut cg_data)

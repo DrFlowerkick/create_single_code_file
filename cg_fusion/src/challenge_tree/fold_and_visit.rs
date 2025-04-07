@@ -13,7 +13,7 @@ use syn::{
     PathSegment, ReturnType, Signature, Stmt, Type, TypePath, Visibility, fold::Fold, visit::Visit,
 };
 
-use super::{EdgeType, NodeType, PathElement, SourcePathWalker};
+use super::{EdgeType, ExtSourcePath, NodeType, PathElement, SourcePathWalker};
 
 #[derive(Debug, Default, Clone)]
 pub struct VariableReferences {
@@ -490,18 +490,18 @@ pub struct UpdateRelativePath<'a, O, S> {
     pub graph: &'a CgData<O, S>,
     pub node: NodeIndex,
     pub target_mods: &'a Vec<NodeIndex>,
-    pub path_targets: &'a mut HashMap<(NodeIndex, Path), NodeIndex>,
+    pub path_targets: &'a mut HashMap<(NodeIndex, Path), ExtSourcePath>,
 }
 
 impl<'a, O, S> Visit<'a> for UpdateRelativePath<'a, O, S> {
     fn visit_path(&mut self, path: &'a Path) {
         if let Some(mod_index) = self.graph.get_path_module(self.node, path.into()) {
             if self.target_mods.contains(&mod_index) {
-                if let Ok(PathElement::Item(path_leaf)) =
-                    self.graph.get_path_leaf(self.node, path.into())
+                if let Ok(Some(extended_path)) =
+                    ExtSourcePath::new(self.graph, self.node, &path.into())
                 {
                     self.path_targets
-                        .insert((self.node, path.to_owned()), path_leaf);
+                        .insert((self.node, path.to_owned()), extended_path);
                 }
             }
         }
@@ -511,15 +511,15 @@ impl<'a, O, S> Visit<'a> for UpdateRelativePath<'a, O, S> {
 impl<O, S> Fold for UpdateRelativePath<'_, O, S> {
     fn fold_path(&mut self, path: Path) -> Path {
         let path = if let Some(mod_index) = self.graph.get_path_module(self.node, (&path).into()) {
-            if let Some(path_leaf) = self.path_targets.get(&(mod_index, path.clone())) {
-                let relative_path_segments = self
-                    .graph
-                    .generating_relative_path_segments(self.node, *path_leaf)
-                    .expect("generating relative path segments failed");
-                let resolved_path: Path = SourcePath::Name(relative_path_segments)
-                    .try_into()
-                    .expect("resolving crate source path failed");
-                rebuild_path_arguments(path, resolved_path)
+            if let Some(extended_source_path) = self.path_targets.get(&(mod_index, path.clone())) {
+                if let Ok(resolved_path) = extended_source_path.generate_relative_path(self.graph) {
+                    let resolved_path: Path = resolved_path
+                        .try_into()
+                        .expect("resolving crate source path failed");
+                    rebuild_path_arguments(path, resolved_path)
+                } else {
+                    path
+                }
             } else {
                 path
             }

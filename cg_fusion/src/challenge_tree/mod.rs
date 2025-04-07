@@ -9,6 +9,7 @@ mod navigate;
 mod walkers;
 
 pub use error::{ChallengeTreeError, TreeResult};
+pub use expand::ExtSourcePath;
 pub use fold_and_visit::{
     CratePathFolder, FusedDepPathFolder, RemoveSuperFolder, SetVisibilityToInherited,
     SynReferenceMapper, UpdateRelativePath, VariableReferences,

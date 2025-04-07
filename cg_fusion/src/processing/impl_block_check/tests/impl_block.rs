@@ -252,7 +252,7 @@ fn test_impl_block_dialog_show_block_and_include() {
     assert_eq!(
         writer_content,
         r#"
-C:\Users\User\Documents\repos\codingame\create_single_code_file\cg_fusion_lib_test\my_map_two_dim\src\lib.rs:19:1
+/home/marc/Development/repos/codingame/create_single_code_file/cg_fusion_lib_test/my_map_two_dim/src/lib.rs:19:1
 impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize>
     MyMap2D<T, X, Y, N>
 {
