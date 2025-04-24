@@ -28,6 +28,10 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
             return Ok(self.set_state(ForgeState));
         }
 
+        if self.options.verbose() {
+            println!("Preparing flattening fusion...");
+        }
+
         let Some((fusion_crate, _)) = self.get_fusion_bin_crate() else {
             return Err(anyhow!(add_context!("Expected fusion bin crate.")).into());
         };
@@ -66,6 +70,11 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
         &mut self,
         fusion_crate: NodeIndex,
     ) -> ProcessingResult<()> {
+        if self.options.verbose() {
+            println!(
+                "Transforming use and path statements starting with crate keyword to relative path..."
+            );
+        }
         let all_items: Vec<NodeIndex> = self
             .iter_syn_items(fusion_crate)
             .filter_map(|(n, i)| (!matches!(i, Item::Mod(_))).then_some(n))
@@ -134,6 +143,13 @@ impl<O: CgCli> CgData<O, FlattenFusionState> {
             return Ok(());
         }
 
+        if self.options.verbose() {
+            println!(
+                "Flattening module {}...",
+                self.get_verbose_name_of_tree_node(flatten_module)?,
+            );
+        }
+
         // 4. collect modules, which could contain path statements, that have to change after flatten
         flatten_agent.set_sub_and_super_nodes(fusion_crate, self);
 
@@ -169,7 +185,6 @@ struct FlattenAgent {
     super_use_targets: HashMap<NodeIndex, ExtSourcePath>,
 }
 
-// ToDo: add verbose output
 impl FlattenAgent {
     fn new(flatten_module: NodeIndex) -> Self {
         Self {

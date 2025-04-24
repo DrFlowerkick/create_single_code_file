@@ -568,6 +568,7 @@ impl<O: CgCli, S> CgData<O, S> {
                 Item::Use(mut item_use) => {
                     let new_item_use = match self.get_path_root(item_index, (&item_use).into())? {
                         PathElement::Item(path_root) => {
+                            // check if path points to a local lib crate and add crate keyword if yes
                             if self.is_crate(path_root) && !item_use.tree.path_root_is_keyword() {
                                 let new_use_root = UsePath {
                                     ident: Ident::new("crate", Span::call_site()),

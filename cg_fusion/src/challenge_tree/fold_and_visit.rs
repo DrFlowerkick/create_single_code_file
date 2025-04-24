@@ -470,7 +470,6 @@ impl<O, S> Fold for RemoveSuperFolder<'_, O, S> {
                 && path.segments.first().unwrap().ident == "super"
             {
                 let mut new_path = path.to_owned();
-                // ToDo: skip 1 oder skip 2 because of punctuation?
                 new_path.segments = path.segments.iter().skip(1).cloned().collect();
                 new_path
             } else {
