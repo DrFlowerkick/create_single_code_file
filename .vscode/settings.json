@@ -1,8 +1,28 @@
 {
     "cSpell.words": [
+        "bijective",
+        "camino",
         "canonicalize",
+        "chrono",
         "codingame",
-        "seperated",
-        "structopt"
-    ]
+        "Deque",
+        "fixedbitset",
+        "itertools",
+        "libc",
+        "mockall",
+        "petgraph",
+        "rustup",
+        "serde",
+        "shouty",
+        "structopt",
+        "thiserror",
+        "tictactoe",
+        "usize"
+    ],
+
+    "cSpell.ignorePaths": [
+        ".git",
+        "**/.cargo/**",
+        "**/.rustup/**"
+    ],
 }

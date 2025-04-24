@@ -1,4 +1,4 @@
-# Create single rust code file for codingame
+# Create single rust code file for codingame and similar challenges
 
 [codingame](www.codingame.de) requires a single file containing all required source code. It also provides only a small selection of crates from [crates.io](crates.io). Therefore if you want to use reusable code from a library, you have to
 

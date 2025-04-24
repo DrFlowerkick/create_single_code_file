@@ -1,0 +1,5 @@
+# project specific cargo config
+# for global cargo config see ~/.cargo/config.toml
+
+# allow usage of lld linker
+linker = "clang"
