@@ -490,6 +490,7 @@ fn test_is_visible_for_module() {
         vec![
             "DistanceIter",
             "FilterFn",
+            "Display",
             "MyMap2D",
             "IsCellFreeFn",
             "my_map_point"
@@ -730,7 +731,8 @@ fn test_expand_use_glob() {
             "X",
             "Y",
             "action",
-            "my_map_point"
+            "my_map_point",
+            "print"
         ]
     );
 }
@@ -787,6 +789,7 @@ fn test_expand_use_statements() {
             "use self::my_map_point::MapPoint;",
             "use my_array::MyArray;",
             "use my_map_point::my_compass::Compass;",
+            "use std::fmt::Display;",
             "use crate::my_map_point::my_compass::Compass;",
             "use std::cmp::Ordering;",
         ]
@@ -813,7 +816,11 @@ fn test_expand_use_statements() {
             "use cg_fusion_lib_test::my_map_two_dim::MyMap2D;",
             "use cg_fusion_lib_test::my_map_two_dim::FilterFn;",
             "use std::fmt;",
+            "use super::fmt;",
+            "use super::Go;",
+            "use super::Value;",
             "use super::action;",
+            "use super::print;",
             "use super::X;",
             "use super::Y;",
             "use super::N;",

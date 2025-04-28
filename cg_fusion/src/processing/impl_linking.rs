@@ -1,7 +1,11 @@
 // Tools to link Impl Items to their corresponding struct or enum
 
 use super::{ProcessingRequiredByChallengeState, ProcessingResult};
-use crate::{CgData, challenge_tree::SynReferenceMapper, configuration::CgCli};
+use crate::{
+    CgData,
+    challenge_tree::{PathElement, SynReferenceMapper},
+    configuration::CgCli,
+};
 use petgraph::stable_graph::NodeIndex;
 use std::collections::HashSet;
 use syn::{Item, visit::Visit};
@@ -31,7 +35,22 @@ impl<O: CgCli> CgData<O, ProcessingImplBlocksState> {
             .collect();
         for (syn_impl_index, leave_nodes) in syn_impl_indices {
             for item_index in leave_nodes.iter() {
-                self.add_implementation_link(*item_index, syn_impl_index)?;
+                // if leave node is a use item pointing to local item, add link from target of use item to impl block
+                if let Some(Item::Use(item_use)) = self.get_syn_item(*item_index) {
+                    match self.get_path_leaf(*item_index, item_use.into())? {
+                        PathElement::Item(target_index)
+                        | PathElement::ItemRenamed(target_index, _) => {
+                            self.add_implementation_link(target_index, syn_impl_index)?;
+                        }
+                        _ => {
+                            // link to use statement, if use statement does not point to local item
+                            self.add_implementation_link(*item_index, syn_impl_index)?;
+                        }
+                    }
+                } else {
+                    // link from leaf node to impl block
+                    self.add_implementation_link(*item_index, syn_impl_index)?;
+                }
             }
         }
         Ok(self.set_state(ProcessingRequiredByChallengeState))
@@ -100,7 +119,7 @@ mod tests {
                 .edges_directed(struct_go_index, Direction::Outgoing)
                 .filter(|e| *e.weight() == EdgeType::Implementation)
                 .count(),
-            2
+            3
         );
         // test impl in my_map_two_dim lib crate
         let (my_map_two_dim_index, _) = cg_data
@@ -123,7 +142,7 @@ mod tests {
                 .edges_directed(struct_my_map_2d_index, Direction::Outgoing)
                 .filter(|e| *e.weight() == EdgeType::Implementation)
                 .count(),
-            2
+            3
         );
 
         // test impl links of impl Display for Action

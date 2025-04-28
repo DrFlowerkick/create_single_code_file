@@ -354,7 +354,7 @@ fn test_impl_item_dialog_show_usage_of_item_and_exclude() {
     assert_eq!(
         writer_content,
         r#"
-/home/marc/Development/repos/codingame/create_single_code_file/cg_fusion_binary_test/src/lib.rs:48:20
+/home/marc/Development/repos/codingame/create_single_code_file/cg_fusion_binary_test/src/lib.rs:39:20
 pub fn apply_action(&mut self, action: Action) {
         self.board.set(action.cell, action.value);
     }

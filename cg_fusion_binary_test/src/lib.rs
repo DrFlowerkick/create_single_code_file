@@ -1,5 +1,6 @@
 // lib.rs - sample lib file for local crate
 pub mod action;
+pub mod print;
 
 use crate::action::*;
 use cg_fusion_lib_test::my_map_two_dim::*;
@@ -16,16 +17,6 @@ pub enum Value {
     Free,
     White,
     Black,
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Value::Free => write!(f, "Free"),
-            Value::White => write!(f, "White"),
-            Value::Black => write!(f, "Black"),
-        }
-    }
 }
 
 pub struct Go {

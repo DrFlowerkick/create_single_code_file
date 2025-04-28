@@ -209,11 +209,12 @@ impl FlattenAgent {
         self.parent = parent;
         for (node, i) in graph.iter_syn_item_neighbors(self.parent) {
             if let Item::Use(item_use) = i {
-                let module = graph
-                    .get_path_module(node, item_use.into())
-                    .context(add_context!("Expected module of use statement."))?;
-                if module == self.node {
-                    self.parent_use_of_flatten.push(node);
+                if let Some(module) = graph.get_path_module(node, item_use.into()) {
+                    if module == self.node {
+                        self.parent_use_of_flatten.push(node);
+                    } else {
+                        self.parent_items.push(node);
+                    }
                 } else {
                     self.parent_items.push(node);
                 }

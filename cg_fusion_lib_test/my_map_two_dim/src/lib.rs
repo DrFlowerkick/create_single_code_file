@@ -212,6 +212,24 @@ impl<T: Copy + Clone + Default, const X: usize, const Y: usize, const N: usize> 
     }
 }
 
+use std::fmt::Display;
+
+impl<T: Copy + Clone + Default + Display, const X: usize, const Y: usize, const N: usize> Display
+    for MyMap2D<T, X, Y, N>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut line = String::new();
+        for (p, v) in self.iter() {
+            line = format!("{}{}", line, v);
+            if (p.x() + 1) % X == 0 && !line.is_empty() {
+                writeln!(f, "{}", line)?;
+                line = "".into();
+            }
+        }
+        Ok(())
+    }
+}
+
 // type definition for filter_fn
 // input for filter_fn: next possible point, data from data_map of next possible point, distance of current point
 pub type FilterFn<const X: usize, const Y: usize, T> =

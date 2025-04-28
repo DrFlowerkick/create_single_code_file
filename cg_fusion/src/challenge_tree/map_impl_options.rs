@@ -173,7 +173,8 @@ impl<O: CgCli, S> CgData<O, S> {
                         return Err(anyhow!(add_context!("Expected impl block name")).into());
                     };
                     let reverse_check = self.collect_impl_config_option_indices(&impl_block)?;
-                    assert_eq!(*item_index, reverse_check[0]);
+                    // impl blocks of the same name may be used multiple times in the same crate
+                    assert_eq!(reverse_check.iter().find(|rc| *rc == item_index), Some(item_index));
                     match process_option {
                         ProcessOption::Include => include_impl_blocks.push(impl_block),
                         ProcessOption::Exclude => exclude_impl_blocks.push(impl_block),

@@ -241,16 +241,16 @@ fn test_set_parent() {
         items,
         [
             "action (Mod)",
+            "print (Mod)",
             "fmt (Use)",
             "X (Const)",
             "Y (Const)",
             "N (Const)",
             "Value (Enum)",
-            "impl fmt::Display for Value",
             "Go (Struct)",
             "impl Default for Go",
             "impl Go",
-            "MyMap2D (Use)"
+            "MyMap2D (Use)",
         ]
     );
 
@@ -843,16 +843,16 @@ fn test_set_order_of_flattened_items_in_parent() {
             "Action (Struct)",
             "impl Display for Action",
             "impl Action",
+            "print (Mod)",
             "MyMap2D (Use)",
             "fmt (Use)",
             "X (Const)",
             "Y (Const)",
             "N (Const)",
             "Value (Enum)",
-            "impl fmt::Display for Value",
             "Go (Struct)",
             "impl Default for Go",
-            "impl Go"
+            "impl Go",
         ]
     );
 }

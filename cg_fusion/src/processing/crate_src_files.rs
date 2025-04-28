@@ -102,7 +102,7 @@ mod tests {
 
         let (index, lib_crate) = iter_lib_crates.next().unwrap();
         assert_eq!(lib_crate.name, "my_map_two_dim");
-        assert_eq!(cg_data.iter_syn_item_neighbors(index).count(), 12);
+        assert_eq!(cg_data.iter_syn_item_neighbors(index).count(), 14);
 
         let (sub_mod_index, sub_mod) = cg_data
             .iter_syn_item_neighbors(index)

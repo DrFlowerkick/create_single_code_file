@@ -52,5 +52,5 @@
 include = ["set@impl<T:Copy+Clone+Default,constX:usize,constY:usize,constN:usize> MyMap2D<T,X,Y,N>"]
 exclude = []
 [impl_blocks]
-include = []
-exclude = ["impl fmt::Display for Value", "impl Display for Action"]
+include = ["impl fmt::Display for Value", "impl Display for Action"]
+exclude = ["impl fmt::Display for Go", "impl<T:Copy+Clone+Default+Display,constX:usize,constY:usize,constN:usize> Display for MyMap2D<T,X,Y,N>"]
