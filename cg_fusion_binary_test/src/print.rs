@@ -1,6 +1,6 @@
 // test linking of traits over file borders
 
-use super::{Value, Go, fmt};
+use super::{Go, Value, fmt};
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

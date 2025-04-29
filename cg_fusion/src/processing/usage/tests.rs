@@ -800,39 +800,40 @@ fn test_expand_use_statements() {
         .find(|(_, c)| c.name == "cg_fusion_binary_test")
         .unwrap();
     // using iter_syn_items() here to also collect use statements of action, which is a module of cg_fusion_binary_test
-    let use_statements: Vec<String> = cg_data
+    let mut use_statements: Vec<String> = cg_data
         .iter_syn_items(cg_fusion_binary_test_index)
         .filter_map(|(_, i)| match i {
             Item::Use(use_item) => Some(use_item.to_trimmed_token_string()),
             _ => None,
         })
         .collect();
+    use_statements.sort();
     assert_eq!(
         use_statements,
         vec![
-            "use crate::action::Action;",
-            "use cg_fusion_lib_test::my_map_two_dim::my_map_point;",
-            "use cg_fusion_lib_test::my_map_two_dim::IsCellFreeFn;",
-            "use cg_fusion_lib_test::my_map_two_dim::MyMap2D;",
             "use cg_fusion_lib_test::my_map_two_dim::FilterFn;",
-            "use std::fmt;",
-            "use super::fmt;",
-            "use super::Go;",
-            "use super::Value;",
-            "use super::action;",
-            "use super::print;",
-            "use super::X;",
-            "use super::Y;",
-            "use super::N;",
-            "use super::Value;",
-            "use super::Go;",
-            "use super::FilterFn;",
-            "use super::MyMap2D;",
-            "use super::IsCellFreeFn;",
-            "use super::my_map_point;",
-            "use cg_fusion_lib_test::my_map_two_dim::my_map_point::MapPoint;",
-            "use crate::fmt::Display;",
-            "use crate::fmt;",
+        "use cg_fusion_lib_test::my_map_two_dim::IsCellFreeFn;",
+        "use cg_fusion_lib_test::my_map_two_dim::MyMap2D;",
+        "use cg_fusion_lib_test::my_map_two_dim::my_map_point::MapPoint;",
+        "use cg_fusion_lib_test::my_map_two_dim::my_map_point;",
+        "use crate::action::Action;",
+        "use crate::fmt::Display;",
+        "use crate::fmt;",
+        "use std::fmt;",
+        "use super::FilterFn;",
+        "use super::Go;",
+        "use super::Go;",
+        "use super::IsCellFreeFn;",
+        "use super::MyMap2D;",
+        "use super::N;",
+        "use super::Value;",
+        "use super::Value;",
+        "use super::X;",
+        "use super::Y;",
+        "use super::action;",
+        "use super::fmt;",
+        "use super::my_map_point;",
+        "use super::print;",
         ]
     );
 }

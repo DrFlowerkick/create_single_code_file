@@ -105,7 +105,7 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 .find(|(n, _)| (!seen_dialog_items.contains_key(n)));
             next_item_option
         } {
-            let processing = if (!self.options.processing().challenge_items_dialog
+            let processing = if (self.options.processing().force_challenge_items
                 && self.is_challenge_item(dialog_item))
                 || (!self.options.processing().unambiguous_impl_items_dialog
                     && self.is_unambiguous_impl_item(dialog_item))

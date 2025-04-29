@@ -20,15 +20,13 @@ pub struct ProcessingOptions {
     )]
     pub glob_expansion_max_attempts: u8,
 
-    /// Normally all items of challenge bin and lib crate are included in fusion of challenge,
-    /// which are not automatically detected as required for fusion.
-    /// Setting this option activates dialog for these items instead of pulling them in automatically.
+    /// Setting this option forces inclusion of all challenge items in fusion.
     #[arg(
-        short,
+        short = 'c',
         long,
-        help = "Activate dialog to process challenge items for fusion."
+        help = "Forcing inclusion of challenge items in fusion."
     )]
-    pub challenge_items_dialog: bool,
+    pub force_challenge_items: bool,
 
     /// Normally all unambiguous items of required impl blocks, which have been found in required
     /// items, are included in fusion of challenge.
@@ -151,7 +149,7 @@ impl Display for ProcessingOptions {
         writeln!(
             f,
             "challenge-items-dialog: {:?}",
-            self.challenge_items_dialog
+            self.force_challenge_items
         )?;
         writeln!(
             f,
@@ -175,7 +173,7 @@ impl Default for ProcessingOptions {
     fn default() -> Self {
         Self {
             glob_expansion_max_attempts: 5,
-            challenge_items_dialog: false,
+            force_challenge_items: false,
             unambiguous_impl_items_dialog: false,
             process_all_impl_items: None,
             impl_item_toml: None,
