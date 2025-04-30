@@ -600,8 +600,9 @@ impl<O: CgCli, S> CgData<O, S> {
                                 .map(|(_, ri)| ri.to_owned())
                         })
                         .collect();
-                    if ordered_required_impl_items.is_empty() {
+                    if ordered_required_impl_items.is_empty() && new_impl_item.trait_.is_none() {
                         // None if the impl items are required by challenge. Therefore do not add impl item to fusion
+                        // Note: impl of marker traits are empty and therefore we only check for empty impl blocks with no trait.
                         continue;
                     }
                     new_impl_item.items = ordered_required_impl_items;
