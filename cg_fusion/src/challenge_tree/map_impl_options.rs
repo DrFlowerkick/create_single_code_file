@@ -143,7 +143,16 @@ impl<O: CgCli, S> CgData<O, S> {
                     .map(|ii| (ii, ProcessOption::Exclude)),
             )
         {
-            for impl_item_index in self.collect_impl_config_option_indices(impl_item)? {
+            let impl_item_indices = match self.collect_impl_config_option_indices(impl_item) {
+                Ok(impl_item_indices) => impl_item_indices,
+                Err(ChallengeTreeError::NotExistingImplItemOfConfig(impl_item_name)) => {
+                    // impl item name does not exist in tree, skip
+                    println!("Impl item '{}' does not exist. Skipping.", impl_item_name);
+                    continue;
+                }
+                Err(err) => return Err(err),
+            };
+            for impl_item_index in impl_item_indices {
                 self.process_impl_item_index(
                     impl_item_index,
                     &process_option,
