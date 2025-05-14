@@ -34,14 +34,18 @@ impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
                 self.add_local_package(0.into(), dependency);
             } else {
                 let dep_name = dep.name.to_owned();
-                if self.iter_supported_crates().any(|c| c == dep_name.as_str()) {
-                    // found supported package, add to tree
-                    self.add_external_supported_package(0.into(), dep_name);
-                } else {
-                    return Err(ProcessingError::CodingameUnsupportedDependencyOfChallenge(
-                        dep_name,
-                    ));
+                if !self.iter_supported_crates().any(|c| c == dep_name.as_str()) {
+                    if !self.options.force() {
+                        return Err(ProcessingError::CodingameUnsupportedDependency(dep_name));
+                    }
+                    if self.options.verbose() {
+                        println!(
+                            "WARNING: adding unsupported dependency '{}' to tree.",
+                            dep_name
+                        );
+                    }
                 }
+                self.add_external_supported_package(0.into(), dep_name);
             }
         }
         // check direct dependencies of challenge for further dependencies
@@ -128,15 +132,17 @@ impl<O: CgCli> CgData<O, ProcessingDependenciesState> {
                             match dependency_node {
                                 Some(n) => self.link_to_package(node, n),
                                 None => {
+                                    if self.options.verbose() {
+                                        println!(
+                                            "WARNING: adding unsupported dependency '{}' to tree.",
+                                            dep_name
+                                        );
+                                    }
                                     self.add_external_unsupported_package(node, dep_name);
                                 }
                             }
                         } else {
-                            return Err(
-                                ProcessingError::CodingameUnsupportedDependencyOfLocalLibrary(
-                                    dep_name,
-                                ),
-                            );
+                            return Err(ProcessingError::CodingameUnsupportedDependency(dep_name));
                         }
                     }
                 }
