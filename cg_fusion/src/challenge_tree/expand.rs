@@ -50,6 +50,9 @@ impl<O: CgCli, S> CgData<O, S> {
         source: NodeIndex,
         package: String,
     ) -> NodeIndex {
+        // if package name contains "-", replace it with "_", because rust does not allow
+        // "-" in crate names and replaces them automatically with "_".
+        let package = package.replace("-", "_");
         let package_index = self
             .tree
             .add_node(NodeType::ExternalSupportedPackage(package));
@@ -69,6 +72,9 @@ impl<O: CgCli, S> CgData<O, S> {
         source: NodeIndex,
         package: String,
     ) -> NodeIndex {
+        // if package name contains "-", replace it with "_", because rust does not allow
+        // "-" in crate names and replaces them automatically with "_".
+        let package = package.replace("-", "_");
         let package_index = self
             .tree
             .add_node(NodeType::ExternalUnsupportedPackage(package));
@@ -100,6 +106,10 @@ impl<O: CgCli, S> CgData<O, S> {
         let code = fs::read_to_string(&path)?;
         // get syntax of src file
         let syntax = load_syntax(&code)?;
+
+        // if package / crate name contains "-", replace it with "_", because rust does not allow
+        // "-" in crate names and replaces them automatically with "_".
+        let name = name.replace("-", "_");
         // generate node value
         let crate_file = SrcFile {
             name,
@@ -138,9 +148,14 @@ impl<O: CgCli, S> CgData<O, S> {
                 let code = fs::read_to_string(&target.src_path)?;
                 // get syntax of src file
                 let syntax = load_syntax(&code)?;
+
+                // if package / crate name contains "-", replace it with "_", because rust does not allow
+                // "-" in crate names and replaces them automatically with "_".
+                let name = target.name.replace("-", "_");
+
                 // generate node value
                 let crate_file = SrcFile {
-                    name: target.name.to_owned(),
+                    name,
                     path: target.src_path.to_owned(),
                     shebang: syntax.shebang,
                     attrs: syntax.attrs,
