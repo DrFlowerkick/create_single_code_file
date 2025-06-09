@@ -294,6 +294,34 @@ impl FlattenAgent {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // remove of use statements, which targets are already imported in parent by use statements
+        self.flatten_items = self
+            .flatten_items
+            .iter()
+            .filter_map(|n| {
+                // get flatten_item path_leaf
+                if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
+                    match graph.get_path_leaf(*n, item_use.into()) {
+                        Ok(path_leaf) => (!self
+                            .parent_items
+                            .iter()
+                            .filter_map(|p| {
+                                // get parent_item path_leaf
+                                if let Some(Item::Use(parent_item_use)) = graph.get_syn_item(*p) {
+                                    graph.get_path_leaf(*p, parent_item_use.into()).ok()
+                                } else {
+                                    None
+                                }
+                            })
+                            .any(|parent_path_leaf| parent_path_leaf == path_leaf))
+                        .then_some(Ok(*n)),
+                        Err(err) => Some(Err(err)),
+                    }
+                } else {
+                    Some(Ok(*n))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(())
     }
 
