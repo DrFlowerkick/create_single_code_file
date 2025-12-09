@@ -1,32 +1,32 @@
 [package]
 name = "cargo-cg-fusion"
-version = "3.1.5"
+version = "3.2.0"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-toml = "0.8.21"
-cargo_metadata = "0.19.2"
-uuid = { version = "1.16", features = ["v4"] }
-syn = { version = "2.0.101", features = ["full", "visit", "extra-traits", "visit-mut", "fold"] }
-thiserror = "2"
 anyhow = "1"
+cargo_metadata = "0.23.1"
 clap = { version = "4.5.37", features = ["derive", "cargo", "wrap_help"] }
-terminal_size = { version = "0.4", optional = true }
-clap-cargo = { version = "0.15.2", features = ["cargo_metadata"] }
-quote = "1.0.40"
-petgraph = "0.8.1"
-fixedbitset = { version = "0.5.7", default-features = false }
-proc-macro2 = { version = "1.0", features = ["span-locations"] }
-serde = { version = "1.0", features = ["derive"] }
-inquire = "0.7.5"
-mockall = "0.13.1"
-fuzzy-matcher = "0.3.7"
-toml_edit = "0.22.25"
-path-clean = "1.0.1"
-relative-path = "1.9.3"
+clap-cargo = { version = "0.18.3", features = ["cargo_metadata"] }
 either = "1.15.0"
+fixedbitset = { version = "0.5.7", default-features = false }
+fuzzy-matcher = "0.3.7"
+inquire = "0.9.1"
+mockall = "0.14.0"
+path-clean = "1.0.1"
+petgraph = "0.8.1"
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
+quote = "1.0.40"
+relative-path = "2.0.1"
+serde = { version = "1.0", features = ["derive"] }
+syn = { version = "2.0.101", features = ["full", "visit", "extra-traits", "visit-mut", "fold"] }
+terminal_size = { version = "0.4", optional = true }
+thiserror = "2"
+toml = "0.9.8"
+toml_edit = "0.23.9"
+uuid = { version = "1.16", features = ["v4"] }
 
 [dev-dependencies]
 once_cell = "1.21"

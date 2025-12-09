@@ -276,24 +276,21 @@ impl FlattenAgent {
             })
             .collect::<Result<Vec<_>, _>>()?;
         // remove use of external packages, which are already available in parent module
-        self.flatten_items = self
-            .flatten_items
-            .iter()
-            .filter_map(|n| {
-                if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
-                    match graph.get_path_leaf(*n, item_use.into()) {
-                        Ok(path_leaf) => (!self
-                            .parent_use_of_external
-                            .iter()
-                            .any(|pl| *pl == path_leaf))
-                        .then_some(Ok(*n)),
-                        Err(err) => Some(Err(err)),
+        self.flatten_items =
+            self.flatten_items
+                .iter()
+                .filter_map(|n| {
+                    if let Some(Item::Use(item_use)) = graph.get_syn_item(*n) {
+                        match graph.get_path_leaf(*n, item_use.into()) {
+                            Ok(path_leaf) => (!self.parent_use_of_external.contains(&path_leaf))
+                                .then_some(Ok(*n)),
+                            Err(err) => Some(Err(err)),
+                        }
+                    } else {
+                        Some(Ok(*n))
                     }
-                } else {
-                    Some(Ok(*n))
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+                })
+                .collect::<Result<Vec<_>, _>>()?;
         // remove of use statements, which targets are already imported in parent by use statements
         self.flatten_items = self
             .flatten_items
@@ -416,16 +413,13 @@ impl FlattenAgent {
         }
         // fix use statements of sub_check_items
         for use_item_index in self.sub_check_items.iter() {
-            if let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index) {
-                if let Some(module) = graph.get_path_module(*use_item_index, item_use.into()) {
-                    if self.super_modules.contains(&module) {
-                        if let Some(NodeType::SynItem(Item::Use(use_item))) =
-                            graph.tree.node_weight_mut(*use_item_index)
-                        {
-                            use_item.tree = use_item.tree.remove_super();
-                        }
-                    }
-                }
+            if let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index)
+                && let Some(module) = graph.get_path_module(*use_item_index, item_use.into())
+                && self.super_modules.contains(&module)
+                && let Some(NodeType::SynItem(Item::Use(use_item))) =
+                    graph.tree.node_weight_mut(*use_item_index)
+            {
+                use_item.tree = use_item.tree.remove_super();
             }
         }
         // collect path targets of super items pointing to sub modules
@@ -442,17 +436,14 @@ impl FlattenAgent {
         }
         // collect use targets of super items pointing to sub modules
         for use_item_index in self.super_check_items.iter() {
-            if let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index) {
-                if let Some(module) = graph.get_path_module(*use_item_index, item_use.into()) {
-                    if self.sub_modules.contains(&module) {
-                        if let Some(extended_source_path) =
-                            ExtSourcePath::new(graph, *use_item_index, &item_use.into())?
-                        {
-                            self.super_use_targets
-                                .insert(*use_item_index, extended_source_path);
-                        }
-                    }
-                }
+            if let Some(Item::Use(item_use)) = graph.get_syn_item(*use_item_index)
+                && let Some(module) = graph.get_path_module(*use_item_index, item_use.into())
+                && self.sub_modules.contains(&module)
+                && let Some(extended_source_path) =
+                    ExtSourcePath::new(graph, *use_item_index, &item_use.into())?
+            {
+                self.super_use_targets
+                    .insert(*use_item_index, extended_source_path);
             }
         }
 

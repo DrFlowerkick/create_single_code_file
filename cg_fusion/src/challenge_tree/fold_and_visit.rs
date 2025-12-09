@@ -224,17 +224,15 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                                         } else {
                                             continue;
                                         };
-                                        if let Type::Path(type_path) = const_type {
-                                            if let Ok(PathElement::Item(node)) = self
+                                        if let Type::Path(type_path) = const_type
+                                            && let Ok(PathElement::Item(node)) = self
                                                 .graph
                                                 .get_path_leaf(self.node, type_path.into())
-                                            {
-                                                // set variable type to type of const
-                                                self.variables
-                                                    .push_variable(ident.to_owned(), node);
-                                                num_variables += 1;
-                                                break;
-                                            }
+                                        {
+                                            // set variable type to type of const
+                                            self.variables.push_variable(ident.to_owned(), node);
+                                            num_variables += 1;
+                                            break;
                                         }
                                     }
                                 }
@@ -244,36 +242,32 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
                             // At current state only parsing a simple path to constructor like new()
                             // or a alone standing fn(), both represented as Expr::Path(ExprPath) inside ExprCall.
                             // ToDo: support builder pattern
-                            if let Expr::Path(expr_path_of_method) = expr_call.func.as_ref() {
-                                if let Ok(PathElement::Item(fn_or_method_node)) = self
+                            if let Expr::Path(expr_path_of_method) = expr_call.func.as_ref()
+                                && let Ok(PathElement::Item(fn_or_method_node)) = self
                                     .graph
                                     .get_path_leaf(self.node, expr_path_of_method.into())
+                            {
+                                let output = if let Some(Item::Fn(item_fn)) =
+                                    self.graph.get_syn_item(fn_or_method_node)
                                 {
-                                    let output = if let Some(Item::Fn(item_fn)) =
-                                        self.graph.get_syn_item(fn_or_method_node)
-                                    {
-                                        Some(&item_fn.sig.output)
-                                    } else if let Some(ImplItem::Fn(impl_item_fn)) =
-                                        self.graph.get_syn_impl_item(fn_or_method_node)
-                                    {
-                                        Some(&impl_item_fn.sig.output)
-                                    } else {
-                                        None
-                                    };
+                                    Some(&item_fn.sig.output)
+                                } else if let Some(ImplItem::Fn(impl_item_fn)) =
+                                    self.graph.get_syn_impl_item(fn_or_method_node)
+                                {
+                                    Some(&impl_item_fn.sig.output)
+                                } else {
+                                    None
+                                };
 
-                                    if let Some(ReturnType::Type(_, box_type)) = output {
-                                        if let Type::Path(type_path) = box_type.as_ref() {
-                                            if let Ok(PathElement::Item(node)) = self
-                                                .graph
-                                                .get_path_leaf(fn_or_method_node, type_path.into())
-                                            {
-                                                // set variable type to return type of method call
-                                                self.variables
-                                                    .push_variable(ident.to_owned(), node);
-                                                num_variables += 1;
-                                            }
-                                        }
-                                    }
+                                if let Some(ReturnType::Type(_, box_type)) = output
+                                    && let Type::Path(type_path) = box_type.as_ref()
+                                    && let Ok(PathElement::Item(node)) = self
+                                        .graph
+                                        .get_path_leaf(fn_or_method_node, type_path.into())
+                                {
+                                    // set variable type to return type of method call
+                                    self.variables.push_variable(ident.to_owned(), node);
+                                    num_variables += 1;
                                 }
                             }
                         }
@@ -320,46 +314,45 @@ impl<'a, O, S> Visit<'a> for SynReferenceMapper<'a, O, S> {
     }
 
     fn visit_expr_method_call(&mut self, expr_method_call: &'a ExprMethodCall) {
-        if let Expr::Path(expr_path) = expr_method_call.receiver.as_ref() {
-            if let SourcePath::Name(segments) = expr_path.into() {
-                if segments.len() == 1 {
-                    let item_node = if segments[0] == "self" {
-                        // get item node which is referenced by self
+        if let Expr::Path(expr_path) = expr_method_call.receiver.as_ref()
+            && let SourcePath::Name(segments) = expr_path.into()
+            && segments.len() == 1
+        {
+            let item_node = if segments[0] == "self" {
+                // get item node which is referenced by self
+                self.graph
+                    .get_parent_index_by_edge_type(self.node, EdgeType::Syn)
+                    .and_then(|n| {
                         self.graph
-                            .get_parent_index_by_edge_type(self.node, EdgeType::Syn)
-                            .and_then(|n| {
-                                self.graph
-                                    .get_parent_index_by_edge_type(n, EdgeType::Implementation)
-                            })
-                    } else {
-                        // check if receiver is listed in variables
-                        self.variables.get_node_index(&segments[0])
-                    };
+                            .get_parent_index_by_edge_type(n, EdgeType::Implementation)
+                    })
+            } else {
+                // check if receiver is listed in variables
+                self.variables.get_node_index(&segments[0])
+            };
 
-                    // add reference to method call, if receiver is self or listed in variables
-                    if let Some(node) = item_node {
-                        for (impl_method, _) in self
-                            .graph
-                            .iter_impl_blocks_of_item(node)
-                            .flat_map(|(n, _)| self.graph.iter_syn_impl_item(n))
-                            .filter(|(n, _)| !self.graph.is_required_by_challenge(*n))
-                            .filter(|(_, i)| {
-                                if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
-                                    name == expr_method_call.method
-                                } else {
-                                    false
-                                }
-                            })
-                        {
-                            // It is possible to have the same method name in different impl blocks of an item,
-                            // if the item has generic parameters and impl blocks, each defining a specific
-                            // type for the generic parameter. These type specific impl blocks may share
-                            // method names, because they are identified by the specific type first and than
-                            // by method name. Same is true if different traits with similar method names are
-                            // implemented.
-                            self.referenced_nodes.insert(impl_method);
+            // add reference to method call, if receiver is self or listed in variables
+            if let Some(node) = item_node {
+                for (impl_method, _) in self
+                    .graph
+                    .iter_impl_blocks_of_item(node)
+                    .flat_map(|(n, _)| self.graph.iter_syn_impl_item(n))
+                    .filter(|(n, _)| !self.graph.is_required_by_challenge(*n))
+                    .filter(|(_, i)| {
+                        if let Some(name) = ItemName::from(*i).get_ident_in_name_space() {
+                            name == expr_method_call.method
+                        } else {
+                            false
                         }
-                    }
+                    })
+                {
+                    // It is possible to have the same method name in different impl blocks of an item,
+                    // if the item has generic parameters and impl blocks, each defining a specific
+                    // type for the generic parameter. These type specific impl blocks may share
+                    // method names, because they are identified by the specific type first and than
+                    // by method name. Same is true if different traits with similar method names are
+                    // implemented.
+                    self.referenced_nodes.insert(impl_method);
                 }
             }
         }
@@ -494,15 +487,12 @@ pub struct UpdateRelativePath<'a, O, S> {
 
 impl<'a, O, S> Visit<'a> for UpdateRelativePath<'a, O, S> {
     fn visit_path(&mut self, path: &'a Path) {
-        if let Some(mod_index) = self.graph.get_path_module(self.node, path.into()) {
-            if self.target_mods.contains(&mod_index) {
-                if let Ok(Some(extended_path)) =
-                    ExtSourcePath::new(self.graph, self.node, &path.into())
-                {
-                    self.path_targets
-                        .insert((self.node, path.to_owned()), extended_path);
-                }
-            }
+        if let Some(mod_index) = self.graph.get_path_module(self.node, path.into())
+            && self.target_mods.contains(&mod_index)
+            && let Ok(Some(extended_path)) = ExtSourcePath::new(self.graph, self.node, &path.into())
+        {
+            self.path_targets
+                .insert((self.node, path.to_owned()), extended_path);
         }
     }
 }

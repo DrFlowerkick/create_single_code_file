@@ -378,13 +378,11 @@ impl SourcePathWalker {
                         }
                         NodeType::SynItem(_) => {
                             self.current_node_index = item_index;
-                            if is_last {
-                                if let Some(renamed) = rename {
-                                    return Some(PathElement::ItemRenamed(
-                                        self.current_node_index,
-                                        renamed.to_owned(),
-                                    ));
-                                }
+                            if is_last && let Some(renamed) = rename {
+                                return Some(PathElement::ItemRenamed(
+                                    self.current_node_index,
+                                    renamed.to_owned(),
+                                ));
                             }
                             return Some(PathElement::Item(self.current_node_index));
                         }

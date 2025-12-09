@@ -1,28 +1,30 @@
 {
-    "cSpell.words": [
-        "bijective",
-        "camino",
-        "canonicalize",
-        "chrono",
-        "codingame",
-        "Deque",
-        "fixedbitset",
-        "itertools",
-        "libc",
-        "mockall",
-        "petgraph",
-        "rustup",
-        "serde",
-        "shouty",
-        "structopt",
-        "thiserror",
-        "tictactoe",
-        "usize"
-    ],
+  "cSpell.words": [
+    "bijective",
+    "camino",
+    "canonicalize",
+    "chrono",
+    "codingame",
+    "Deque",
+    "fixedbitset",
+    "itertools",
+    "libc",
+    "mockall",
+    "petgraph",
+    "rustup",
+    "serde",
+    "shouty",
+    "structopt",
+    "thiserror",
+    "tictactoe",
+    "usize"
+  ],
 
-    "cSpell.ignorePaths": [
-        ".git",
-        "**/.cargo/**",
-        "**/.rustup/**"
-    ],
+  "cSpell.ignorePaths": [".git", "**/.cargo/**", "**/.rustup/**"],
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true
+  }
 }

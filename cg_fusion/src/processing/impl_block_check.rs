@@ -99,11 +99,9 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             .collect();
         let mut got_user_input = false;
         while let Some((dialog_item, required_node)) = {
-            let next_item_option = self
-                .iter_impl_items_without_required_link_in_required_impl_blocks()
+            self.iter_impl_items_without_required_link_in_required_impl_blocks()
                 .chain(self.iter_impl_blocks_without_required_link_of_required_items())
-                .find(|(n, _)| (!seen_dialog_items.contains_key(n)));
-            next_item_option
+                .find(|(n, _)| !seen_dialog_items.contains_key(n))
         } {
             let processing = if (self.options.processing().force_challenge_items
                 && self.is_challenge_item(dialog_item))
@@ -160,23 +158,22 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
             }
         }
         // if at least once user input was required, show dialog to save impl config file.
-        if got_user_input {
-            if let Some((toml_path, toml_content)) =
+        if got_user_input
+            && let Some((toml_path, toml_content)) =
                 self.impl_config_toml_dialog(&mut dialog_handler, &seen_dialog_items)?
-            {
-                let confirmation = if toml_path.exists() {
-                    let prompt = format!("Overwriting existing impl config file '{}'?", toml_path);
-                    let help = "Default is not overwriting (N).";
-                    dialog_handler.confirm(&prompt, help, false)?
-                } else {
-                    true
-                };
-                if confirmation {
-                    let mut file = fs::File::create(toml_path)?;
-                    file.write_all(toml_content.as_bytes())?;
-                } else if self.options.verbose() {
-                    println!("Skipping saving impl config to '{}'.", toml_path);
-                }
+        {
+            let confirmation = if toml_path.exists() {
+                let prompt = format!("Overwriting existing impl config file '{}'?", toml_path);
+                let help = "Default is not overwriting (N).";
+                dialog_handler.confirm(&prompt, help, false)?
+            } else {
+                true
+            };
+            if confirmation {
+                let mut file = fs::File::create(toml_path)?;
+                file.write_all(toml_content.as_bytes())?;
+            } else if self.options.verbose() {
+                println!("Skipping saving impl config to '{}'.", toml_path);
             }
         }
         Ok(self.set_state(ProcessingRequiredExternals))
@@ -237,19 +234,19 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 DialogImplItemSelection::ShowItem => {
                     let mut message = String::new();
                     // extracting source code span of dialog item
-                    if let Some(ii) = self.get_syn_impl_item(impl_item) {
-                        if let Some(src_file) = self.get_src_file_containing_item(impl_item) {
-                            let span = ii.span();
-                            if let Some(impl_item_source) = span.source_text() {
-                                writeln!(
-                                    &mut message,
-                                    "\n{}:{}:{}\n{}\n",
-                                    src_file.path,
-                                    span.start().line,
-                                    span.start().column + 1,
-                                    impl_item_source,
-                                )?;
-                            }
+                    if let Some(ii) = self.get_syn_impl_item(impl_item)
+                        && let Some(src_file) = self.get_src_file_containing_item(impl_item)
+                    {
+                        let span = ii.span();
+                        if let Some(impl_item_source) = span.source_text() {
+                            writeln!(
+                                &mut message,
+                                "\n{}:{}:{}\n{}\n",
+                                src_file.path,
+                                span.start().line,
+                                span.start().column + 1,
+                                impl_item_source,
+                            )?;
                         }
                     }
                     if message.is_empty() {
@@ -348,19 +345,19 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 DialogImplBlockSelection::ShowImplBlock => {
                     let mut message = String::new();
                     // extracting source code span of dialog item
-                    if let Some(item) = self.get_syn_item(impl_block) {
-                        if let Some(src_file) = self.get_src_file_containing_item(impl_block) {
-                            let span = item.span();
-                            if let Some(impl_item_source) = span.source_text() {
-                                writeln!(
-                                    &mut message,
-                                    "\n{}:{}:{}\n{}\n",
-                                    src_file.path,
-                                    span.start().line,
-                                    span.start().column + 1,
-                                    impl_item_source,
-                                )?;
-                            }
+                    if let Some(item) = self.get_syn_item(impl_block)
+                        && let Some(src_file) = self.get_src_file_containing_item(impl_block)
+                    {
+                        let span = item.span();
+                        if let Some(impl_item_source) = span.source_text() {
+                            writeln!(
+                                &mut message,
+                                "\n{}:{}:{}\n{}\n",
+                                src_file.path,
+                                span.start().line,
+                                span.start().column + 1,
+                                impl_item_source,
+                            )?;
                         }
                     }
                     if message.is_empty() {
@@ -423,19 +420,19 @@ impl<O: CgCliImplDialog> CgData<O, ProcessingImplItemDialogState> {
                 DialogImplBlockWithTraitSelection::ShowImplBlock => {
                     let mut message = String::new();
                     // extracting source code span of dialog item
-                    if let Some(item) = self.get_syn_item(impl_block) {
-                        if let Some(src_file) = self.get_src_file_containing_item(impl_block) {
-                            let span = item.span();
-                            if let Some(impl_item_source) = span.source_text() {
-                                writeln!(
-                                    &mut message,
-                                    "\n{}:{}:{}\n{}\n",
-                                    src_file.path,
-                                    span.start().line,
-                                    span.start().column + 1,
-                                    impl_item_source,
-                                )?;
-                            }
+                    if let Some(item) = self.get_syn_item(impl_block)
+                        && let Some(src_file) = self.get_src_file_containing_item(impl_block)
+                    {
+                        let span = item.span();
+                        if let Some(impl_item_source) = span.source_text() {
+                            writeln!(
+                                &mut message,
+                                "\n{}:{}:{}\n{}\n",
+                                src_file.path,
+                                span.start().line,
+                                span.start().column + 1,
+                                impl_item_source,
+                            )?;
                         }
                     }
                     if message.is_empty() {

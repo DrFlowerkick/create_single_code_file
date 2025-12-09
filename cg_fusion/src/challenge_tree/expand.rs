@@ -816,13 +816,12 @@ impl ExtSourcePath {
                         // This is only possible, if a path element points toward a use statement,
                         // which imports external code. Minimize path to this use statement and
                         // append remaining segments of external use statement
-                        if let Some(external_use_ident) = graph.get_ident(leaf_index) {
-                            if let Some(pos) =
+                        if let Some(external_use_ident) = graph.get_ident(leaf_index)
+                            && let Some(pos) =
                                 segments.iter().position(|s| *s == external_use_ident)
-                            {
-                                remaining_external_segments = Some(Vec::from(&segments[pos + 1..]));
-                                break;
-                            }
+                        {
+                            remaining_external_segments = Some(Vec::from(&segments[pos + 1..]));
+                            break;
                         }
                     }
                     // path directly starts with external package or last known item (leaf) in path not found in segments

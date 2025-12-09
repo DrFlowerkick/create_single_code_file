@@ -505,16 +505,16 @@ impl<O: CgCli, S> CgData<O, S> {
         let Some(node_crate) = self.get_crate_index(node) else {
             return false;
         };
-        if let Some((challenge_bin_crate, _)) = self.get_challenge_bin_crate() {
-            if node_crate == challenge_bin_crate {
-                return true;
-            }
+        if let Some((challenge_bin_crate, _)) = self.get_challenge_bin_crate()
+            && node_crate == challenge_bin_crate
+        {
+            return true;
         }
-        if let Some((challenge_lib_crate, _)) = self.get_challenge_lib_crate() {
-            if node_crate == challenge_lib_crate {
-                return true;
-            }
-        };
+        if let Some((challenge_lib_crate, _)) = self.get_challenge_lib_crate()
+            && node_crate == challenge_lib_crate
+        {
+            return true;
+        }
         false
     }
 

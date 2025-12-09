@@ -84,7 +84,7 @@ impl MetaWrapper {
             .workspace_members
             .iter()
             .filter_map(|pid| self.0.packages.iter().find(|p| p.id == *pid))
-            .map(|p| (p.name.to_owned(), p.manifest_path.to_owned()))
+            .map(|p| (p.name.to_string(), p.manifest_path.to_owned()))
             .collect()
     }
     fn run_cargo_command_for_given_bin_and_lib(
@@ -171,14 +171,13 @@ impl OutputWrapper {
         for message in Message::parse_stream(&self.0.stdout[..]) {
             if let Message::CompilerMessage(msg) = message.context(add_context!(format!(
                 "Unexpected error of parsing 'cargo {command}' messages stream."
-            )))? {
-                if let Some(rendered_msg) = msg.message.rendered {
-                    writeln!(&mut check_messages, "{}", rendered_msg).context(add_context!(
-                        format!(
-                            "Unexpected error while formatting rendered 'cargo {command}' messages."
-                        )
-                    ))?;
-                }
+            )))? && let Some(rendered_msg) = msg.message.rendered
+            {
+                writeln!(&mut check_messages, "{}", rendered_msg).context(add_context!(
+                    format!(
+                        "Unexpected error while formatting rendered 'cargo {command}' messages."
+                    )
+                ))?;
             }
         }
         if !check_messages.is_empty() {
